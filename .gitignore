@@ -3,6 +3,7 @@ auth.json
 **/auth.json
 .env
 .env.*
+!.env.example
 agent/models.json
 agent/9router-config.json
 
@@ -11,6 +12,7 @@ agent/9router-config.json
 agent/sessions/
 agent/bin/
 agent/auth.json
+agent/settings.json
 git/
 mcp-cache.json
 mcp-npx-cache.json

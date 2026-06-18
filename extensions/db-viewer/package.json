@@ -1,0 +1,12 @@
+{
+  "name": "db-viewer",
+  "version": "1.0.0",
+  "description": "Pi Extension to view SQLite and MySQL databases securely",
+  "main": "src/index.ts",
+  "dependencies": {
+    "mysql2": "^3.11.0"
+  },
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  }
+}
