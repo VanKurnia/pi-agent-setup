@@ -1,6 +1,8 @@
 #!/bin/bash
 
-EXT_DIR="C:/Users/Ivan Kurniawan/.pi/extensions"
+# Dynamically resolve the extension directory path relative to the script location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXT_DIR="$SCRIPT_DIR/extensions"
 
 echo "Re-registering top-level extensions from $EXT_DIR..."
 
@@ -14,7 +16,7 @@ for path in "$EXT_DIR"/*; do
     continue
   fi
 
-  # Skip typical ignore paths if any exist (e.g. node_modules, package.json if misplaced)
+  # Skip typical ignore paths if any exist (e.g. node_modules)
   if [[ "$filename" == "node_modules" ]]; then
     continue
   fi
@@ -26,7 +28,7 @@ shopt -u nullglob
 
 # Find directories containing package.json (ignoring node_modules) and run npm install
 echo "Finding package.json files and running npm install..."
-find . -name "node_modules" -prune -o -name "package.json" -print | while read -r pkg_path; do
+find "$SCRIPT_DIR" -name "node_modules" -prune -o -name "package.json" -print | while read -r pkg_path; do
   if [[ "$pkg_path" == *"package.json"* ]]; then
     pkg_dir=$(dirname "$pkg_path")
     echo "--------------------------------------------------"
