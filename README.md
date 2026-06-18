@@ -30,7 +30,7 @@ To configure custom endpoints or local models (like Ollama, LM Studio, or custom
 touch agent/models.json
 ```
 
-Refer to the official documentation on [Custom Models](https://github.com/earendil-works/pi-coding-agent/blob/main/docs/models.md) for how to set up provider base URLs, keys, and model lists.
+Refer to the official documentation on [Custom Models](https://pi.dev/docs/latest/models) for how to set up provider base URLs, keys, and model lists.
 
 ## Installation and Updates
 
