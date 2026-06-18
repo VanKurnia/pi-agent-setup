@@ -1,0 +1,19 @@
+{
+  "defaultModel": "assistant",
+  "defaultProvider": "9router",
+  "lastChangelogVersion": "0.79.6",
+  "packages": [
+    "..\\extensions\\web-fetch",
+    "..\\extensions\\bash-guard",
+    "..\\extensions\\filechanges",
+    "..\\extensions\\subagents",
+    "..\\extensions\\custom-header.ts",
+    "npm:pi-9router-ext",
+    "..\\extensions\\ask-user-question.ts",
+    "..\\extensions\\context.ts",
+    "..\\extensions\\md-link.ts",
+    "..\\extensions\\zz-read-only-mode.ts"
+  ],
+  "shellPath": "C:\\Program Files\\Git\\bin\\bash.exe",
+  "theme": "dark"
+}
