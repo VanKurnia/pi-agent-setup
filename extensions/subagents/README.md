@@ -7,6 +7,8 @@ A pi extension that registers a single `subagent` tool with three agents:
 | **scout** | read, grep, find, ls | claude-haiku-4-5 | Fast codebase recon |
 | **researcher** | web_search, web_fetch | claude-sonnet-4-6 | Web research |
 | **worker** | read, write, edit, safe_bash | claude-sonnet-4-6 | Code changes |
+| — | git_status, git_diff, git_log, etc. | — | Git operations (via git-toolkit) |
+| — | query_sqlite, query_mysql | — | Database queries (via db-viewer) |
 
 ## Usage
 
@@ -124,12 +126,22 @@ If your agents need tools beyond the built-in set, those tools must be mapped in
 
 ```typescript
 const CUSTOM_TOOL_EXTENSIONS: Record<string, string> = {
-  web_search: path.join(EXT_BASE, "web-search", "index.ts"),
   web_fetch: path.join(EXT_BASE, "web-fetch", "index.ts"),
   safe_bash: path.join(TOOLS_DIR, "safe-bash.ts"),
-  video_extract: path.join(EXT_BASE, "video-extract", "index.ts"),
-  youtube_search: path.join(EXT_BASE, "youtube-search", "index.ts"),
-  google_image_search: path.join(EXT_BASE, "google-image-search", "index.ts"),
+  git_status: path.join(EXT_BASE, "git-toolkit.ts"),
+  git_diff_unstaged: path.join(EXT_BASE, "git-toolkit.ts"),
+  git_diff_staged: path.join(EXT_BASE, "git-toolkit.ts"),
+  git_diff: path.join(EXT_BASE, "git-toolkit.ts"),
+  git_add: path.join(EXT_BASE, "git-toolkit.ts"),
+  git_commit: path.join(EXT_BASE, "git-toolkit.ts"),
+  git_reset: path.join(EXT_BASE, "git-toolkit.ts"),
+  git_log: path.join(EXT_BASE, "git-toolkit.ts"),
+  git_create_branch: path.join(EXT_BASE, "git-toolkit.ts"),
+  git_checkout: path.join(EXT_BASE, "git-toolkit.ts"),
+  git_show: path.join(EXT_BASE, "git-toolkit.ts"),
+  git_branch: path.join(EXT_BASE, "git-toolkit.ts"),
+  query_sqlite: path.join(EXT_BASE, "db-viewer", "src", "index.ts"),
+  query_mysql: path.join(EXT_BASE, "db-viewer", "src", "index.ts"),
 };
 ```
 
