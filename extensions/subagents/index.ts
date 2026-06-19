@@ -86,7 +86,8 @@ const BUILTIN_TOOLS = new Set(["read", "write", "edit", "bash", "grep", "find", 
 // Custom tools that require loading an extension into the subagent process
 const EXT_BASE = path.join(EXT_DIR, "..");
 const CUSTOM_TOOL_EXTENSIONS: Record<string, string> = {
-	web_fetch: path.join(EXT_BASE, "web-fetch", "index.ts"),
+	ninerouter_web_fetch: "npm:pi-9router-ext",
+	ninerouter_web_search: "npm:pi-9router-ext",
 	safe_bash: path.join(TOOLS_DIR, "safe-bash.ts"),
 	git_status: path.join(EXT_BASE, "git-toolkit.ts"),
 	git_diff_unstaged: path.join(EXT_BASE, "git-toolkit.ts"),
@@ -226,8 +227,10 @@ function formatToolPreview(name: string, args: Record<string, unknown>): string 
 		case "ls":
 			return `ls ${(args.path as string) || "."}`;
 		case "web_search":
+		case "ninerouter_web_search":
 			return `search "${(args.query as string) || ""}"`;
 		case "web_fetch":
+		case "ninerouter_web_fetch":
 			return `fetch ${(args.url as string) || ""}`;
 		default: {
 			const s = JSON.stringify(args);
@@ -294,10 +297,12 @@ async function buildPiArgs(
 	// Use --no-extensions then add only what we need
 	args.push("--no-extensions");
 
-	if (builtinTools.length > 0) {
-		args.push("--tools", builtinTools.join(","));
+	// Include all tool names so the model knows they're available
+	// (builtin tools are native, extension tools are registered via --extension)
+	const allToolNames = [...agent.tools];
+	if (allToolNames.length > 0) {
+		args.push("--tools", allToolNames.join(","));
 	} else {
-		// No builtin tools needed — disable defaults so only extension tools are available
 		args.push("--no-tools");
 	}
 
