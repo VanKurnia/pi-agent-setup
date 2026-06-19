@@ -41,7 +41,7 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		async execute(toolCallId, params) {
 			try {
 				const output = await runGit(params.repo_path, ["status"]);
-				return { content: [{ type: "text", text: output || "Working tree clean" }] };
+				return { content: [{ type: "text", text: output ? `\`\`\`text\n${output}\n\`\`\`` : "Working tree clean" }] };
 			} catch (e: any) {
 				return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
 			}
@@ -61,7 +61,7 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 			try {
 				const context = params.context_lines !== undefined ? params.context_lines : 3;
 				const output = await runGit(params.repo_path, ["diff", `-U${context}`]);
-				return { content: [{ type: "text", text: output || "No unstaged changes" }] };
+				return { content: [{ type: "text", text: output ? `\`\`\`diff\n${output}\n\`\`\`` : "No unstaged changes" }] };
 			} catch (e: any) {
 				return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
 			}
@@ -81,7 +81,7 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 			try {
 				const context = params.context_lines !== undefined ? params.context_lines : 3;
 				const output = await runGit(params.repo_path, ["diff", "--cached", `-U${context}`]);
-				return { content: [{ type: "text", text: output || "No staged changes" }] };
+				return { content: [{ type: "text", text: output ? `\`\`\`diff\n${output}\n\`\`\`` : "No staged changes" }] };
 			} catch (e: any) {
 				return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
 			}
@@ -102,7 +102,7 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 			try {
 				const context = params.context_lines !== undefined ? params.context_lines : 3;
 				const output = await runGit(params.repo_path, ["diff", params.target, `-U${context}`]);
-				return { content: [{ type: "text", text: output || "No differences" }] };
+				return { content: [{ type: "text", text: output ? `\`\`\`diff\n${output}\n\`\`\`` : "No differences" }] };
 			} catch (e: any) {
 				return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
 			}
@@ -133,7 +133,7 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 				}
 
 				await runGit(params.repo_path, ["add", ...params.files]);
-				return { content: [{ type: "text", text: `Successfully staged: ${params.files.join(", ")}` }] };
+				return { content: [{ type: "text", text: `**Successfully staged:** ${params.files.map(f => `\`${f}\``).join(", ")}` }] };
 			} catch (e: any) {
 				return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
 			}
@@ -152,7 +152,7 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		async execute(toolCallId, params) {
 			try {
 				const output = await runGit(params.repo_path, ["commit", "-m", params.message]);
-				return { content: [{ type: "text", text: output }] };
+				return { content: [{ type: "text", text: `\`\`\`text\n${output}\n\`\`\`` }] };
 			} catch (e: any) {
 				return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
 			}
@@ -170,7 +170,7 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		async execute(toolCallId, params) {
 			try {
 				await runGit(params.repo_path, ["reset"]);
-				return { content: [{ type: "text", text: "Successfully unstaged all changes" }] };
+				return { content: [{ type: "text", text: "Successfully unstaged all changes." }] };
 			} catch (e: any) {
 				return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
 			}
@@ -198,7 +198,7 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 					args.push(`--until=${params.end_timestamp}`);
 				}
 				const output = await runGit(params.repo_path, args);
-				return { content: [{ type: "text", text: output || "No commits match criteria" }] };
+				return { content: [{ type: "text", text: output ? `\`\`\`text\n${output}\n\`\`\`` : "No commits match criteria" }] };
 			} catch (e: any) {
 				return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
 			}
@@ -222,7 +222,7 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 					args.push(params.base_branch);
 				}
 				const output = await runGit(params.repo_path, args);
-				return { content: [{ type: "text", text: output || `Created and checked out branch '${params.branch_name}'` }] };
+				return { content: [{ type: "text", text: output ? `\`\`\`text\n${output}\n\`\`\`` : `Created and checked out branch \`${params.branch_name}\`` }] };
 			} catch (e: any) {
 				return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
 			}
@@ -241,7 +241,7 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		async execute(toolCallId, params) {
 			try {
 				const output = await runGit(params.repo_path, ["checkout", params.branch_name]);
-				return { content: [{ type: "text", text: output || `Switched to branch '${params.branch_name}'` }] };
+				return { content: [{ type: "text", text: output ? `\`\`\`text\n${output}\n\`\`\`` : `Switched to branch \`${params.branch_name}\`` }] };
 			} catch (e: any) {
 				return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
 			}
@@ -260,7 +260,7 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		async execute(toolCallId, params) {
 			try {
 				const output = await runGit(params.repo_path, ["show", params.revision]);
-				return { content: [{ type: "text", text: output }] };
+				return { content: [{ type: "text", text: `\`\`\`diff\n${output}\n\`\`\`` }] };
 			} catch (e: any) {
 				return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
 			}
@@ -293,7 +293,7 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 					args.push(`--no-contains=${params.not_contains}`);
 				}
 				const output = await runGit(params.repo_path, args);
-				return { content: [{ type: "text", text: output || "No branches found" }] };
+				return { content: [{ type: "text", text: output ? `\`\`\`text\n${output}\n\`\`\`` : "No branches found" }] };
 			} catch (e: any) {
 				return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
 			}

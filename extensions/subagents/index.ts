@@ -226,10 +226,8 @@ function formatToolPreview(name: string, args: Record<string, unknown>): string 
 			return `find ${(args.pattern as string) || ""}`;
 		case "ls":
 			return `ls ${(args.path as string) || "."}`;
-		case "web_search":
 		case "ninerouter_web_search":
 			return `search "${(args.query as string) || ""}"`;
-		case "web_fetch":
 		case "ninerouter_web_fetch":
 			return `fetch ${(args.url as string) || ""}`;
 		default: {
