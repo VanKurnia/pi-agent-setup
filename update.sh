@@ -2,7 +2,7 @@
 
 # ──────────────────────────────────────────────────────────────
 # pi-agent-setup — update.sh
-#   • Detects the user's .pi directory ($HOME/.pi)
+#   • Detects the user's .pi directory ($HOME/.pi, or $1)
 #   • If running from elsewhere, moves/copies all files there
 #     (overwriting any conflicts)
 #   • Then installs extensions and npm dependencies
@@ -12,7 +12,7 @@ set -e
 
 # ── Resolve paths ────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PI_DIR="${HOME}/.pi"
+PI_DIR="${1:-$HOME/.pi}"
 
 # Colors
 GREEN='\033[0;32m'
@@ -39,19 +39,17 @@ if [[ "$SCRIPT_DIR" != "$PI_DIR" ]]; then
     # Keep .git as copy (preserve any git history in the clone)
     if [[ "$baseitem" == ".git" ]]; then
       cp -rf "$item" "$PI_DIR/" 2>/dev/null || true
-      echo -e "  ${GREEN}✓${NC} copied  .git"
     else
       mv -f "$item" "$PI_DIR/" 2>/dev/null || cp -rf "$item" "$PI_DIR/"
-      echo -e "  ${GREEN}✓${NC} moved   $baseitem"
     fi
   done
   shopt -u dotglob
 
+  # Switch to target dir and recalculate paths in-process
+  cd "$PI_DIR"
+  SCRIPT_DIR="$PI_DIR"
   echo -e "\n${GREEN}✅ Files deployed to ${PI_DIR}${NC}"
-  echo -e "${YELLOW}   Re-running update from target...${NC}\n"
-
-  exec bash "$PI_DIR/update.sh"
-  # ── no return ──
+  echo ""
 fi
 
 # ──────────────────────────────────────────────────────────────
@@ -59,11 +57,6 @@ fi
 # ──────────────────────────────────────────────────────────────
 
 EXT_DIR="$SCRIPT_DIR/extensions"
-
-# Warn if the directory name isn't .pi (sanity check)
-if [[ "$(basename "$SCRIPT_DIR")" != ".pi" ]]; then
-  echo -e "${YELLOW}⚠️  Warning: expected to run from ~/.pi, but got $SCRIPT_DIR${NC}"
-fi
 
 # ── Gather lists ──────────────────────────────────────────────
 EXTENSIONS=()
