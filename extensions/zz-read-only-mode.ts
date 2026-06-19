@@ -58,38 +58,6 @@ export default function readOnlyModeExtension(pi: ExtensionAPI) {
 	let enabled = false;
 	let toolsBeforeReadOnly: string[] | undefined;
 
-	const readTool = createReadTool(process.cwd());
-	pi.registerTool({
-		...readTool,
-		async execute(toolCallId, params, signal, onUpdate, ctx) {
-			return createReadTool(ctx.cwd).execute(toolCallId, params, signal, onUpdate);
-		},
-	});
-
-	const grepTool = createGrepTool(process.cwd());
-	pi.registerTool({
-		...grepTool,
-		async execute(toolCallId, params, signal, onUpdate, ctx) {
-			return createGrepTool(ctx.cwd).execute(toolCallId, params, signal, onUpdate);
-		},
-	});
-
-	const findTool = createFindTool(process.cwd());
-	pi.registerTool({
-		...findTool,
-		async execute(toolCallId, params, signal, onUpdate, ctx) {
-			return createFindTool(ctx.cwd).execute(toolCallId, params, signal, onUpdate);
-		},
-	});
-
-	const lsTool = createLsTool(process.cwd());
-	pi.registerTool({
-		...lsTool,
-		async execute(toolCallId, params, signal, onUpdate, ctx) {
-			return createLsTool(ctx.cwd).execute(toolCallId, params, signal, onUpdate);
-		},
-	});
-
 	function enableReadOnlyMode(ctx: ExtensionContext): void {
 		if (enabled) {
 			updateUi(pi, ctx, enabled);
