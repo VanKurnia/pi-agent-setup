@@ -30,18 +30,18 @@ if [[ "$SCRIPT_DIR" != "$PI_DIR" ]]; then
 
   mkdir -p "$PI_DIR"
 
-  # Copy dotfiles & everything over (overwrite on conflict)
+  # Move everything over, overwriting conflicts.
+  # rm target item first so mv doesn't nest dirs into existing dirs.
   shopt -s dotglob
   for item in "$SCRIPT_DIR"/*; do
     baseitem=$(basename "$item")
     [[ "$baseitem" == "." || "$baseitem" == ".." ]] && continue
 
-    # Keep .git as copy (preserve any git history in the clone)
-    if [[ "$baseitem" == ".git" ]]; then
-      cp -rf "$item" "$PI_DIR/" 2>/dev/null || true
-    else
-      mv -f "$item" "$PI_DIR/" 2>/dev/null || cp -rf "$item" "$PI_DIR/"
-    fi
+    # Never overwrite target .git — target repo owns its history
+    [[ "$baseitem" == ".git" ]] && continue
+
+    rm -rf "$PI_DIR/$baseitem" 2>/dev/null || true
+    mv -f "$item" "$PI_DIR/" 2>/dev/null || cp -rf "$item" "$PI_DIR/"
   done
   shopt -u dotglob
 
