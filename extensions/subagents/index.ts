@@ -100,8 +100,8 @@ const CUSTOM_TOOL_EXTENSIONS: Record<string, string> = {
 	git_checkout: path.join(EXT_BASE, "git-toolkit.ts"),
 	git_show: path.join(EXT_BASE, "git-toolkit.ts"),
 	git_branch: path.join(EXT_BASE, "git-toolkit.ts"),
-	query_sqlite: path.join(EXT_BASE, "db-viewer", "src", "index.ts"),
-	query_mysql: path.join(EXT_BASE, "db-viewer", "src", "index.ts"),
+	query_sqlite: path.join(EXT_BASE, "db-viewer", "index.ts"),
+	query_mysql: path.join(EXT_BASE, "db-viewer", "index.ts"),
 };
 
 // ── Agent Discovery & Registration ────────────────────────────────────
