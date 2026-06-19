@@ -36,7 +36,7 @@ function buildHeader(theme: Theme): string {
 		"      ██████║        ██████║     ",
 		"   ████████████╗  ████████████╗  ",
 		"   ╚═══════════╝  ╚═══════════╝  ",
-	].map(line => theme.bold(theme.fg("success", line))).join("\n");
+	].map(line => theme.bold(theme.fg("warning", line))).join("\n");
 
 	const logo =
 		"\n" + ascii_art_2 + "\n\n" +
