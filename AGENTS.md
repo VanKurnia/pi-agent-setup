@@ -12,3 +12,7 @@ Welcome to the `pi-agent-setup` workspace.
 - **Access**: Inspect SQLite and MySQL databases exclusively through the `db-viewer` extension tools (`query_sqlite` and `query_mysql`). Do not bypass them.
 - **Safety**: Writing queries (`INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, etc.) are blocked. Only read-only queries are allowed.
 - **MySQL Connections**: Use `mysql://root@localhost` (defaults to 3306) or configure custom ports like `mysql://root@localhost:3307/db_name`.
+
+## General Preferences
+
+- **Minimalism**: Prefer concise, direct responses. Avoid unnecessary fluff andverbosity.
