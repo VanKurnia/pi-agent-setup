@@ -1,7 +1,7 @@
 ---
 name: worker
 description: General-purpose worker — reads, writes, and edits code
-tools: read, write, edit, safe_bash
+tools: read, write, edit, safe_bash, git_status, git_diff_unstaged, git_diff_staged, git_diff, git_add, git_commit, git_reset, git_log, git_create_branch, git_checkout, git_show, git_branch, query_sqlite, query_mysql
 model: $WORKER_MODEL
 ---
 

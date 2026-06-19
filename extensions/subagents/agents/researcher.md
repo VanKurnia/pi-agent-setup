@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: Web researcher — searches the web and synthesizes findings
-tools: web_search, web_fetch
+tools: web_fetch, git_status, git_diff_unstaged, git_diff_staged, git_diff, git_log, git_show, git_branch, query_sqlite, query_mysql
 model: $RESEARCHER_MODEL
 ---
 

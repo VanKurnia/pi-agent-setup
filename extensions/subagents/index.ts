@@ -86,12 +86,22 @@ const BUILTIN_TOOLS = new Set(["read", "write", "edit", "bash", "grep", "find", 
 // Custom tools that require loading an extension into the subagent process
 const EXT_BASE = path.join(EXT_DIR, "..");
 const CUSTOM_TOOL_EXTENSIONS: Record<string, string> = {
-	web_search: path.join(EXT_BASE, "web-search", "index.ts"),
 	web_fetch: path.join(EXT_BASE, "web-fetch", "index.ts"),
 	safe_bash: path.join(TOOLS_DIR, "safe-bash.ts"),
-	video_extract: path.join(EXT_BASE, "video-extract", "index.ts"),
-	youtube_search: path.join(EXT_BASE, "youtube-search", "index.ts"),
-	google_image_search: path.join(EXT_BASE, "google-image-search", "index.ts"),
+	git_status: path.join(EXT_BASE, "git-toolkit.ts"),
+	git_diff_unstaged: path.join(EXT_BASE, "git-toolkit.ts"),
+	git_diff_staged: path.join(EXT_BASE, "git-toolkit.ts"),
+	git_diff: path.join(EXT_BASE, "git-toolkit.ts"),
+	git_add: path.join(EXT_BASE, "git-toolkit.ts"),
+	git_commit: path.join(EXT_BASE, "git-toolkit.ts"),
+	git_reset: path.join(EXT_BASE, "git-toolkit.ts"),
+	git_log: path.join(EXT_BASE, "git-toolkit.ts"),
+	git_create_branch: path.join(EXT_BASE, "git-toolkit.ts"),
+	git_checkout: path.join(EXT_BASE, "git-toolkit.ts"),
+	git_show: path.join(EXT_BASE, "git-toolkit.ts"),
+	git_branch: path.join(EXT_BASE, "git-toolkit.ts"),
+	query_sqlite: path.join(EXT_BASE, "db-viewer", "src", "index.ts"),
+	query_mysql: path.join(EXT_BASE, "db-viewer", "src", "index.ts"),
 };
 
 // ── Agent Discovery & Registration ────────────────────────────────────
