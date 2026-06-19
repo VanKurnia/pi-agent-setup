@@ -11,14 +11,34 @@ This setup is inspired by the minimal setup of [amosblomqvist/pi-config](https:/
 
 ## Quick Setup
 
-To configure this environment on your local machine, run:
+To configure this environment on your local machine:
+
+### Option A: If `~/.pi` does not exist or is empty
+Clone the repository directly into your `~/.pi` directory:
 
 ```bash
-# Clone the repository directly to your user folder
+git clone https://github.com/VanKurnia/pi-agent-setup.git ~/.pi
+cd ~/.pi
+bash update.sh
+```
+
+### Option B: If `~/.pi` already exists and is not empty
+If you already have a `~/.pi` directory with existing configurations, run these commands to safely backup and set up:
+
+```bash
+# 1. Backup your existing config
+mv ~/.pi ~/.pi.backup
+
+# 2. Clone this repository to ~/.pi
 git clone https://github.com/VanKurnia/pi-agent-setup.git ~/.pi
 cd ~/.pi
 
-# Initialize extensions and dependencies
+# 3. (Optional) Restore any custom settings (e.g. models.json) from backup
+if [ -f ~/.pi.backup/agent/models.json ]; then
+  cp ~/.pi.backup/agent/models.json ~/.pi/agent/
+fi
+
+# 4. Initialize extensions and dependencies
 bash update.sh
 ```
 
