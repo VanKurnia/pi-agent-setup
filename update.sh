@@ -4,6 +4,17 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXT_DIR="$SCRIPT_DIR/extensions"
 
+# Warn if not in a directory named .pi
+if [[ "$(basename "$SCRIPT_DIR")" != ".pi" ]]; then
+  echo "⚠️  Warning: This repository should typically be installed as '~/.pi' to be loaded by the 'pi' agent."
+  echo "Current directory: $SCRIPT_DIR"
+  echo ""
+  echo "To set it up correctly, you can move it:"
+  echo "  mv \"$SCRIPT_DIR\" ~/.pi"
+  echo "  cd ~/.pi && bash update.sh"
+  echo ""
+fi
+
 echo "Re-registering top-level extensions from $EXT_DIR..."
 
 # Iterate over all files and folders immediately inside the extension directory
