@@ -134,15 +134,15 @@ for path in "$EXT_DIR"/*; do
   [[ "$filename" == "node_modules" ]] && continue
 
   update_ui
-  pi install "$path" > /dev/null 2>&1
-  ((CURRENT_STEP++))
+  pi install "$path" > /dev/null 2>&1 || true
+  CURRENT_STEP=$(( CURRENT_STEP + 1 ))
 done
 
 # ── NPM install ──────────────────────────────────────────────
 for pkg_dir in "${PKGS[@]}"; do
   update_ui
-  (cd "$pkg_dir" && npm install) > /dev/null 2>&1
-  ((CURRENT_STEP++))
+  (cd "$pkg_dir" && npm install) > /dev/null 2>&1 || true
+  CURRENT_STEP=$(( CURRENT_STEP + 1 ))
 done
 
 update_ui
