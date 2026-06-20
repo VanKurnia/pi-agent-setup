@@ -6,7 +6,9 @@ This setup is inspired by the minimal setup of [amosblomqvist/pi-config](https:/
 
 ## What's Included
 
-- **Extensions**: Custom extensions inside `extensions/` (e.g., custom header, bash guards, file change watchers, subagents, db-viewer, and git-toolkit).
+- **Extensions**: Custom extensions inside `extensions/` — custom header, bash guards, file change watchers, subagents, db-viewer, git-toolkit, context helpers, markdown link helpers, read-only mode, and update setup.
+- **Skills**: Agent skills under `agent/skills/` — orchestrator (session orchestration), stop-slop (remove AI writing patterns), web-dev (web development workflows).
+- **Zentui Config**: Terminal UI configuration in `agent/zentui.json`.
 - **Automation**: An `update.sh` script to install top-level extensions automatically and run `npm install` for internal dependencies.
 
 ## Quick Setup
@@ -44,13 +46,35 @@ bash update.sh
 
 ## Custom Models
 
-To configure custom endpoints or local models (like Ollama, LM Studio, or custom proxy models), create a `models.json` file inside `agent/`:
+To configure custom endpoints or local models (like Ollama, LM Studio, or custom proxy models), create a `models.json` file inside `agent/` using this template:
 
-```bash
-touch agent/models.json
+```jsonc
+// agent/models.json
+{
+  "providers": {
+    "ollama": {
+      "baseUrl": "http://localhost:11434/v1",
+      "api": "openai-completions",
+      "apiKey": "ollama",
+      "models": [
+        { "id": "llama3.2" },
+        { "id": "deepseek-coder:6.7b" },
+        { "id": "qwen2.5-coder:7b" }
+      ]
+    },
+    "lm-studio": {
+      "baseUrl": "http://localhost:1234/v1",
+      "api": "openai-completions",
+      "apiKey": "lm-studio",
+      "models": [
+        { "id": "local-model" }
+      ]
+    }
+  }
+}
 ```
 
-Refer to the official documentation on [Custom Models](https://pi.dev/docs/latest/models) for how to set up provider base URLs, keys, and model lists.
+Refer to the official documentation on [Custom Models](https://pi.dev/docs/latest/models) for details on provider base URLs, keys, and model lists.
 
 ## Installation and Updates
 
