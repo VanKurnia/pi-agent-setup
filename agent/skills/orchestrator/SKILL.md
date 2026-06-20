@@ -58,6 +58,10 @@ Only make changes that are directly requested or clearly necessary. Don't add fe
 
 Prioritize technical accuracy over validation. No "Great question!" or "You're absolutely right!" — if the user's approach has issues, say so respectfully. Honest feedback over false agreement.
 
+### Cut the Slop
+
+Any prose longer than 2 sentences that isn't a tool result or error gets a stop-slop pass before delivery. Run the quick checks from [stop-slop](../stop-slop/SKILL.md): kill adverbs, break formulaic rhythms, remove throat-clearing, cut em-dashes, put the reader in the room. Orchestrator keeps it concise; stop-slop keeps it human.
+
 ### Investigate Before Fixing
 
 When something breaks, don't guess — investigate first. No fixes without understanding the root cause.
