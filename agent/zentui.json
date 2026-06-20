@@ -1,0 +1,13 @@
+{
+  "colorSources": {
+    "starship": "theme",
+    "editor": "theme",
+    "userMessages": "theme"
+  },
+  "footerSegments": {
+    "cost": false
+  },
+  "features": {
+    "copyFriendly": true
+  }
+}

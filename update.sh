@@ -74,7 +74,7 @@ while read -r pkg_path; do
   if [[ "$pkg_path" == *"package.json"* ]]; then
     PKGS+=("$(dirname "$pkg_path")")
   fi
-done < <(find "$SCRIPT_DIR" -name "node_modules" -prune -o -name "package.json" -print)
+done < <(find "$SCRIPT_DIR" \( -name "node_modules" -o -name ".git" -o -name "tmp" \) -prune -o -name "package.json" -print)
 
 TOTAL_STEPS=$((${#EXTENSIONS[@]} + ${#PKGS[@]}))
 CURRENT_STEP=0

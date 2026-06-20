@@ -8,9 +8,8 @@
  * To restore the built-in header: rename/delete this file and /reload.
  */
 
-import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
-import { VERSION, keyHint, rawKeyHint } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import { VERSION, keyHint, rawKeyHint } from "@earendil-works/pi-coding-agent";
 
 /**
  * Build the header text. This is what you customize.
@@ -40,7 +39,7 @@ function buildHeader(theme: Theme): string {
 
 	const logo =
 		"\n" + ascii_art_2 + "\n\n" +
-		theme.bold(theme.fg("accent", "pi")) +
+		theme.bold(theme.fg("accent", "π")) +
 		theme.fg("dim", ` v${VERSION}`);
 
 	// ── Keybinding hints ─────────────────────────────────

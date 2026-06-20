@@ -60,25 +60,13 @@ interface Details {
 }
 
 // ── Config ─────────────────────────────────────────────────────────────
-
-interface ExtensionConfig {
-	maxConcurrency?: number;
-}
+// Config is read from .env (SUBAGENTS_MAX_CONCURRENCY) at the pi root.
+// See loadEnv() below for .env parsing.
 
 const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const AGENTS_DIR = path.join(EXT_DIR, "agents");
 const TOOLS_DIR = path.join(EXT_DIR, "tools");
-const CONFIG_PATH = path.join(EXT_DIR, "config.json");
 const DEFAULT_MAX_CONCURRENCY = 4;
-
-function loadConfig(): ExtensionConfig {
-	try {
-		if (fs.existsSync(CONFIG_PATH)) {
-			return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8")) as ExtensionConfig;
-		}
-	} catch {}
-	return {};
-}
 
 // Built-in tools that pi provides natively (no extension needed)
 const BUILTIN_TOOLS = new Set(["read", "write", "edit", "bash", "grep", "find", "ls"]);
@@ -590,7 +578,7 @@ function renderAgentProgress(
 
 	// Header: icon + agent + stats (always one line, truncated)
 	const icon = isRunning
-		? theme.fg("warning", "⟳")
+		? theme.fg("warning", "π")
 		: isPending
 			? theme.fg("dim", "○")
 			: r.exitCode === 0
@@ -686,8 +674,8 @@ function renderAgentProgress(
 // ── Extension ─────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
-	const config = loadConfig();
-	const maxConcurrency = config.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY;
+	loadEnv();
+	const maxConcurrency = parseInt(process.env.SUBAGENTS_MAX_CONCURRENCY ?? "") || DEFAULT_MAX_CONCURRENCY;
 	agents = loadAgents();
 
 	pi.registerTool({
