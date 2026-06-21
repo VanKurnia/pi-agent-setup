@@ -233,7 +233,9 @@ async function relayToParent(
     options: options || [],
     answerFile,
   });
-  console.log(event);
+  // Write to stderr because pi in JSON mode redirects stdout to stderr.
+  // The parent's runSubagent parses stderr lines for our relay events.
+  process.stderr.write(event + "\n");
 
   // Poll the answer file until the parent writes back
   const deadline = Date.now() + timeoutMs;
