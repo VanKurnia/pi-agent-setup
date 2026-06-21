@@ -15,4 +15,12 @@ Welcome to the `pi-agent-setup` workspace.
 
 ## General Preferences
 
-- **Minimalism**: Prefer concise, direct responses. Avoid unnecessary fluff andverbosity.
+- **Minimalism**: Prefer concise, direct responses. Avoid unnecessary fluff and verbosity.
+
+## Style & Discipline
+
+**Keep It Simple.** Only make changes directly requested or clearly necessary. Don't add features, refactoring, or improvements beyond what was asked. Three similar lines of code beats a premature abstraction. Prefer editing existing files over creating new ones.
+
+**Be Direct.** Prioritize technical accuracy over validation. No "Great question!" or "You're absolutely right!" — if the user's approach has issues, say so respectfully. Honest feedback over false agreement.
+
+**Cut the Slop.** Prose longer than 2 sentences that isn't a tool result or error gets a stop-slop pass before delivery. Run the quick checks from [stop-slop](agent/skills/stop-slop/SKILL.md): kill adverbs, break formulaic rhythms, remove throat-clearing, cut em-dashes, put the reader in the room.
