@@ -91,6 +91,13 @@ const CUSTOM_TOOL_EXTENSIONS: Record<string, string> = {
 	git_branch: path.join(EXT_BASE, "git-toolkit.ts"),
 	query_sqlite: path.join(EXT_BASE, "db-viewer", "index.ts"),
 	query_mysql: path.join(EXT_BASE, "db-viewer", "index.ts"),
+	browser_start: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
+	browser_nav: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
+	browser_eval: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
+	browser_screenshot: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
+	browser_content: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
+	browser_cookies: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
+	browser_pick: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
 };
 
 // ── Agent Discovery & Registration ────────────────────────────────────
@@ -378,6 +385,7 @@ async function runSubagent(
 		const proc = spawn(command, spawnArgs, {
 			cwd,
 			stdio: ["ignore", "pipe", "pipe"],
+			env: { ...process.env, PI_SUBAGENT_DEPTH: "1" },
 		});
 
 		let buf = "";

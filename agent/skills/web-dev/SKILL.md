@@ -11,7 +11,7 @@ Use this skill to guide your workflow during web development, database inspectio
 
 Always prioritize the specialized workspace extensions over spawning generic bash commands:
 1. **File Operations**: Use the `read`, `write`, and `edit` tools. Do not use bash commands (`cat`, `echo`, `sed`) to read or write files.
-2. **Web Content**: Use `web_fetch` to retrieve external documentation or inspect remote sources.
+2. **Web Content**: Use `ninerouter_web_fetch` to retrieve external documentation or inspect remote sources.
 3. **Clarifications**: Use `ask_user_question` immediately if a design decision, preference, or missing configuration details are required. Do not guess.
 
 ## Adaptive Git Operations (git-toolkit)
@@ -30,8 +30,22 @@ Query SQLite and MySQL databases exclusively through the read-only `db-viewer` e
 1. **Discovery**: Look for database credentials inside `.env` or configurations in the workspace. If credentials cannot be resolved, use the `ask_user_question` tool to request them from the user.
 2. **Safety**: Make only read-only queries (`SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN`, `PRAGMA`). Altering state or table structure via write operations is prohibited.
 3. **SQLite**:
-   - Dump table columns and indexes using the `/sqlite-schema <path>` command.
+   - Inspect schema by running `query_sqlite` with `SELECT name, sql FROM sqlite_master WHERE type='table'` or use `PRAGMA table_info(table_name)` for column details.
    - Run safe queries with `query_sqlite`.
 4. **MySQL**:
-   - Dump database structural information using `/mysql-schema <connection-string>`.
+   - Inspect schema by running `query_mysql` with `SHOW TABLES` and `DESCRIBE tablename`.
    - Run queries with `query_mysql`.
+
+## Browser Toolkit (browser-tools)
+
+Automate, scrape, and test web pages through Chrome DevTools Protocol.
+
+1. **Start Chrome**: Call `browser_start` first if Chrome isn't already running on `:9222`. It's idempotent.
+2. **Navigate**: Use `browser_nav` to go to a URL (`--new` opens a new tab, otherwise reuses the current one).
+3. **Interact & extract**:
+   - `browser_eval` — run JavaScript in the page context to read state, trigger clicks, scrape data.
+   - `browser_content` — extract readable article content as clean markdown (uses Mozilla Readability).
+   - `browser_screenshot` — capture a screenshot for visual verification (use sparingly; prefer `browser_eval` for DOM inspection).
+4. **Debug**:
+   - `browser_cookies` — inspect session/cookies for auth debugging.
+   - `browser_pick` — launch an interactive element picker so the user can click elements on the page; returns CSS selectors.
