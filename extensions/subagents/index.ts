@@ -4,7 +4,7 @@
  * Registers a single `subagent` tool with three agents: scout, researcher, worker.
  * Supports single and parallel execution. Output is verbal only (no file handoff).
  */
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -98,6 +98,7 @@ const CUSTOM_TOOL_EXTENSIONS: Record<string, string> = {
 	browser_content: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
 	browser_cookies: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
 	browser_pick: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
+	ask_user_question: path.join(EXT_BASE, "ask-user-question.ts"),
 };
 
 // Validate all tool extension paths at startup
@@ -528,6 +529,49 @@ async function runSubagent(
 	return result;
 }
 
+// ── Post-hoc diffing for worker file changes ──────────────────────────
+
+const FILE_CHANGE_RE = /^-\s+`([^`]+)`/;
+
+function computeWorkerDiffs(output: string, cwd: string): string {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  
+  // Only extract from the Changes Made section
+  let inChangesSection = false;
+
+  for (const line of output.split("\n")) {
+    if (line.trim() === "## Changes Made") {
+      inChangesSection = true;
+      continue;
+    } else if (line.startsWith("## ")) {
+      inChangesSection = false;
+    }
+
+    if (!inChangesSection) continue;
+
+    const m = line.match(FILE_CHANGE_RE);
+    if (!m || seen.has(m[1])) continue;
+    seen.add(m[1]);
+
+    try {
+      const diff = execSync(`git diff HEAD -- "${m[1]}"`, {
+        cwd,
+        encoding: "utf-8",
+        maxBuffer: 1024 * 64,
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim();
+      if (diff) {
+        parts.push(`### ${m[1]}\n\n\`\`\`diff\n${diff}\n\`\`\``);
+      }
+    } catch {
+      // File might be untracked or not in git — skip
+    }
+  }
+
+  return parts.length ? `\n\n## File changes\n\n${parts.join("\n\n")}` : "";
+}
+
 // ── Throttle ──────────────────────────────────────────────────────────
 
 function throttle<T extends (...args: any[]) => void>(fn: T, ms: number): T {
@@ -773,6 +817,14 @@ export default function (pi: ExtensionAPI) {
 						fireParallelUpdate();
 					});
 
+					// Compute post-hoc file diffs for worker subagent results
+					if (agent.name === "worker" && result.output) {
+						const diffs = computeWorkerDiffs(result.output, t.cwd ?? cwd);
+						if (diffs) {
+							result.output += diffs;
+						}
+					}
+
 					// Update allResults with the completed result so the UI reflects it immediately
 					allResults[idx] = result;
 					flushParallelUpdate();
@@ -814,6 +866,14 @@ export default function (pi: ExtensionAPI) {
 						details: { mode: "single" as const, results: [liveResult] },
 					});
 				});
+
+				// Compute post-hoc file diffs for worker subagent results
+				if (agent.name === "worker" && result.output) {
+					const diffs = computeWorkerDiffs(result.output, params.cwd ?? cwd);
+					if (diffs) {
+						result.output += diffs;
+					}
+				}
 
 				const isError = result.exitCode !== 0 || !!result.progress.error;
 				return {
