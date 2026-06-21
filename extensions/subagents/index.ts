@@ -604,12 +604,29 @@ function getFileDiff(filePath: string, cwd: string): string {
   return (raw || "").toString().trim();
 }
 
-function computeWorkerDiffs(output: string, cwd: string): string {
+function computeWorkerDiffs(output: string, cwd: string, ctx?: any): string {
   const filePaths = extractFilePaths(output);
   const parts: string[] = [];
 
   for (const filePath of filePaths) {
     try {
+      const relPath = makeRelPath(filePath, cwd);
+      const absPath = path.resolve(cwd, relPath);
+
+      // Read original content from git
+      const showResult = spawnSync(`git`, [`show`, `HEAD:${relPath}`], {
+        cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      const isTracked = showResult.status === 0;
+      const originalContent = isTracked ? (showResult.stdout || "").toString().trim() : null;
+
+      // Register with filechanges if available
+      const fc = (globalThis as any).__pi_filechanges;
+      if (fc && ctx) {
+        fc.trackFile(ctx, relPath, absPath, originalContent);
+      }
+
       const diff = getFileDiff(filePath, cwd);
       if (diff) {
         parts.push(`### ${filePath}\n\n\`\`\`diff\n${diff}\n\`\`\``);
@@ -869,7 +886,7 @@ export default function (pi: ExtensionAPI) {
 
 					// Compute post-hoc file diffs for worker subagent results
 					if (agent.name === "worker" && result.output) {
-						const diffs = computeWorkerDiffs(result.output, t.cwd ?? cwd);
+						const diffs = computeWorkerDiffs(result.output, t.cwd ?? cwd, ctx);
 						if (diffs) {
 							result.output += diffs;
 						}
@@ -919,7 +936,7 @@ export default function (pi: ExtensionAPI) {
 
 				// Compute post-hoc file diffs for worker subagent results
 				if (agent.name === "worker" && result.output) {
-					const diffs = computeWorkerDiffs(result.output, params.cwd ?? cwd);
+					const diffs = computeWorkerDiffs(result.output, params.cwd ?? cwd, ctx);
 					if (diffs) {
 						result.output += diffs;
 					}

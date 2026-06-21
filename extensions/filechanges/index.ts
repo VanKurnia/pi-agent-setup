@@ -170,6 +170,29 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setWidget("filechanges", buildWidgetLines(tracked, ctx.ui.theme));
 	}
 
+	// ── Cross-extension API for subagent file tracking ──────────────
+
+	(globalThis as any).__pi_filechanges = {
+		trackFile: async (ctx: any, relPath: string, absPath: string, originalContent: string | null): Promise<void> => {
+			if (baselines.has(relPath)) return; // already tracked
+
+			baselines.set(relPath, {
+				path: relPath,
+				absPath,
+				originalContent,
+				createdAt: Date.now(),
+			});
+			pi.appendEntry(ENTRY_BASELINE, {
+				path: relPath,
+				originalContent,
+				timestamp: Date.now(),
+			});
+
+			await recomputeTrackedFile(ctx, relPath);
+			updateUi(ctx);
+		},
+	};
+
 	async function recomputeTrackedFile(ctx: any, relPath: string) {
 		const baseline = baselines.get(relPath);
 		if (!baseline) return;
