@@ -45,3 +45,6 @@ TODO.md
 # Ignore all directories starting with a dot
 .*/
 
+# TypeScript
+tsconfig.tsbuildinfo
+
