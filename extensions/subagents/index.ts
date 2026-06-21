@@ -1056,7 +1056,9 @@ export default function (pi: ExtensionAPI) {
 			} else {
 				throw new Error("Provide either (agent + task) for single mode, or tasks[] for parallel mode.");
 			}
-		}// ── Render: tool call header ──
+		},
+
+		// ── Render: tool call header ──
 		renderCall(args, theme, _context) {
 			if (args.tasks && args.tasks.length > 0) {
 				const agentNames = args.tasks.map((t: any) => t.agent).join(", ");
