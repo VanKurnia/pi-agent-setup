@@ -82,9 +82,11 @@ export default function (pi: ExtensionAPI) {
         const name = basename(dir) || dir;
         showProgress(`npm install: ${name}...`);
         try {
-          await execAsync(`cd /d "${dir}" && npm install --no-audit --no-fund`, {
-            shell: "cmd.exe",
-          });
+          const npmCmd = process.platform === "win32"
+            ? `cd /d "${dir}" && npm install --no-audit --no-fund`
+            : `cd "${dir}" && npm install --no-audit --no-fund`;
+          const shellOpt = process.platform === "win32" ? "cmd.exe" : undefined;
+          await execAsync(npmCmd, { shell: shellOpt });
         } catch {}
         done++;
       }
