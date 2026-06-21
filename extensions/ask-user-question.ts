@@ -9,6 +9,9 @@ import {
 	wrapTextWithAnsi,
 } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
+import { randomUUID } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 interface AskOption {
 	label: string;
@@ -198,6 +201,53 @@ function buildResult(question: string, context: string | undefined, mode: AskUse
 		content: [{ type: "text" as const, text }],
 		details: buildStructuredResult("answered", question, mode, answers, context),
 	};
+}
+
+/**
+ * Relay mode for headless subagents: write a JSON event to stdout,
+ * then poll a temp answer file until the parent writes back.
+ */
+async function relayToParent(
+  ctx: any,
+  question: string,
+  context: string | undefined,
+  mode: string,
+  options?: any[],
+  timeoutMs = 120000,
+): Promise<any> {
+  const answerDir = process.env.PI_SUBAGENT_ANSWER_DIR;
+  if (!answerDir) {
+    throw new Error("PI_SUBAGENT_ANSWER_DIR not set — cannot relay ask_user_question");
+  }
+
+  const id = randomUUID();
+  const answerFile = path.join(answerDir, `ans-${id}.json`);
+
+  // Write the question event to stdout as a JSON line the parent can parse
+  const event = JSON.stringify({
+    type: "ask_user_question_pending",
+    id,
+    question,
+    context,
+    mode,
+    options: options || [],
+    answerFile,
+  });
+  console.log(event);
+
+  // Poll the answer file until the parent writes back
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const content = fs.readFileSync(answerFile, "utf-8");
+      return JSON.parse(content);
+    } catch {
+      // file doesn't exist yet — sleep and retry
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  throw new Error("User did not respond in time");
 }
 
 async function askSingleChoice(
@@ -566,7 +616,16 @@ export default function askUserQuestion(pi: ExtensionAPI) {
 			}
 
 			if (!ctx.hasUI) {
-				return unavailableResult(params.question, mode, "ask_user_question requires interactive mode UI", context);
+				try {
+					const answerData = await relayToParent(ctx, params.question, context, mode,
+						params.options as any[] | undefined);
+					// Convert relay answer back to AskAnswer[]
+					const answers: AskAnswer[] = answerData.answers || [];
+					return buildResult(params.question, context, mode, answers);
+				} catch (err: any) {
+					return unavailableResult(params.question, mode,
+						`ask_user_question relay failed: ${err.message}`, context);
+				}
 			}
 
 			return withUILock(async () => {
