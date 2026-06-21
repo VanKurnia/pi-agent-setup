@@ -372,43 +372,41 @@ async function relayQuestion(ctx: any, evt: any): Promise<void> {
         answers = [{ type: "text", label: answer.trim(), value: answer.trim() }];
       }
     } else if (mode === "multi-select") {
-      const items = (options || []).map((o: any) => ({
-        value: o.value || o.label,
-        label: o.label,
-        description: o.description,
-      }));
-      const selected = await ctx.ui.select(question, items, {
+      // ctx.ui.select expects an array of label strings, not objects
+      const labels = (options || []).map((o: any) => o.label);
+      const selected = await ctx.ui.select(question, labels, {
         multiSelect: true,
         message: context,
       });
       if (!selected || selected.length === 0) {
         answers = [];
       } else {
-        answers = selected.map((s: string, i: number) => ({
-          type: "option" as const,
-          label: options.find((o: any) => (o.value || o.label) === s)?.label || s,
-          value: s,
-          index: i + 1,
-        }));
+        answers = selected.map((s: string) => {
+          const opt = (options || []).find((o: any) => o.label === s);
+          const idx = (options || []).findIndex((o: any) => o.label === s);
+          return {
+            type: "option" as const,
+            label: s,
+            value: opt?.value || s,
+            index: idx + 1,
+          };
+        });
       }
     } else {
-      // single-select
-      const items = (options || []).map((o: any) => ({
-        value: o.value || o.label,
-        label: o.label,
-        description: o.description,
-      }));
-      const selected = await ctx.ui.select(question, items, {
+      // single-select — ctx.ui.select expects label strings, returns the chosen string
+      const labels = (options || []).map((o: any) => o.label);
+      const selected = await ctx.ui.select(question, labels, {
         message: context,
       });
       if (!selected) {
         answers = [];
       } else {
-        const idx = items.findIndex((i: any) => i.value === selected);
+        const opt = (options || []).find((o: any) => o.label === selected);
+        const idx = (options || []).findIndex((o: any) => o.label === selected);
         answers = [{
           type: "option" as const,
-          label: items.find((i: any) => i.value === selected)?.label || selected,
-          value: selected,
+          label: selected,
+          value: opt?.value || selected,
           index: idx + 1,
         }];
       }
