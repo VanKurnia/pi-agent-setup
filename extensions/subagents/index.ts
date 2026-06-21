@@ -474,6 +474,7 @@ async function runSubagent(
 
 		let buf = "";
 		let stderrBuf = "";
+		let stderrLineBuf = "";
 
 		const processLine = (line: string) => {
 			if (!line.trim()) return;
@@ -565,12 +566,46 @@ async function runSubagent(
 			lines.forEach(processLine);
 		});
 
+		// Parse stderr lines too — pi redirects stdout to stderr in JSON mode,
+		// so relay events (ask_user_question_pending) arrive on stderr.
 		proc.stderr.on("data", (d: Buffer) => {
-			stderrBuf += d.toString();
+			stderrLineBuf += d.toString();
+			const lines = stderrLineBuf.split("\n");
+			stderrLineBuf = lines.pop() || "";
+			for (const line of lines) {
+				if (!line.trim()) continue;
+				try {
+					const evt = JSON.parse(line) as any;
+					if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
+						relayQuestion(ctx, evt).catch((err) => {
+							console.error("[subagents] relayQuestion failed:", err);
+						});
+						continue;
+					}
+				} catch {
+					// Not JSON or not our event
+				}
+				stderrBuf += line + "\n";
+			}
 		});
 
 		proc.on("close", (code) => {
 			if (buf.trim()) processLine(buf);
+			// Drain remaining stderr line buffer
+			if (stderrLineBuf.trim()) {
+				try {
+					const evt = JSON.parse(stderrLineBuf) as any;
+					if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
+						relayQuestion(ctx, evt).catch((err) => {
+							console.error("[subagents] relayQuestion failed:", err);
+						});
+					} else {
+						stderrBuf += stderrLineBuf;
+					}
+				} catch {
+					stderrBuf += stderrLineBuf;
+				}
+			}
 			if (code !== 0 && stderrBuf.trim() && !progress.error) {
 				progress.error = stderrBuf.trim();
 			}
