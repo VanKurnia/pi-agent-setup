@@ -4,7 +4,7 @@
  * Registers a single `subagent` tool with three agents: scout, researcher, worker.
  * Supports single and parallel execution. Output is verbal only (no file handoff).
  */
-import { spawn, execSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -555,17 +555,36 @@ function computeWorkerDiffs(output: string, cwd: string): string {
     seen.add(m[1]);
 
     try {
-      const diff = execSync(`git diff HEAD -- "${m[1]}"`, {
+      const filePath = m[1];
+
+      // Check if file is tracked in HEAD
+      const check = spawnSync(`git`, [`cat-file`, `-e`, `HEAD:${filePath}`], {
         cwd,
-        encoding: "utf-8",
-        maxBuffer: 1024 * 64,
         stdio: ["ignore", "pipe", "pipe"],
-      }).trim();
+      });
+      const isTracked = check.status === 0;
+
+      let raw: Buffer;
+      if (isTracked) {
+        raw = spawnSync(`git`, [`diff`, `HEAD`, `--`, filePath], {
+          cwd,
+          maxBuffer: 1024 * 64,
+          stdio: ["ignore", "pipe", "pipe"],
+        }).stdout;
+      } else {
+        raw = spawnSync(`git`, [`diff`, `--no-index`, `/dev/null`, filePath], {
+          cwd,
+          maxBuffer: 1024 * 64,
+          stdio: ["ignore", "pipe", "pipe"],
+        }).stdout;
+      }
+
+      const diff = (raw || "").toString().trim();
       if (diff) {
-        parts.push(`### ${m[1]}\n\n\`\`\`diff\n${diff}\n\`\`\``);
+        parts.push(`### ${filePath}\n\n\`\`\`diff\n${diff}\n\`\`\``);
       }
     } catch {
-      // File might be untracked or not in git — skip
+      // File might have been deleted or path invalid — skip
     }
   }
 
