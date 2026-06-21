@@ -100,6 +100,14 @@ const CUSTOM_TOOL_EXTENSIONS: Record<string, string> = {
 	browser_pick: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
 };
 
+// Validate all tool extension paths at startup
+for (const [tool, ext] of Object.entries(CUSTOM_TOOL_EXTENSIONS)) {
+  if (ext.startsWith("npm:")) continue;
+  if (!fs.existsSync(ext)) {
+    console.warn(`[subagents] Tool "${tool}" extension not found: ${ext}`);
+  }
+}
+
 // ── Agent Discovery & Registration ────────────────────────────────────
 
 let agents: AgentConfig[] = [];
