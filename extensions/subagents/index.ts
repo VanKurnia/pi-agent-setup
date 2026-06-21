@@ -352,12 +352,87 @@ function extractToolArgsPreview(args: Record<string, unknown>): string {
 	return s.length > 80 ? s.slice(0, 80) + "…" : s;
 }
 
+/**
+ * Relay a user question from a headless subagent to the user
+ * via the main session's UI context, and write the answer back.
+ */
+async function relayQuestion(ctx: any, evt: any): Promise<void> {
+  const { question, context, mode, options, answerFile } = evt;
+
+  let answers: any[];
+
+  try {
+    if (mode === "text") {
+      const answer = await ctx.ui.editor(context
+        ? `${question}\n\n${context}`
+        : question);
+      if (answer === undefined) {
+        answers = [];
+      } else {
+        answers = [{ type: "text", label: answer.trim(), value: answer.trim() }];
+      }
+    } else if (mode === "multi-select") {
+      const items = (options || []).map((o: any) => ({
+        value: o.value || o.label,
+        label: o.label,
+        description: o.description,
+      }));
+      const selected = await ctx.ui.select(question, items, {
+        multiSelect: true,
+        message: context,
+      });
+      if (!selected || selected.length === 0) {
+        answers = [];
+      } else {
+        answers = selected.map((s: string, i: number) => ({
+          type: "option" as const,
+          label: options.find((o: any) => (o.value || o.label) === s)?.label || s,
+          value: s,
+          index: i + 1,
+        }));
+      }
+    } else {
+      // single-select
+      const items = (options || []).map((o: any) => ({
+        value: o.value || o.label,
+        label: o.label,
+        description: o.description,
+      }));
+      const selected = await ctx.ui.select(question, items, {
+        message: context,
+      });
+      if (!selected) {
+        answers = [];
+      } else {
+        const idx = items.findIndex((i: any) => i.value === selected);
+        answers = [{
+          type: "option" as const,
+          label: items.find((i: any) => i.value === selected)?.label || selected,
+          value: selected,
+          index: idx + 1,
+        }];
+      }
+    }
+  } catch (err) {
+    // If UI interaction fails, write empty answer
+    answers = [];
+  }
+
+  // Write answer to the shared answer file
+  try {
+    await fs.promises.writeFile(answerFile, JSON.stringify({ answers }), "utf-8");
+  } catch (err) {
+    console.error("[subagents] failed to write answer file:", answerFile, err);
+  }
+}
+
 async function runSubagent(
 	agent: AgentConfig,
 	task: string,
 	cwd: string,
 	signal: AbortSignal | undefined,
 	onUpdate?: (progress: AgentProgress) => void,
+	ctx?: any,
 ): Promise<AgentResult> {
 	const { args, tempDir } = await buildPiArgs(agent, task, cwd);
 	const command = args[0];
@@ -394,7 +469,7 @@ async function runSubagent(
 		const proc = spawn(command, spawnArgs, {
 			cwd,
 			stdio: ["ignore", "pipe", "pipe"],
-			env: { ...process.env, PI_SUBAGENT_DEPTH: "1" },
+			env: { ...process.env, PI_SUBAGENT_DEPTH: "1", PI_SUBAGENT_ANSWER_DIR: tempDir },
 		});
 
 		let buf = "";
@@ -470,6 +545,13 @@ async function runSubagent(
 					}
 
 					fireUpdate();
+				}
+
+				// ── handle ask_user_question relay ──
+				if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
+					relayQuestion(ctx, evt).catch((err) => {
+						console.error("[subagents] relayQuestion failed:", err);
+					});
 				}
 			} catch {
 				// Non-JSON lines are expected
@@ -882,7 +964,7 @@ export default function (pi: ExtensionAPI) {
 					const result = await runSubagent(agent, t.task, t.cwd ?? cwd, signal, (progress) => {
 						allResults[idx].progress = progress;
 						fireParallelUpdate();
-					});
+					}, ctx);
 
 					// Compute post-hoc file diffs for worker subagent results
 					if (agent.name === "worker" && result.output) {
@@ -932,7 +1014,7 @@ export default function (pi: ExtensionAPI) {
 						content: [{ type: "text", text: "(running...)" }],
 						details: { mode: "single" as const, results: [liveResult] },
 					});
-				});
+				}, ctx);
 
 				// Compute post-hoc file diffs for worker subagent results
 				if (agent.name === "worker" && result.output) {
