@@ -119,7 +119,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
 
 			let mysql;
 			try {
-				const extDir = path.resolve(__dirname, "..");
+				const extDir = __dirname;
 				const mysqlPath = require.resolve("mysql2/promise", { paths: [extDir] });
 				mysql = require(mysqlPath);
 			} catch (e: any) {
@@ -212,7 +212,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
 
 			let mysql;
 			try {
-				const extDir = path.resolve(__dirname, "..");
+				const extDir = __dirname;
 				const mysqlPath = require.resolve("mysql2/promise", { paths: [extDir] });
 				mysql = require(mysqlPath);
 			} catch (e: any) {
