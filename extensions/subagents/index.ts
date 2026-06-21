@@ -453,6 +453,18 @@ class SubagentEventStream {
 	}
 }
 
+/** Returns 'relay' if the line was a relay event (already handled), 'stderr' otherwise. */
+function classifyStderrLine(line: string, ctx?: any): 'relay' | 'stderr' {
+	try {
+		const evt = JSON.parse(line) as any;
+		if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
+			relayOrLog(ctx, evt);
+			return 'relay';
+		}
+	} catch {}
+	return 'stderr';
+}
+
 async function runSubagent(
 	agent: AgentConfig,
 	task: string,
@@ -573,33 +585,17 @@ async function runSubagent(
 			stderrLineBuf = lines.pop() || "";
 			for (const line of lines) {
 				if (!line.trim()) continue;
-				try {
-					const evt = JSON.parse(line) as any;
-					if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
-						relayOrLog(ctx, evt);
-						continue;
-					}
-				} catch {
-					// Not JSON or not our event
+				if (classifyStderrLine(line, ctx) === 'stderr') {
+					stderrBuf += line + "\n";
 				}
-				stderrBuf += line + "\n";
 			}
 		});
 
 		proc.on("close", (code) => {
 			eventStream.drain();
 			// Drain remaining stderr line buffer
-			if (stderrLineBuf.trim()) {
-				try {
-					const evt = JSON.parse(stderrLineBuf) as any;
-					if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
-						relayOrLog(ctx, evt);
-					} else {
-						stderrBuf += stderrLineBuf;
-					}
-				} catch {
-					stderrBuf += stderrLineBuf;
-				}
+			if (stderrLineBuf.trim() && classifyStderrLine(stderrLineBuf, ctx) === 'stderr') {
+				stderrBuf += stderrLineBuf;
 			}
 			if (code !== 0 && stderrBuf.trim() && !progress.error) {
 				progress.error = stderrBuf.trim();
