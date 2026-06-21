@@ -403,6 +403,56 @@ function relayOrLog(ctx: any, evt: any): void {
   });
 }
 
+// ── Subagent Event Stream ──────────────────────────────────────────
+
+type SubagentEvent =
+	| { type: "tool_execution_start"; toolName: string; args: Record<string, unknown> }
+	| { type: "tool_execution_end" }
+	| { type: "tool_result_end" }
+	| { type: "message_end"; message: any }
+	| { type: "ask_user_question_pending"; id: string; question: string; context?: string; mode: string; options?: any[]; answerFile: string };
+
+const KNOWN_EVENT_TYPES = new Set([
+	"tool_execution_start", "tool_execution_end", "tool_result_end",
+	"message_end", "ask_user_question_pending",
+]);
+
+function isSubagentEvent(raw: any): raw is SubagentEvent {
+	return raw && typeof raw === "object" && KNOWN_EVENT_TYPES.has(raw.type);
+}
+
+class SubagentEventStream {
+	private buf = "";
+	private onEvent: (evt: SubagentEvent) => void;
+
+	constructor(onEvent: (evt: SubagentEvent) => void) {
+		this.onEvent = onEvent;
+	}
+
+	feed(data: string): void {
+		this.buf += data;
+		const lines = this.buf.split("\n");
+		this.buf = lines.pop() || "";
+		for (const line of lines) {
+			if (!line.trim()) continue;
+			try {
+				const parsed = JSON.parse(line);
+				if (isSubagentEvent(parsed)) {
+					this.onEvent(parsed);
+				}
+			} catch {
+				// Non-JSON lines are expected (stray log output)
+			}
+		}
+	}
+
+	drain(): void {
+		if (this.buf.trim()) {
+			this.feed("\n");  // flush final line
+		}
+	}
+}
+
 async function runSubagent(
 	agent: AgentConfig,
 	task: string,
@@ -449,30 +499,25 @@ async function runSubagent(
 			env: { ...process.env, PI_SUBAGENT_DEPTH: "1", PI_SUBAGENT_ANSWER_DIR: tempDir },
 		});
 
-		let buf = "";
 		let stderrBuf = "";
 		let stderrLineBuf = "";
 
-		const processLine = (line: string) => {
-			if (!line.trim()) return;
-			try {
-				const evt = JSON.parse(line) as any;
-				progress.durationMs = Date.now() - startTime;
+		const eventStream = new SubagentEventStream((evt) => {
+			progress.durationMs = Date.now() - startTime;
 
-				if (evt.type === "tool_execution_start") {
+			switch (evt.type) {
+				case "tool_execution_start":
 					progress.toolCount++;
 					progress.currentTool = evt.toolName;
 					progress.currentToolArgs = extractToolArgsPreview((evt.args || {}) as Record<string, unknown>);
 					fireUpdate();
-				}
-
-				if (evt.type === "tool_execution_end") {
+					break;
+				case "tool_execution_end":
 					if (progress.currentTool) {
 						progress.recentTools.push({
 							tool: progress.currentTool,
 							args: progress.currentToolArgs || "",
 						});
-						// Keep last 20
 						if (progress.recentTools.length > 20) {
 							progress.recentTools.splice(0, progress.recentTools.length - 20);
 						}
@@ -480,14 +525,12 @@ async function runSubagent(
 					progress.currentTool = undefined;
 					progress.currentToolArgs = undefined;
 					fireUpdate();
-				}
-
-				if (evt.type === "tool_result_end") {
+					break;
+				case "tool_result_end":
 					fireUpdate();
-				}
-
-				if (evt.type === "message_end" && evt.message) {
-					if (evt.message.role === "assistant") {
+					break;
+				case "message_end":
+					if (evt.message?.role === "assistant") {
 						result.usage.turns++;
 						const u = evt.message.usage;
 						if (u) {
@@ -500,46 +543,27 @@ async function runSubagent(
 						}
 						if (evt.message.model) result.model = evt.message.model;
 						if (evt.message.errorMessage) progress.error = evt.message.errorMessage;
-
 						const text = extractTextFromContent(evt.message.content);
 						if (text) {
 							result.output = text;
-							// Extract just the prose "thinking" text — skip code blocks
 							const proseLines: string[] = [];
 							let inCodeBlock = false;
 							for (const line of text.split("\n")) {
-								if (line.trimStart().startsWith("```")) {
-									inCodeBlock = !inCodeBlock;
-									continue;
-								}
-								if (!inCodeBlock && line.trim()) {
-									proseLines.push(line.trim());
-								}
+								if (line.trimStart().startsWith("```")) { inCodeBlock = !inCodeBlock; continue; }
+								if (!inCodeBlock && line.trim()) proseLines.push(line.trim());
 							}
-							if (proseLines.length > 0) {
-								progress.lastMessage = proseLines.slice(0, 3).join(" ");
-							}
+							if (proseLines.length > 0) progress.lastMessage = proseLines.slice(0, 3).join(" ");
 						}
 					}
-
 					fireUpdate();
-				}
-
-				// ── handle ask_user_question relay ──
-				if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
-					relayOrLog(ctx, evt);
-				}
-			} catch {
-				// Non-JSON lines are expected
+					break;
+				case "ask_user_question_pending":
+					if (ctx?.hasUI) relayOrLog(ctx, evt);
+					break;
 			}
-		};
-
-		proc.stdout.on("data", (d: Buffer) => {
-			buf += d.toString();
-			const lines = buf.split("\n");
-			buf = lines.pop() || "";
-			lines.forEach(processLine);
 		});
+
+		proc.stdout.on("data", (d: Buffer) => eventStream.feed(d.toString()));
 
 		// Parse stderr lines too — pi redirects stdout to stderr in JSON mode,
 		// so relay events (ask_user_question_pending) arrive on stderr.
@@ -563,7 +587,7 @@ async function runSubagent(
 		});
 
 		proc.on("close", (code) => {
-			if (buf.trim()) processLine(buf);
+			eventStream.drain();
 			// Drain remaining stderr line buffer
 			if (stderrLineBuf.trim()) {
 				try {
