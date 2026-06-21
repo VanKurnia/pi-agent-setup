@@ -798,6 +798,14 @@ function getTermWidth(): number {
 	return process.stdout.columns || 120;
 }
 
+function renderLine(
+	text: string,
+	expanded: boolean,
+	w: number,
+): Text {
+	return new Text(expanded ? text : truncLine(text, w), 0, 0);
+}
+
 function renderAgentProgress(
 	r: AgentResult,
 	theme: Theme,
@@ -827,48 +835,27 @@ function renderAgentProgress(
 	);
 
 	// Task
-	if (expanded) {
-		// Full task, Text wraps naturally
-		c.addChild(new Text(theme.fg("dim", `Task: ${r.task}`), 0, 0));
-	} else {
-		// Truncate to one line
-		const flat = r.task.replace(/\n/g, " ");
-		c.addChild(
-			new Text(truncLine(theme.fg("dim", `Task: ${flat}`), w), 0, 0),
-		);
-	}
+	const taskStr = expanded ? r.task : r.task.replace(/\n/g, " ");
+	c.addChild(renderLine(theme.fg("dim", `Task: ${taskStr}`), expanded, w));
 
 	// Current tool (running state)
 	if (isRunning && prog.currentTool) {
 		const toolLine = prog.currentToolArgs
 			? `${prog.currentTool}: ${prog.currentToolArgs}`
 			: prog.currentTool;
-		if (expanded) {
-			c.addChild(new Text(theme.fg("warning", `▸ ${toolLine}`), 0, 0));
-		} else {
-			c.addChild(new Text(truncLine(theme.fg("warning", `▸ ${toolLine}`), w), 0, 0));
-		}
+		c.addChild(renderLine(theme.fg("warning", `▸ ${toolLine}`), expanded, w));
 	}
 
 	// Recent tools (always all)
 	const toolsToShow = prog.recentTools;
 	for (const t of toolsToShow) {
-		const line = `  ${t.tool}: ${t.args}`;
-		if (expanded) {
-			c.addChild(new Text(theme.fg("muted", line), 0, 0));
-		} else {
-			c.addChild(new Text(truncLine(theme.fg("muted", line), w), 0, 0));
-		}
+		c.addChild(renderLine(theme.fg("muted", `  ${t.tool}: ${t.args}`), expanded, w));
 	}
 
 	// Latest assistant message — the prose "thinking" text, always visible
 	if (prog.lastMessage) {
 		c.addChild(new Spacer(1));
-		if (expanded) {
-			c.addChild(new Text(theme.fg("text", prog.lastMessage), 0, 0));
-		} else {
-			c.addChild(new Text(truncLine(theme.fg("text", prog.lastMessage), w), 0, 0));
-		}
+		c.addChild(renderLine(theme.fg("text", prog.lastMessage), expanded, w));
 	}
 
 	// Expanded: full final output
@@ -894,11 +881,7 @@ function renderAgentProgress(
 
 	// Error
 	if (prog.error) {
-		if (expanded) {
-			c.addChild(new Text(theme.fg("error", `Error: ${prog.error}`), 0, 0));
-		} else {
-			c.addChild(new Text(truncLine(theme.fg("error", `Error: ${prog.error}`), w), 0, 0));
-		}
+		c.addChild(renderLine(theme.fg("error", `Error: ${prog.error}`), expanded, w));
 	}
 
 	return c;
