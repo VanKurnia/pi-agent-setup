@@ -20,6 +20,7 @@ run-history.jsonl
 session-manager-config.toml
 pi-crash.log
 *.exe
+**/package-lock.json
 
 # Dependencies / generated environments
 node_modules/
