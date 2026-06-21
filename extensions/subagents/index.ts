@@ -213,44 +213,16 @@ function formatDuration(ms: number): string {
 	return `${Math.floor(ms / 60000)}m${Math.floor((ms % 60000) / 1000)}s`;
 }
 
-function formatToolPreview(name: string, args: Record<string, unknown>): string {
-	switch (name) {
-		case "bash":
-		case "safe_bash":
-			return `$ ${((args.command as string) || "").slice(0, 80)}`;
-		case "read":
-			return `read ${(args.path as string) || ""}`;
-		case "write":
-			return `write ${(args.path as string) || ""}`;
-		case "edit":
-			return `edit ${(args.path as string) || ""}`;
-		case "grep":
-			return `grep ${(args.pattern as string) || ""}`;
-		case "find":
-			return `find ${(args.pattern as string) || ""}`;
-		case "ls":
-			return `ls ${(args.path as string) || "."}`;
-		case "ninerouter_web_search":
-			return `search "${(args.query as string) || ""}"`;
-		case "ninerouter_web_fetch":
-			return `fetch ${(args.url as string) || ""}`;
-		default: {
-			const s = JSON.stringify(args);
-			return `${name} ${s.slice(0, 60)}`;
-		}
-	}
-}
-
 function truncLine(text: string, maxWidth: number): string {
 	if (visibleWidth(text) <= maxWidth) return text;
-	// Simple truncation - strip to fit
 	let result = "";
 	let width = 0;
 	for (let i = 0; i < text.length; i++) {
 		const ch = text[i];
-		// Skip ANSI escape sequences
+		// Skip ANSI escape sequences — zero visible width
 		if (ch === "\x1b") {
-			const match = text.slice(i).match(/^\x1b\[[0-9;]*m/);
+			const rest = text.slice(i);
+			const match = rest.match(/^\x1b\[[0-9;]*m/);
 			if (match) {
 				result += match[0];
 				i += match[0].length - 1;
@@ -424,6 +396,13 @@ async function relayQuestion(ctx: any, evt: any): Promise<void> {
   }
 }
 
+/** Shared relay handler with error logging — used from stdout, stderr, and close handlers. */
+function relayOrLog(ctx: any, evt: any): void {
+  relayQuestion(ctx, evt).catch((err) => {
+    console.error("[subagents] relayQuestion failed:", err);
+  });
+}
+
 async function runSubagent(
 	agent: AgentConfig,
 	task: string,
@@ -548,9 +527,7 @@ async function runSubagent(
 
 				// ── handle ask_user_question relay ──
 				if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
-					relayQuestion(ctx, evt).catch((err) => {
-						console.error("[subagents] relayQuestion failed:", err);
-					});
+					relayOrLog(ctx, evt);
 				}
 			} catch {
 				// Non-JSON lines are expected
@@ -575,9 +552,7 @@ async function runSubagent(
 				try {
 					const evt = JSON.parse(line) as any;
 					if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
-						relayQuestion(ctx, evt).catch((err) => {
-							console.error("[subagents] relayQuestion failed:", err);
-						});
+						relayOrLog(ctx, evt);
 						continue;
 					}
 				} catch {
@@ -594,9 +569,7 @@ async function runSubagent(
 				try {
 					const evt = JSON.parse(stderrLineBuf) as any;
 					if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
-						relayQuestion(ctx, evt).catch((err) => {
-							console.error("[subagents] relayQuestion failed:", err);
-						});
+						relayOrLog(ctx, evt);
 					} else {
 						stderrBuf += stderrLineBuf;
 					}
@@ -801,8 +774,6 @@ async function mapConcurrent<T, R>(
 // ── Rendering ─────────────────────────────────────────────────────────
 
 type Theme = ExtensionContext["ui"]["theme"];
-type Component = ReturnType<typeof Text.prototype.render> extends string[] ? Text : any;
-
 function getTermWidth(): number {
 	return process.stdout.columns || 120;
 }
@@ -1007,14 +978,6 @@ export default function (pi: ExtensionAPI) {
 						}
 					}
 
-					// Compute post-hoc file diffs for worker subagent results
-					if (agent.name === "worker" && result.output) {
-						const diffs = computeWorkerDiffs(result.output, t.cwd ?? cwd, ctx);
-						if (diffs) {
-							result.output += diffs;
-						}
-					}
-
 					// Update allResults with the completed result so the UI reflects it immediately
 					allResults[idx] = result;
 					flushParallelUpdate();
@@ -1056,14 +1019,6 @@ export default function (pi: ExtensionAPI) {
 						details: { mode: "single" as const, results: [liveResult] },
 					});
 				}, ctx);
-
-				// Compute post-hoc file diffs for worker subagent results
-				if (agent.name === "worker" && result.output) {
-					const diffs = computeWorkerDiffs(result.output, params.cwd ?? cwd, ctx);
-					if (diffs) {
-						result.output += diffs;
-					}
-				}
 
 				// Compute post-hoc file diffs for worker subagent results
 				if (agent.name === "worker" && result.output) {
