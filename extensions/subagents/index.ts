@@ -98,6 +98,7 @@ const CUSTOM_TOOL_EXTENSIONS: Record<string, string> = {
 	browser_content: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
 	browser_cookies: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
 	browser_pick: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
+	ask_user_question: path.join(EXT_BASE, "ask-user-question.ts"),
 };
 
 // Validate all tool extension paths at startup
@@ -351,12 +352,85 @@ function extractToolArgsPreview(args: Record<string, unknown>): string {
 	return s.length > 80 ? s.slice(0, 80) + "…" : s;
 }
 
+/**
+ * Relay a user question from a headless subagent to the user
+ * via the main session's UI context, and write the answer back.
+ */
+async function relayQuestion(ctx: any, evt: any): Promise<void> {
+  const { question, context, mode, options, answerFile } = evt;
+
+  let answers: any[];
+
+  try {
+    if (mode === "text") {
+      const answer = await ctx.ui.editor(context
+        ? `${question}\n\n${context}`
+        : question);
+      if (answer === undefined) {
+        answers = [];
+      } else {
+        answers = [{ type: "text", label: answer.trim(), value: answer.trim() }];
+      }
+    } else if (mode === "multi-select") {
+      // ctx.ui.select expects an array of label strings, not objects
+      const labels = (options || []).map((o: any) => o.label);
+      const selected = await ctx.ui.select(question, labels, {
+        multiSelect: true,
+        message: context,
+      });
+      if (!selected || selected.length === 0) {
+        answers = [];
+      } else {
+        answers = selected.map((s: string) => {
+          const opt = (options || []).find((o: any) => o.label === s);
+          const idx = (options || []).findIndex((o: any) => o.label === s);
+          return {
+            type: "option" as const,
+            label: s,
+            value: opt?.value || s,
+            index: idx + 1,
+          };
+        });
+      }
+    } else {
+      // single-select — ctx.ui.select expects label strings, returns the chosen string
+      const labels = (options || []).map((o: any) => o.label);
+      const selected = await ctx.ui.select(question, labels, {
+        message: context,
+      });
+      if (!selected) {
+        answers = [];
+      } else {
+        const opt = (options || []).find((o: any) => o.label === selected);
+        const idx = (options || []).findIndex((o: any) => o.label === selected);
+        answers = [{
+          type: "option" as const,
+          label: selected,
+          value: opt?.value || selected,
+          index: idx + 1,
+        }];
+      }
+    }
+  } catch (err) {
+    // If UI interaction fails, write empty answer
+    answers = [];
+  }
+
+  // Write answer to the shared answer file
+  try {
+    await fs.promises.writeFile(answerFile, JSON.stringify({ answers }), "utf-8");
+  } catch (err) {
+    console.error("[subagents] failed to write answer file:", answerFile, err);
+  }
+}
+
 async function runSubagent(
 	agent: AgentConfig,
 	task: string,
 	cwd: string,
 	signal: AbortSignal | undefined,
 	onUpdate?: (progress: AgentProgress) => void,
+	ctx?: any,
 ): Promise<AgentResult> {
 	const { args, tempDir } = await buildPiArgs(agent, task, cwd);
 	const command = args[0];
@@ -393,11 +467,12 @@ async function runSubagent(
 		const proc = spawn(command, spawnArgs, {
 			cwd,
 			stdio: ["ignore", "pipe", "pipe"],
-			env: { ...process.env, PI_SUBAGENT_DEPTH: "1" },
+			env: { ...process.env, PI_SUBAGENT_DEPTH: "1", PI_SUBAGENT_ANSWER_DIR: tempDir },
 		});
 
 		let buf = "";
 		let stderrBuf = "";
+		let stderrLineBuf = "";
 
 		const processLine = (line: string) => {
 			if (!line.trim()) return;
@@ -470,6 +545,13 @@ async function runSubagent(
 
 					fireUpdate();
 				}
+
+				// ── handle ask_user_question relay ──
+				if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
+					relayQuestion(ctx, evt).catch((err) => {
+						console.error("[subagents] relayQuestion failed:", err);
+					});
+				}
 			} catch {
 				// Non-JSON lines are expected
 			}
@@ -482,12 +564,46 @@ async function runSubagent(
 			lines.forEach(processLine);
 		});
 
+		// Parse stderr lines too — pi redirects stdout to stderr in JSON mode,
+		// so relay events (ask_user_question_pending) arrive on stderr.
 		proc.stderr.on("data", (d: Buffer) => {
-			stderrBuf += d.toString();
+			stderrLineBuf += d.toString();
+			const lines = stderrLineBuf.split("\n");
+			stderrLineBuf = lines.pop() || "";
+			for (const line of lines) {
+				if (!line.trim()) continue;
+				try {
+					const evt = JSON.parse(line) as any;
+					if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
+						relayQuestion(ctx, evt).catch((err) => {
+							console.error("[subagents] relayQuestion failed:", err);
+						});
+						continue;
+					}
+				} catch {
+					// Not JSON or not our event
+				}
+				stderrBuf += line + "\n";
+			}
 		});
 
 		proc.on("close", (code) => {
 			if (buf.trim()) processLine(buf);
+			// Drain remaining stderr line buffer
+			if (stderrLineBuf.trim()) {
+				try {
+					const evt = JSON.parse(stderrLineBuf) as any;
+					if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
+						relayQuestion(ctx, evt).catch((err) => {
+							console.error("[subagents] relayQuestion failed:", err);
+						});
+					} else {
+						stderrBuf += stderrLineBuf;
+					}
+				} catch {
+					stderrBuf += stderrLineBuf;
+				}
+			}
 			if (code !== 0 && stderrBuf.trim() && !progress.error) {
 				progress.error = stderrBuf.trim();
 			}
@@ -881,7 +997,15 @@ export default function (pi: ExtensionAPI) {
 					const result = await runSubagent(agent, t.task, t.cwd ?? cwd, signal, (progress) => {
 						allResults[idx].progress = progress;
 						fireParallelUpdate();
-					});
+					}, ctx);
+
+					// Compute post-hoc file diffs for worker subagent results
+					if (agent.name === "worker" && result.output) {
+						const diffs = computeWorkerDiffs(result.output, t.cwd ?? cwd, ctx);
+						if (diffs) {
+							result.output += diffs;
+						}
+					}
 
 					// Compute post-hoc file diffs for worker subagent results
 					if (agent.name === "worker" && result.output) {
@@ -931,7 +1055,15 @@ export default function (pi: ExtensionAPI) {
 						content: [{ type: "text", text: "(running...)" }],
 						details: { mode: "single" as const, results: [liveResult] },
 					});
-				});
+				}, ctx);
+
+				// Compute post-hoc file diffs for worker subagent results
+				if (agent.name === "worker" && result.output) {
+					const diffs = computeWorkerDiffs(result.output, params.cwd ?? cwd, ctx);
+					if (diffs) {
+						result.output += diffs;
+					}
+				}
 
 				// Compute post-hoc file diffs for worker subagent results
 				if (agent.name === "worker" && result.output) {
