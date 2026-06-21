@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # ──────────────────────────────────────────────────────────────
 # pi-agent-setup — update.sh
@@ -8,7 +8,20 @@
 #   • Then installs extensions and npm dependencies
 # ──────────────────────────────────────────────────────────────
 
-set -e
+set -euo pipefail
+
+# Abort if not running under bash (e.g. minimal containers with sh)
+if [ -z "${BASH_VERSION:-}" ]; then
+  echo "Error: update.sh requires bash" >&2
+  exit 1
+fi
+
+# tput cursor-up helper (no-op on non-ANSI terminals)
+if command -v tput &>/dev/null && [ -t 1 ]; then
+  CURSOR_UP="$(tput cuu 2>/dev/null || echo '')"
+else
+  CURSOR_UP=""
+fi
 
 # ── Resolve paths ────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -82,7 +95,7 @@ CURRENT_STEP=0
 # ── UI helpers ────────────────────────────────────────────────
 update_ui() {
     local lines_to_move=$((TOTAL_STEPS + 2))
-    tput cuu $lines_to_move 2>/dev/null || true
+    [ -n "$CURSOR_UP" ] && tput cuu "$lines_to_move" 2>/dev/null || true
 
     echo -e "${BOLD}Updating workspace components...${NC}"
 
