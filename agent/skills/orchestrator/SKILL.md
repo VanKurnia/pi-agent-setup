@@ -14,9 +14,9 @@ Never start implementing until you are **100% certain** of what needs to be done
 
 **Fill knowledge gaps with:**
 - **`ask_user_question`** — ambiguous requirements, preference between approaches, any detail that would materially change the implementation. One question per call. Never guess what the user wants.
-- **`subagent` scout** — codebase recon: find files, read sections, map architecture. Tools: `read`, `grep`, `find`, `ls`, plus git tools and `query_sqlite`/`query_mysql`. Fast and cheap (Haiku).
-- **`subagent` researcher** — web research: search, fetch, synthesize. Tools: `ninerouter_web_search`, `ninerouter_web_fetch`, plus git tools and database queries.
-- **`subagent` worker** — isolated code changes. Tools: `read`, `write`, `edit`, `safe_bash`, plus full git toolkit and database queries. Use when the change is well-specified and doesn't need back-and-forth.
+- **`subagent` scout** — codebase recon: find files, read sections, map architecture. Tools: `read`, `grep`, `find`, `ls`, `ask_user_question`, plus git tools and `query_sqlite`/`query_mysql`. Fast and cheap (Haiku).
+- **`subagent` researcher** — web research: search, fetch, synthesize. Tools: `ninerouter_web_search`, `ninerouter_web_fetch`, `ask_user_question`, plus git tools and database queries.
+- **`subagent` worker** — isolated code changes. Tools: `read`, `write`, `edit`, `safe_bash`, `ask_user_question`, plus full git toolkit and database queries. Use when the change is well-specified but still supports one-shot questions to the user.
 
 **Before any non-trivial implementation, you must know:**
 - Exactly what the change does (confirmed with user)
@@ -43,7 +43,7 @@ Your context window is a finite, non-renewable resource. Every file you read dir
 ### When NOT to Use Subagents
 
 - **Tiny targeted edits** where you already know the exact file and line — just do it directly.
-- **Anything requiring back-and-forth with the user** — subagents can't ask questions, they run to completion.
+- **Anything requiring back-and-forth with the user** — subagents *can* ask questions via the `relayToParent` mechanism (`ask_user_question` is registered as a subagent tool). They write a JSON event to stderr, the parent picks it up, and the subagent polls a temp file for the answer. This works for text, single-select, and multi-select modes. **However**, subagents still can't do free-form multi-turn conversation — use them for one-shot questions, not dialogs.
 - **When you already scouted** — don't re-scout the same code. Use the context you have.
 - **Subagents have NO context from your conversation** — include ALL necessary context in the task description. File paths, patterns, constraints, expected output format.
 
