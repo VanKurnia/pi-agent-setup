@@ -2,6 +2,20 @@
 
 Welcome to the `pi-agent-setup` workspace.
 
+## Installation
+
+To ensure a clean installation and avoid conflicts, please follow these steps carefully:
+
+1.  **Start Fresh**: If you have an existing `$HOME/.pi` directory from a previous installation, it's best to back up any important files and then remove it. This prevents potential file conflicts. You can usually remove it with `rm -rf $HOME/.pi`.
+
+2.  **Run the Setup Script**: From the original `pi-agent-setup` directory, run the `update.sh` script. This will correctly set up your workspace at `$HOME/.pi`, move all necessary files, and install the required extensions and dependencies.
+
+    ```bash
+    bash update.sh
+    ```
+
+Following this process will ensure your workspace is configured correctly.
+
 ## Extension Guidelines
 
 - **Structure**: Place extensions in `extensions/`. Multi-file extensions or those with npm dependencies (like `db-viewer`) must go inside a single-level directory (`extensions/<name>`) with a `package.json` declaring `pi.extensions` pointing to `src/index.ts`.

@@ -2,6 +2,7 @@
   "name": "pi-extensions",
   "private": true,
   "dependencies": {
+    "@ff-labs/pi-fff": "^0.9.6",
     "pi-9router-ext": "^0.2.2",
     "pi-zentui": "^0.3.0"
   }

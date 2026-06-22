@@ -16,9 +16,16 @@ if [ -z "${BASH_VERSION:-}" ]; then
   exit 1
 fi
 
+# Cross-platform null device
+case "$(uname -s)" in
+  Linux*|Darwin*) NULL_DEV="/dev/null" ;;
+  CYGWIN*|MINGW*|MSYS*) NULL_DEV="nul" ;;
+  *) NULL_DEV="/dev/null" ;;
+esac
+
 # tput cursor-up helper (no-op on non-ANSI terminals)
-if command -v tput &>/dev/null && [ -t 1 ]; then
-  CURSOR_UP="$(tput cuu 2>/dev/null || echo '')"
+if command -v tput &> $NULL_DEV && [ -t 1 ]; then
+  CURSOR_UP="$(tput cuu 2> $NULL_DEV || echo '')"
 else
   CURSOR_UP=""
 fi
@@ -53,8 +60,8 @@ if [[ "$SCRIPT_DIR" != "$PI_DIR" ]]; then
     # Never overwrite target .git — target repo owns its history
     [[ "$baseitem" == ".git" ]] && continue
 
-    rm -rf "$PI_DIR/$baseitem" 2>/dev/null || true
-    mv -f "$item" "$PI_DIR/" 2>/dev/null || cp -rf "$item" "$PI_DIR/"
+    rm -rf "$PI_DIR/$baseitem" 2> $NULL_DEV || true
+    mv -f "$item" "$PI_DIR/" 2> $NULL_DEV || cp -rf "$item" "$PI_DIR/"
   done
   shopt -u dotglob
 
@@ -69,19 +76,7 @@ fi
 #  WORKSPACE UPDATE (running from ~/.pi)
 # ──────────────────────────────────────────────────────────────
 
-EXT_DIR="$SCRIPT_DIR/extensions"
-
-# ── Gather lists ──────────────────────────────────────────────
-EXTENSIONS=()
-shopt -s nullglob
-for path in "$EXT_DIR"/*; do
-  filename=$(basename "$path")
-  [[ "$filename" == .* ]] && continue
-  [[ "$filename" == "node_modules" ]] && continue
-  EXTENSIONS+=("$filename")
-done
-shopt -u nullglob
-
+# ── Gather Packages ──────────────────────────────────────
 PKGS=()
 while read -r pkg_path; do
   if [[ "$pkg_path" == *"package.json"* ]]; then
@@ -89,43 +84,31 @@ while read -r pkg_path; do
   fi
 done < <(find "$SCRIPT_DIR" \( -name "node_modules" -o -name ".git" -o -name "tmp" \) -prune -o -name "package.json" -print)
 
-TOTAL_STEPS=$((${#EXTENSIONS[@]} + ${#PKGS[@]}))
+TOTAL_STEPS=${#PKGS[@]}
 CURRENT_STEP=0
 
 # ── UI helpers ────────────────────────────────────────────────
 update_ui() {
-    local lines_to_move=$((TOTAL_STEPS + 2))
+    local lines_to_move=$((TOTAL_STEPS > 0 ? TOTAL_STEPS + 2 : 2))
     [ -n "$CURSOR_UP" ] && tput cuu "$lines_to_move" 2>/dev/null || true
 
     echo -e "${BOLD}Updating workspace components...${NC}"
 
-    # Extensions checklist
-    for i in "${!EXTENSIONS[@]}"; do
-        local ext="${EXTENSIONS[$i]}"
+    # Packages checklist
+    for i in "${!PKGS[@]}"; do
+        local pkg_dir="${PKGS[$i]}"
+        local pkg_name=$(basename "$pkg_dir")
         local check="[ ]"
         if [[ $CURRENT_STEP -gt $i ]]; then
             check="${GREEN}[✓]${NC}"
         elif [[ $CURRENT_STEP -eq $i ]]; then
             check="${YELLOW}[...]${NC}"
         fi
-        echo -e "$check $ext"
-    done
-
-    # Packages checklist
-    for i in "${!PKGS[@]}"; do
-        local pkg="${PKGS[$i]}"
-        local check="[ ]"
-        local idx=$(( ${#EXTENSIONS[@]} + i ))
-        if [[ $CURRENT_STEP -gt $idx ]]; then
-            check="${GREEN}[✓]${NC}"
-        elif [[ $CURRENT_STEP -eq $idx ]]; then
-            check="${YELLOW}[...]${NC}"
-        fi
-        echo -e "$check $(basename "$pkg")"
+        echo -e "$check $pkg_name"
     done
 
     # Progress bar
-    local percent=$(( CURRENT_STEP * 100 / TOTAL_STEPS ))
+    local percent=$(( TOTAL_STEPS > 0 ? CURRENT_STEP * 100 / TOTAL_STEPS : 100 ))
     local filled=$(( percent / 5 ))
     local empty=$(( 20 - filled ))
     local bar=$(printf "%${filled}s" | tr ' ' '#')
@@ -136,25 +119,38 @@ update_ui() {
 
 # ── Initial UI ────────────────────────────────────────────────
 echo -e "${BOLD}Updating workspace components...${NC}"
-for ext in "${EXTENSIONS[@]}"; do echo "[ ] $ext"; done
-for pkg in "${PKGS[@]}"; do echo "[ ] $(basename "$pkg")"; done
+if [ $TOTAL_STEPS -gt 0 ]; then
+  for pkg_dir in "${PKGS[@]}"; do echo "[ ] $(basename "$pkg_dir")"; done
+fi
 echo "Progress: [--------------------] 0%"
 
-# ── Install extensions ──────────────────────────────────────
-for path in "$EXT_DIR"/*; do
-  filename=$(basename "$path")
-  [[ "$filename" == .* ]] && continue
-  [[ "$filename" == "node_modules" ]] && continue
-
-  update_ui
-  pi install "$path" > /dev/null 2>&1 || true
-  CURRENT_STEP=$(( CURRENT_STEP + 1 ))
-done
-
-# ── NPM install ──────────────────────────────────────────────
+# ── Install Dependencies & Extensions ─────────────────────────
 for pkg_dir in "${PKGS[@]}"; do
   update_ui
-  (cd "$pkg_dir" && npm install) > /dev/null 2>&1 || true
+  pkg_json="$pkg_dir/package.json"
+
+  if grep -q '"pi"' "$pkg_json" 2>$NULL_DEV; then
+    # Has "pi" key → local pi extension
+    pi install "$pkg_dir" > $NULL_DEV 2>&1 || true
+
+  elif grep -q '"pi-extensions"' "$pkg_json" 2>$NULL_DEV; then
+    # agent/npm style manifest → install each dep as npm pi extension
+    node -e "
+      const fs = require('fs');
+      const pkg = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+      const deps = pkg.dependencies || {};
+      for (const dep of Object.keys(deps)) {
+        console.log(dep);
+      }
+    " "$pkg_json" 2>$NULL_DEV | while IFS= read -r dep; do
+      pi install "npm:$dep" > $NULL_DEV 2>&1 || true
+    done
+
+  else
+    # Standard npm package
+    (cd "$pkg_dir" && npm install) > $NULL_DEV 2>&1 || true
+  fi
+
   CURRENT_STEP=$(( CURRENT_STEP + 1 ))
 done
 
