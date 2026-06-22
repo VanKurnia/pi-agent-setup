@@ -18,7 +18,7 @@ export const DEFAULT_MAX_CONCURRENCY = 4;
 export const BUILTIN_TOOLS = new Set(["read", "write", "edit", "bash", "grep", "find", "ls"]);
 
 // Custom tools that require loading an extension into the subagent process
-const EXT_BASE = path.join(EXT_DIR, "..");
+const EXT_BASE = path.join(EXT_DIR, "..", "..");
 export const CUSTOM_TOOL_EXTENSIONS: Record<string, string> = {
 	ninerouter_web_fetch: "npm:pi-9router-ext",
 	ninerouter_web_search: "npm:pi-9router-ext",
