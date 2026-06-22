@@ -403,6 +403,68 @@ function relayOrLog(ctx: any, evt: any): void {
   });
 }
 
+// ── Subagent Event Stream ──────────────────────────────────────────
+
+type SubagentEvent =
+	| { type: "tool_execution_start"; toolName: string; args: Record<string, unknown> }
+	| { type: "tool_execution_end" }
+	| { type: "tool_result_end" }
+	| { type: "message_end"; message: any }
+	| { type: "ask_user_question_pending"; id: string; question: string; context?: string; mode: string; options?: any[]; answerFile: string };
+
+const KNOWN_EVENT_TYPES = new Set([
+	"tool_execution_start", "tool_execution_end", "tool_result_end",
+	"message_end", "ask_user_question_pending",
+]);
+
+function isSubagentEvent(raw: any): raw is SubagentEvent {
+	return raw && typeof raw === "object" && KNOWN_EVENT_TYPES.has(raw.type);
+}
+
+class SubagentEventStream {
+	private buf = "";
+	private onEvent: (evt: SubagentEvent) => void;
+
+	constructor(onEvent: (evt: SubagentEvent) => void) {
+		this.onEvent = onEvent;
+	}
+
+	feed(data: string): void {
+		this.buf += data;
+		const lines = this.buf.split("\n");
+		this.buf = lines.pop() || "";
+		for (const line of lines) {
+			if (!line.trim()) continue;
+			try {
+				const parsed = JSON.parse(line);
+				if (isSubagentEvent(parsed)) {
+					this.onEvent(parsed);
+				}
+			} catch {
+				// Non-JSON lines are expected (stray log output)
+			}
+		}
+	}
+
+	drain(): void {
+		if (this.buf.trim()) {
+			this.feed("\n");  // flush final line
+		}
+	}
+}
+
+/** Returns 'relay' if the line was a relay event (already handled), 'stderr' otherwise. */
+function classifyStderrLine(line: string, ctx?: any): 'relay' | 'stderr' {
+	try {
+		const evt = JSON.parse(line) as any;
+		if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
+			relayOrLog(ctx, evt);
+			return 'relay';
+		}
+	} catch {}
+	return 'stderr';
+}
+
 async function runSubagent(
 	agent: AgentConfig,
 	task: string,
@@ -449,30 +511,25 @@ async function runSubagent(
 			env: { ...process.env, PI_SUBAGENT_DEPTH: "1", PI_SUBAGENT_ANSWER_DIR: tempDir },
 		});
 
-		let buf = "";
 		let stderrBuf = "";
 		let stderrLineBuf = "";
 
-		const processLine = (line: string) => {
-			if (!line.trim()) return;
-			try {
-				const evt = JSON.parse(line) as any;
-				progress.durationMs = Date.now() - startTime;
+		const eventStream = new SubagentEventStream((evt) => {
+			progress.durationMs = Date.now() - startTime;
 
-				if (evt.type === "tool_execution_start") {
+			switch (evt.type) {
+				case "tool_execution_start":
 					progress.toolCount++;
 					progress.currentTool = evt.toolName;
 					progress.currentToolArgs = extractToolArgsPreview((evt.args || {}) as Record<string, unknown>);
 					fireUpdate();
-				}
-
-				if (evt.type === "tool_execution_end") {
+					break;
+				case "tool_execution_end":
 					if (progress.currentTool) {
 						progress.recentTools.push({
 							tool: progress.currentTool,
 							args: progress.currentToolArgs || "",
 						});
-						// Keep last 20
 						if (progress.recentTools.length > 20) {
 							progress.recentTools.splice(0, progress.recentTools.length - 20);
 						}
@@ -480,14 +537,12 @@ async function runSubagent(
 					progress.currentTool = undefined;
 					progress.currentToolArgs = undefined;
 					fireUpdate();
-				}
-
-				if (evt.type === "tool_result_end") {
+					break;
+				case "tool_result_end":
 					fireUpdate();
-				}
-
-				if (evt.type === "message_end" && evt.message) {
-					if (evt.message.role === "assistant") {
+					break;
+				case "message_end":
+					if (evt.message?.role === "assistant") {
 						result.usage.turns++;
 						const u = evt.message.usage;
 						if (u) {
@@ -500,46 +555,27 @@ async function runSubagent(
 						}
 						if (evt.message.model) result.model = evt.message.model;
 						if (evt.message.errorMessage) progress.error = evt.message.errorMessage;
-
 						const text = extractTextFromContent(evt.message.content);
 						if (text) {
 							result.output = text;
-							// Extract just the prose "thinking" text — skip code blocks
 							const proseLines: string[] = [];
 							let inCodeBlock = false;
 							for (const line of text.split("\n")) {
-								if (line.trimStart().startsWith("```")) {
-									inCodeBlock = !inCodeBlock;
-									continue;
-								}
-								if (!inCodeBlock && line.trim()) {
-									proseLines.push(line.trim());
-								}
+								if (line.trimStart().startsWith("```")) { inCodeBlock = !inCodeBlock; continue; }
+								if (!inCodeBlock && line.trim()) proseLines.push(line.trim());
 							}
-							if (proseLines.length > 0) {
-								progress.lastMessage = proseLines.slice(0, 3).join(" ");
-							}
+							if (proseLines.length > 0) progress.lastMessage = proseLines.slice(0, 3).join(" ");
 						}
 					}
-
 					fireUpdate();
-				}
-
-				// ── handle ask_user_question relay ──
-				if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
-					relayOrLog(ctx, evt);
-				}
-			} catch {
-				// Non-JSON lines are expected
+					break;
+				case "ask_user_question_pending":
+					if (ctx?.hasUI) relayOrLog(ctx, evt);
+					break;
 			}
-		};
-
-		proc.stdout.on("data", (d: Buffer) => {
-			buf += d.toString();
-			const lines = buf.split("\n");
-			buf = lines.pop() || "";
-			lines.forEach(processLine);
 		});
+
+		proc.stdout.on("data", (d: Buffer) => eventStream.feed(d.toString()));
 
 		// Parse stderr lines too — pi redirects stdout to stderr in JSON mode,
 		// so relay events (ask_user_question_pending) arrive on stderr.
@@ -549,33 +585,17 @@ async function runSubagent(
 			stderrLineBuf = lines.pop() || "";
 			for (const line of lines) {
 				if (!line.trim()) continue;
-				try {
-					const evt = JSON.parse(line) as any;
-					if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
-						relayOrLog(ctx, evt);
-						continue;
-					}
-				} catch {
-					// Not JSON or not our event
+				if (classifyStderrLine(line, ctx) === 'stderr') {
+					stderrBuf += line + "\n";
 				}
-				stderrBuf += line + "\n";
 			}
 		});
 
 		proc.on("close", (code) => {
-			if (buf.trim()) processLine(buf);
+			eventStream.drain();
 			// Drain remaining stderr line buffer
-			if (stderrLineBuf.trim()) {
-				try {
-					const evt = JSON.parse(stderrLineBuf) as any;
-					if (evt.type === "ask_user_question_pending" && ctx?.hasUI) {
-						relayOrLog(ctx, evt);
-					} else {
-						stderrBuf += stderrLineBuf;
-					}
-				} catch {
-					stderrBuf += stderrLineBuf;
-				}
+			if (stderrLineBuf.trim() && classifyStderrLine(stderrLineBuf, ctx) === 'stderr') {
+				stderrBuf += stderrLineBuf;
 			}
 			if (code !== 0 && stderrBuf.trim() && !progress.error) {
 				progress.error = stderrBuf.trim();
@@ -778,6 +798,14 @@ function getTermWidth(): number {
 	return process.stdout.columns || 120;
 }
 
+function renderLine(
+	text: string,
+	expanded: boolean,
+	w: number,
+): Text {
+	return new Text(expanded ? text : truncLine(text, w), 0, 0);
+}
+
 function renderAgentProgress(
 	r: AgentResult,
 	theme: Theme,
@@ -807,48 +835,27 @@ function renderAgentProgress(
 	);
 
 	// Task
-	if (expanded) {
-		// Full task, Text wraps naturally
-		c.addChild(new Text(theme.fg("dim", `Task: ${r.task}`), 0, 0));
-	} else {
-		// Truncate to one line
-		const flat = r.task.replace(/\n/g, " ");
-		c.addChild(
-			new Text(truncLine(theme.fg("dim", `Task: ${flat}`), w), 0, 0),
-		);
-	}
+	const taskStr = expanded ? r.task : r.task.replace(/\n/g, " ");
+	c.addChild(renderLine(theme.fg("dim", `Task: ${taskStr}`), expanded, w));
 
 	// Current tool (running state)
 	if (isRunning && prog.currentTool) {
 		const toolLine = prog.currentToolArgs
 			? `${prog.currentTool}: ${prog.currentToolArgs}`
 			: prog.currentTool;
-		if (expanded) {
-			c.addChild(new Text(theme.fg("warning", `▸ ${toolLine}`), 0, 0));
-		} else {
-			c.addChild(new Text(truncLine(theme.fg("warning", `▸ ${toolLine}`), w), 0, 0));
-		}
+		c.addChild(renderLine(theme.fg("warning", `▸ ${toolLine}`), expanded, w));
 	}
 
 	// Recent tools (always all)
 	const toolsToShow = prog.recentTools;
 	for (const t of toolsToShow) {
-		const line = `  ${t.tool}: ${t.args}`;
-		if (expanded) {
-			c.addChild(new Text(theme.fg("muted", line), 0, 0));
-		} else {
-			c.addChild(new Text(truncLine(theme.fg("muted", line), w), 0, 0));
-		}
+		c.addChild(renderLine(theme.fg("muted", `  ${t.tool}: ${t.args}`), expanded, w));
 	}
 
 	// Latest assistant message — the prose "thinking" text, always visible
 	if (prog.lastMessage) {
 		c.addChild(new Spacer(1));
-		if (expanded) {
-			c.addChild(new Text(theme.fg("text", prog.lastMessage), 0, 0));
-		} else {
-			c.addChild(new Text(truncLine(theme.fg("text", prog.lastMessage), w), 0, 0));
-		}
+		c.addChild(renderLine(theme.fg("text", prog.lastMessage), expanded, w));
 	}
 
 	// Expanded: full final output
@@ -874,17 +881,135 @@ function renderAgentProgress(
 
 	// Error
 	if (prog.error) {
-		if (expanded) {
-			c.addChild(new Text(theme.fg("error", `Error: ${prog.error}`), 0, 0));
-		} else {
-			c.addChild(new Text(truncLine(theme.fg("error", `Error: ${prog.error}`), w), 0, 0));
-		}
+		c.addChild(renderLine(theme.fg("error", `Error: ${prog.error}`), expanded, w));
 	}
 
 	return c;
 }
 
 // ── Extension ─────────────────────────────────────────────────────────
+
+function emptyResult(agent: string, task: string, model?: string, status: "pending" | "running" = "running"): AgentResult {
+	return {
+		agent,
+		task,
+		output: "",
+		exitCode: -1,
+		model,
+		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 },
+		progress: {
+			agent, task, status,
+			recentTools: [], toolCount: 0, tokens: 0, durationMs: 0, lastMessage: "",
+		},
+	};
+}
+
+async function executeSingle(
+	agentName: string,
+	task: string,
+	cwd: string,
+	signal: AbortSignal | undefined,
+	ctx: any,
+	onUpdate: any,
+): Promise<{ content: any[]; details: Details; isError?: boolean }> {
+	const agent = agents.find((a) => a.name === agentName);
+	if (!agent) {
+		const available = agents.map((a) => a.name).join(", ") || "none";
+		throw new Error(`Unknown agent: ${agentName}. Available agents: ${available}`);
+	}
+
+	const liveResult = emptyResult(agentName, task, agent.model, "running");
+	const result = await runSubagent(agent, task, cwd, signal, (progress) => {
+		liveResult.progress = progress;
+		onUpdate?.({
+			content: [{ type: "text", text: "(running...)" }],
+			details: { mode: "single" as const, results: [liveResult] },
+		});
+	}, ctx);
+
+	// Compute post-hoc file diffs for worker subagent results
+	if (agent.name === "worker" && result.output) {
+		const diffs = computeWorkerDiffs(result.output, cwd, ctx);
+		if (diffs) {
+			result.output += diffs;
+		}
+	}
+
+	const isError = result.exitCode !== 0 || !!result.progress.error;
+	return {
+		content: [{ type: "text", text: result.output || "(no output)" }],
+		details: { mode: "single" as const, results: [result] },
+		...(isError ? { isError: true } : {}),
+	};
+}
+
+async function executeParallel(
+	taskList: Array<{ agent: string; task: string; cwd?: string }>,
+	maxConcurrency: number,
+	cwd: string,
+	signal: AbortSignal | undefined,
+	ctx: any,
+	onUpdate: any,
+): Promise<{ content: any[]; details: Details }> {
+	// Validate all agents
+	const available = agents.map((a) => a.name).join(", ") || "none";
+	for (const t of taskList) {
+		if (!agents.find((a) => a.name === t.agent)) {
+			throw new Error(`Unknown agent: ${t.agent}. Available agents: ${available}`);
+		}
+	}
+
+	const allResults: AgentResult[] = [];
+
+	// Initialize all result slots as pending
+	for (let i = 0; i < taskList.length; i++) {
+		allResults[i] = emptyResult(taskList[i].agent, taskList[i].task, undefined, "pending");
+	}
+
+	const flushParallelUpdate = () => {
+		onUpdate?.({
+			content: [{ type: "text", text: `Running ${taskList.length} tasks...` }],
+			details: {
+				mode: "parallel" as const,
+				results: [...allResults],
+			},
+		});
+	};
+	const fireParallelUpdate = throttle(flushParallelUpdate, 150);
+
+	const results = await mapConcurrent(taskList, maxConcurrency, async (t, idx) => {
+		const agent = agents.find((a) => a.name === t.agent)!;
+		const result = await runSubagent(agent, t.task, t.cwd ?? cwd, signal, (progress) => {
+			allResults[idx].progress = progress;
+			fireParallelUpdate();
+		}, ctx);
+
+		// Compute post-hoc file diffs for worker subagent results
+		if (agent.name === "worker" && result.output) {
+			const diffs = computeWorkerDiffs(result.output, t.cwd ?? cwd, ctx);
+			if (diffs) {
+				result.output += diffs;
+			}
+		}
+
+		// Update allResults with the completed result so the UI reflects it immediately
+		allResults[idx] = result;
+		flushParallelUpdate();
+
+		return result;
+	});
+
+	// Build final output text
+	const outputParts = results.map((r) => {
+		const header = `## ${r.agent}${r.exitCode !== 0 ? " (FAILED)" : ""}`;
+		return `${header}\n\n${r.output || "(no output)"}`;
+	});
+
+	return {
+		content: [{ type: "text", text: outputParts.join("\n\n---\n\n") }],
+		details: { mode: "parallel" as const, results },
+	};
+}
 
 export default function (pi: ExtensionAPI) {
 	loadEnv();
@@ -924,116 +1049,10 @@ export default function (pi: ExtensionAPI) {
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const cwd = ctx.cwd;
 
-			// Validate mode
 			if (params.tasks && params.tasks.length > 0) {
-				// ── Parallel mode ──
-				const taskList = params.tasks;
-
-				// Validate all agents
-				const available = agents.map((a) => a.name).join(", ") || "none";
-				for (const t of taskList) {
-					if (!agents.find((a) => a.name === t.agent)) {
-						throw new Error(`Unknown agent: ${t.agent}. Available agents: ${available}`);
-					}
-				}
-
-				const allResults: AgentResult[] = [];
-
-				// Initialize all result slots as pending
-				for (let i = 0; i < taskList.length; i++) {
-					allResults[i] = {
-						agent: taskList[i].agent,
-						task: taskList[i].task,
-						output: "",
-						exitCode: -1,
-						model: undefined,
-						usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 },
-						progress: { agent: taskList[i].agent, status: "pending" as any, task: taskList[i].task, recentTools: [], toolCount: 0, tokens: 0, durationMs: 0, lastMessage: "" },
-					};
-				}
-
-				const flushParallelUpdate = () => {
-					onUpdate?.({
-						content: [{ type: "text", text: `Running ${taskList.length} tasks...` }],
-						details: {
-							mode: "parallel" as const,
-							results: [...allResults],
-						},
-					});
-				};
-				const fireParallelUpdate = throttle(flushParallelUpdate, 150);
-
-				const results = await mapConcurrent(taskList, maxConcurrency, async (t, idx) => {
-					const agent = agents.find((a) => a.name === t.agent)!;
-					const result = await runSubagent(agent, t.task, t.cwd ?? cwd, signal, (progress) => {
-						allResults[idx].progress = progress;
-						fireParallelUpdate();
-					}, ctx);
-
-					// Compute post-hoc file diffs for worker subagent results
-					if (agent.name === "worker" && result.output) {
-						const diffs = computeWorkerDiffs(result.output, t.cwd ?? cwd, ctx);
-						if (diffs) {
-							result.output += diffs;
-						}
-					}
-
-					// Update allResults with the completed result so the UI reflects it immediately
-					allResults[idx] = result;
-					flushParallelUpdate();
-
-					return result;
-				});
-
-				// Build final output text
-				const outputParts = results.map((r) => {
-					const header = `## ${r.agent}${r.exitCode !== 0 ? " (FAILED)" : ""}`;
-					return `${header}\n\n${r.output || "(no output)"}`;
-				});
-
-				return {
-					content: [{ type: "text", text: outputParts.join("\n\n---\n\n") }],
-					details: { mode: "parallel" as const, results },
-				};
+				return executeParallel(params.tasks, maxConcurrency, cwd, signal, ctx, onUpdate);
 			} else if (params.agent && params.task) {
-				// ── Single mode ──
-				const agent = agents.find((a) => a.name === params.agent);
-				if (!agent) {
-					const available = agents.map((a) => a.name).join(", ") || "none";
-					throw new Error(`Unknown agent: ${params.agent}. Available agents: ${available}`);
-				}
-
-				const liveResult: AgentResult = {
-					agent: params.agent!,
-					task: params.task!,
-					output: "",
-					exitCode: -1,
-					model: agent.model,
-					usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 },
-					progress: { agent: params.agent!, status: "running" as const, task: params.task!, recentTools: [], toolCount: 0, tokens: 0, durationMs: 0, lastMessage: "" },
-				};
-				const result = await runSubagent(agent, params.task, params.cwd ?? cwd, signal, (progress) => {
-					liveResult.progress = progress;
-					onUpdate?.({
-						content: [{ type: "text", text: "(running...)" }],
-						details: { mode: "single" as const, results: [liveResult] },
-					});
-				}, ctx);
-
-				// Compute post-hoc file diffs for worker subagent results
-				if (agent.name === "worker" && result.output) {
-					const diffs = computeWorkerDiffs(result.output, params.cwd ?? cwd, ctx);
-					if (diffs) {
-						result.output += diffs;
-					}
-				}
-
-				const isError = result.exitCode !== 0 || !!result.progress.error;
-				return {
-					content: [{ type: "text", text: result.output || "(no output)" }],
-					details: { mode: "single" as const, results: [result] },
-					...(isError ? { isError: true } : {}),
-				};
+				return executeSingle(params.agent, params.task, params.cwd ?? cwd, signal, ctx, onUpdate);
 			} else {
 				throw new Error("Provide either (agent + task) for single mode, or tasks[] for parallel mode.");
 			}
