@@ -76,13 +76,18 @@ fi
 #  WORKSPACE UPDATE (running from ~/.pi)
 # ──────────────────────────────────────────────────────────────
 
-# ── Gather Packages ──────────────────────────────────────
+# ── Gather Packages & Standalone Extensions ──────────────
 PKGS=()
 while read -r pkg_path; do
   if [[ "$pkg_path" == *"package.json"* ]]; then
     PKGS+=("$(dirname "$pkg_path")")
   fi
 done < <(find "$SCRIPT_DIR" \( -name "node_modules" -o -name ".git" -o -name "tmp" \) -prune -o -name "package.json" -print)
+
+# Also find standalone .ts files directly in extensions/ (no package.json)
+while read -r ts_file; do
+  PKGS+=("$ts_file")
+done < <(find "$SCRIPT_DIR/extensions" -maxdepth 1 -name "*.ts" -print)
 
 TOTAL_STEPS=${#PKGS[@]}
 CURRENT_STEP=0
@@ -125,30 +130,43 @@ fi
 echo "Progress: [--------------------] 0%"
 
 # ── Install Dependencies & Extensions ─────────────────────────
-for pkg_dir in "${PKGS[@]}"; do
+SETTINGS="$SCRIPT_DIR/agent/settings.json"
+for pkg in "${PKGS[@]}"; do
   update_ui
-  pkg_json="$pkg_dir/package.json"
-
-  if grep -q '"pi"' "$pkg_json" 2>$NULL_DEV; then
-    # Has "pi" key → local pi extension
-    pi install "$pkg_dir" > $NULL_DEV 2>&1 || true
-
-  elif grep -q '"pi-extensions"' "$pkg_json" 2>$NULL_DEV; then
-    # agent/npm style manifest → install each dep as npm pi extension
-    node -e "
-      const fs = require('fs');
-      const pkg = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
-      const deps = pkg.dependencies || {};
-      for (const dep of Object.keys(deps)) {
-        console.log(dep);
-      }
-    " "$pkg_json" 2>$NULL_DEV | while IFS= read -r dep; do
-      pi install "npm:$dep" > $NULL_DEV 2>&1 || true
-    done
-
+  if [[ "$pkg" == *.ts ]]; then
+    # Standalone .ts extension — add to settings.json packages if missing
+    rel_path="..\\extensions\\$(basename "$pkg")"
+    if ! grep -q "\"$rel_path\"" "$SETTINGS" 2>$NULL_DEV; then
+      node -e "
+        const fs = require('fs');
+        const s = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+        const p = process.argv[2];
+        if (!s.packages.includes(p)) { s.packages.push(p); fs.writeFileSync(process.argv[1], JSON.stringify(s, null, 2) + '\n'); }
+      " "$SETTINGS" "$rel_path" 2>$NULL_DEV || true
+    fi
   else
-    # Standard npm package
-    (cd "$pkg_dir" && npm install) > $NULL_DEV 2>&1 || true
+    # Directory package
+    pkg_json="$pkg/package.json"
+    if [ -f "$pkg_json" ] && grep -q '"pi"' "$pkg_json" 2>$NULL_DEV; then
+      # Has "pi" key → local pi extension
+      pi install "$pkg" > $NULL_DEV 2>&1 || true
+      (cd "$pkg" && npm install) > $NULL_DEV 2>&1 || true
+    elif [ -f "$pkg_json" ] && grep -q '"pi-extensions"' "$pkg_json" 2>$NULL_DEV; then
+      # agent/npm style manifest → install each dep as npm pi extension
+      node -e "
+        const fs = require('fs');
+        const pkg = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+        const deps = pkg.dependencies || {};
+        for (const dep of Object.keys(deps)) {
+          console.log(dep);
+        }
+      " "$pkg_json" 2>$NULL_DEV | while IFS= read -r dep; do
+        pi install "npm:$dep" > $NULL_DEV 2>&1 || true
+      done
+    elif [ -f "$pkg_json" ]; then
+      # Standard npm package
+      (cd "$pkg" && npm install) > $NULL_DEV 2>&1 || true
+    fi
   fi
 
   CURRENT_STEP=$(( CURRENT_STEP + 1 ))
