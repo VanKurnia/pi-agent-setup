@@ -11,7 +11,7 @@
  *   /send-diff (or /sd)  — Send your edits as a message to the agent
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -71,7 +71,7 @@ export default function (pi: ExtensionAPI) {
         "md-link",
         theme.fg("accent", "📄 ") + theme.fg("dim", path.basename(resolved))
       );
-      ctx.ui.notify(`Linked: ${resolved}`, "success");
+      ctx.ui.notify(`Linked: ${resolved}`, "info");
     },
   });
 

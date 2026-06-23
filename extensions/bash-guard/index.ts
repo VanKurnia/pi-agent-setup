@@ -1,7 +1,7 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { DynamicBorder, isToolCallEventType } from "@mariozechner/pi-coding-agent";
-import type { SelectItem } from "@mariozechner/pi-tui";
-import { Container, SelectList, Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder, isToolCallEventType } from "@earendil-works/pi-coding-agent";
+import type { SelectItem } from "@earendil-works/pi-tui";
+import { Container, SelectList, Text } from "@earendil-works/pi-tui";
 import { parse as shellParse } from "shell-quote";
 
 type Severity = "high" | "medium";
@@ -282,7 +282,7 @@ function analyzeBashCommand(command: string): Risk | null {
 	const ops = tokens.filter(isOpToken).map((t) => t.op);
 	if (ops.some((op) => op === ">" || op === ">>" || op === "2>" || op === "2>>")) {
 		reasons.push("shell output redirection (can overwrite files)");
-		severity = severity === "high" ? "high" : "medium";
+		severity = "medium";
 	}
 	if (ops.includes("<")) {
 		reasons.push("shell input redirection (questionable)");
@@ -318,7 +318,7 @@ async function promptRunOrAbort(ctx: any, command: string, risk: Risk): Promise<
 		{ value: "abort", label: "Abort", description: "Block this command" },
 	];
 
-	const choice = await ctx.ui.custom<"run" | "abort">((tui, theme, _kb, done) => {
+	const choice = await (ctx.ui.custom as any)((tui: any, theme: any, _kb: any, done: (result: "run" | "abort") => void) => {
 		const container = new Container();
 		container.addChild(new DynamicBorder((s: string) => theme.fg("warning", s)));
 		container.addChild(new Text(theme.fg("warning", theme.bold("Potentially destructive bash command")), 1, 0));
@@ -339,9 +339,9 @@ async function promptRunOrAbort(ctx: any, command: string, risk: Risk): Promise<
 		container.addChild(new DynamicBorder((s: string) => theme.fg("warning", s)));
 
 		return {
-			render: (w) => container.render(w),
+			render: (w: any) => container.render(w),
 			invalidate: () => container.invalidate(),
-			handleInput: (data) => {
+			handleInput: (data: any) => {
 				list.handleInput(data);
 				tui.requestRender();
 			},

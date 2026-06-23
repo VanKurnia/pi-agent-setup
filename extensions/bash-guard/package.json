@@ -6,6 +6,11 @@
     "shell-quote": "^1.8.3"
   },
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "devDependencies": {
+    "@types/shell-quote": "^1.7.5"
   }
 }

@@ -1,13 +1,13 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
 	DynamicBorder,
 	getMarkdownTheme,
 	isEditToolResult,
 	isToolCallEventType,
 	isWriteToolResult,
-} from "@mariozechner/pi-coding-agent";
-import type { SelectItem } from "@mariozechner/pi-tui";
-import { Container, Key, Markdown, SelectList, Text, matchesKey } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import type { SelectItem } from "@earendil-works/pi-tui";
+import { Container, Key, Markdown, SelectList, Text, matchesKey } from "@earendil-works/pi-tui";
 import { createTwoFilesPatch } from "diff";
 import { readFile, writeFile, rm, mkdir } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
@@ -316,7 +316,7 @@ export default function (pi: ExtensionAPI) {
 
 		if (ctx.hasUI) {
 			if (errors.length === 0) {
-				ctx.ui.notify(`filechanges: declined changes for ${reverted} file(s).`, "success");
+				ctx.ui.notify(`filechanges: declined changes for ${reverted} file(s).`, "info");
 			} else {
 				ctx.ui.notify(
 					`filechanges: declined with ${errors.length} error(s). Run /filechanges to inspect; see console for details.`,
@@ -348,7 +348,7 @@ export default function (pi: ExtensionAPI) {
 
 		const count = tracked.size;
 		await clearLog(ctx, "accept");
-		if (ctx.hasUI) ctx.ui.notify(`filechanges: accepted changes for ${count} file(s).`, "success");
+		if (ctx.hasUI) ctx.ui.notify(`filechanges: accepted changes for ${count} file(s).`, "info");
 	}
 
 	function parseCommandArgs(args: string | undefined): string[] {
@@ -545,15 +545,7 @@ export default function (pi: ExtensionAPI) {
 		await rebuildFromSession(ctx);
 	});
 
-	pi.on("session_switch", async (_event, ctx) => {
-		await rebuildFromSession(ctx);
-	});
-
 	pi.on("session_tree", async (_event, ctx) => {
-		await rebuildFromSession(ctx);
-	});
-
-	pi.on("session_fork", async (_event, ctx) => {
 		await rebuildFromSession(ctx);
 	});
 

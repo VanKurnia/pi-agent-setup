@@ -1,6 +1,6 @@
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Container, Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 import { DEFAULT_MAX_CONCURRENCY, loadAgents, loadEnv } from "./src/config.js";

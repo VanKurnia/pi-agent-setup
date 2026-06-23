@@ -52,7 +52,7 @@ function buildHeader(theme: Theme): string {
 		rawKeyHint("ctrl+c twice", "to exit"),
 		rawKeyHint("ctrl+d", "to exit (empty)"),
 		rawKeyHint("ctrl+z", "to suspend"),
-		keyHint("deleteToLineEnd", "to delete to end"),
+		keyHint("tui.editor.deleteToLineEnd", "to delete to end"),
 		rawKeyHint("shift+tab", "to cycle thinking level"),
 		rawKeyHint("ctrl+p/shift+ctrl+p", "to cycle models"),
 		rawKeyHint("ctrl+l", "to select model"),
