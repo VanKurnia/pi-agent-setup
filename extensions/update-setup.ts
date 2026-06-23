@@ -82,6 +82,58 @@ export default function (pi: ExtensionAPI) {
         }
       };
 
+      // ── Step 1: git pull ──
+      allLines.push("📡 Pulling latest changes...");
+      updateWidget();
+
+      const gitPullCode: number | null = await new Promise((resolve) => {
+        const gitChild = spawn(bashExe, ["-c", `cd "${piDir}" && git pull`], {
+          windowsHide: true,
+        });
+        let resolved = false;
+
+        gitChild.stdout!.on("data", (data: Buffer) => processChunk(data.toString()));
+        gitChild.stderr!.on("data", (data: Buffer) => {
+          try {
+            const cleaned = stripAnsi(data.toString());
+            const lines = cleaned.split("\n");
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed) allLines.push(`  ${trimmed}`);
+            }
+            updateWidget();
+          } catch {
+            // ignore
+          }
+        });
+
+        gitChild.on("error", (err: Error) => {
+          allLines.push(`  git pull failed to start: ${err.message}`);
+          updateWidget();
+          if (!resolved) { resolved = true; resolve(-1); }
+        });
+        gitChild.on("exit", (code) => {
+          if (!resolved) { resolved = true; resolve(code); }
+        });
+        gitChild.on("close", (code) => {
+          if (!resolved) { resolved = true; resolve(code); }
+        });
+      });
+
+      if (gitPullCode !== 0) {
+        allLines.push("⚠️  git pull had issues (continuing anyway)");
+        updateWidget();
+      } else {
+        allLines.push("✅ git pull successful");
+        updateWidget();
+      }
+
+      allLines.push("");
+      allLines.push("⚙️  Running update.sh...");
+      updateWidget();
+
+      // ── Step 2: update.sh ──
+
       // Run bash from piDir with just the filename
       const child = spawn(bashExe, ["update.sh"], {
         cwd: piDir,
