@@ -31,12 +31,12 @@ export function renderAgentProgress(
 
 	// Header: icon + agent + stats (always one line, truncated)
 	const icon = isRunning
-		? theme.fg("warning", "π")
+		? theme.fg("warning", "")
 		: isPending
-			? theme.fg("dim", "○")
+			? theme.fg("dim", "󱦟")
 			: r.exitCode === 0
-				? theme.fg("success", "✓")
-				: theme.fg("error", "✗");
+				? theme.fg("success", "")
+				: theme.fg("error", "");
 	const stats = `${prog.toolCount} tools · ${formatTokens(prog.tokens)} tok · ${formatDuration(prog.durationMs)}`;
 	const modelStr = r.model ? theme.fg("dim", ` (${r.model})`) : "";
 	c.addChild(
