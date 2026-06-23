@@ -48,10 +48,13 @@ export default function (pi: ExtensionAPI) {
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const cwd = ctx.cwd;
 
+			// Detect filechanges API for tracking subagent file modifications
+			const filechangesApi = (globalThis as any).__pi_filechanges?.trackFile;
+
 			if (params.tasks && params.tasks.length > 0) {
-				return executeParallel(params.tasks, maxConcurrency, cwd, signal, ctx, onUpdate);
+				return executeParallel(params.tasks, maxConcurrency, cwd, signal, ctx, onUpdate, filechangesApi);
 			} else if (params.agent && params.task) {
-				return executeSingle(params.agent, params.task, params.cwd ?? cwd, signal, ctx, onUpdate);
+				return executeSingle(params.agent, params.task, params.cwd ?? cwd, signal, ctx, onUpdate, filechangesApi);
 			} else {
 				throw new Error("Provide either (agent + task) for single mode, or tasks[] for parallel mode.");
 			}
@@ -96,10 +99,10 @@ export default function (pi: ExtensionAPI) {
 				const ok = details.results.filter((r) => r.exitCode === 0).length;
 				const running = details.results.filter((r) => r.progress?.status === "running").length;
 				const totalIcon = running > 0
-					? theme.fg("warning", "⟳")
+					? theme.fg("warning", "󱦟")
 					: ok === details.results.length
-						? theme.fg("success", "✓")
-						: theme.fg("error", "✗");
+						? theme.fg("success", "")
+						: theme.fg("error", "");
 
 				const totalDuration = Math.max(...details.results.map((r) => r.progress?.durationMs || 0));
 				const totalTokens = details.results.reduce((s, r) => s + (r.progress?.tokens || 0), 0);

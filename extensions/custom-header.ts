@@ -39,7 +39,7 @@ function buildHeader(theme: Theme): string {
 
 	const logo =
 		"\n" + ascii_art_2 + "\n\n" +
-		theme.bold(theme.fg("accent", "π")) +
+		theme.bold(theme.fg("accent", "")) +
 		theme.fg("dim", ` v${VERSION}`);
 
 	// ── Keybinding hints ─────────────────────────────────

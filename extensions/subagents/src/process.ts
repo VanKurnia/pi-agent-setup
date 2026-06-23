@@ -149,6 +149,7 @@ export async function runSubagent(
 	signal: AbortSignal | undefined,
 	onUpdate?: (progress: AgentProgress) => void,
 	ctx?: any,
+	filechangesApi?: any,
 ): Promise<AgentResult> {
 	const { args, tempDir } = await buildPiArgs(agent, task, cwd);
 	const command = args[0];
@@ -176,6 +177,9 @@ export async function runSubagent(
 	const startTime = Date.now();
 	const progress = result.progress;
 
+	// Pending file change to register with filechanges after the subagent's tool executes
+	let pendingFileChange: { relPath: string; absPath: string; originalContent: string | null } | null = null;
+
 	const fireUpdate = throttle(() => {
 		progress.durationMs = Date.now() - startTime;
 		onUpdate?.(progress);
@@ -199,6 +203,24 @@ export async function runSubagent(
 					progress.toolCount++;
 					progress.currentTool = evt.toolName;
 					progress.currentToolArgs = extractToolArgsPreview((evt.args || {}) as Record<string, unknown>);
+
+					// Capture file content before modification for filechanges integration
+					if (filechangesApi && (evt.toolName === "edit" || evt.toolName === "write")) {
+						const toolArgs = (evt.args || {}) as Record<string, unknown>;
+						const rawPath = toolArgs.path as string | undefined;
+						if (rawPath && ctx) {
+							const cleanedPath = rawPath.startsWith("@") ? rawPath.slice(1) : rawPath;
+							const absPath = path.resolve(cwd, cleanedPath);
+							let originalContent: string | null = null;
+							try {
+								originalContent = fs.readFileSync(absPath, "utf-8");
+							} catch {
+								// File doesn't exist yet (write to a new file)
+							}
+							pendingFileChange = { relPath: cleanedPath, absPath, originalContent };
+						}
+					}
+
 					fireUpdate();
 					break;
 				case "tool_execution_end":
@@ -213,6 +235,15 @@ export async function runSubagent(
 					}
 					progress.currentTool = undefined;
 					progress.currentToolArgs = undefined;
+
+					// Register the file change with the parent's filechanges extension now
+					// (file has been modified by the subagent since tool_execution_start)
+					if (pendingFileChange && filechangesApi && ctx) {
+						const fc = pendingFileChange;
+						pendingFileChange = null;
+						filechangesApi(ctx, fc.relPath, fc.absPath, fc.originalContent);
+					}
+
 					fireUpdate();
 					break;
 				case "tool_result_end":
