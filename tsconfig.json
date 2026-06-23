@@ -12,7 +12,7 @@
     "resolveJsonModule": true,
     "declaration": false,
     "forceConsistentCasingInFileNames": true,
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM"],
     "types": ["node"],
     "noUnusedLocals": false,
     "noUnusedParameters": false

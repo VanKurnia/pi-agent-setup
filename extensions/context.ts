@@ -20,9 +20,9 @@ import type {
 	ExtensionCommandContext,
 	ContextUsage,
 	Theme,
-} from "@mariozechner/pi-coding-agent";
-import type { AssistantMessage, ToolResultMessage, UserMessage } from "@mariozechner/pi-ai";
-import { matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import type { AssistantMessage, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
+import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 // ── Category definitions ──────────────────────────────────────────────
 
@@ -525,7 +525,6 @@ export default function (pi: ExtensionAPI) {
 					overlayOptions: {
 						anchor: "center",
 						width: "80%",
-						maxWidth: 100,
 						minWidth: 40,
 						maxHeight: "90%",
 					},

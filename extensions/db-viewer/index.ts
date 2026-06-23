@@ -72,7 +72,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
 		async execute(toolCallId, params, _signal, _onUpdate, ctx) {
 			const safety = isQuerySafe(params.query);
 			if (!safety.safe) {
-				return { content: [{ type: "text", text: `Blocked: ${safety.reason}` }], isError: true };
+				return { content: [{ type: "text", text: `Blocked: ${safety.reason}` }], isError: true, details: {} };
 			}
 
 			let db: DatabaseSync | null = null;
@@ -85,7 +85,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
 					details: { rowsCount: rows.length, rows }
 				};
 			} catch (error: any) {
-				return { content: [{ type: "text", text: `SQLite Error: ${error.message}` }], isError: true };
+				return { content: [{ type: "text", text: `SQLite Error: ${error.message}` }], isError: true, details: {} };
 			} finally {
 				if (db) {
 					try { db.close(); } catch (e) {}
@@ -114,7 +114,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
 		async execute(toolCallId, params, _signal, _onUpdate, ctx) {
 			const safety = isQuerySafe(params.query);
 			if (!safety.safe) {
-				return { content: [{ type: "text", text: `Blocked: ${safety.reason}` }], isError: true };
+				return { content: [{ type: "text", text: `Blocked: ${safety.reason}` }], isError: true, details: {} };
 			}
 
 			let mysql;
@@ -128,7 +128,8 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
 						type: "text", 
 						text: `Error loading mysql2: ${e.message}. Make sure npm dependencies are installed in the db-viewer extension directory.` 
 					}],
-					isError: true
+					isError: true,
+					details: {}
 				};
 			}
 
@@ -142,7 +143,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
 					details: { rowsCount: rowsArray.length, rows: rowsArray }
 				};
 			} catch (error: any) {
-				return { content: [{ type: "text", text: `MySQL Error: ${error.message}` }], isError: true };
+				return { content: [{ type: "text", text: `MySQL Error: ${error.message}` }], isError: true, details: {} };
 			} finally {
 				if (connection) {
 					try { await connection.end(); } catch (e) {}
