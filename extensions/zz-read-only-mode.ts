@@ -13,8 +13,8 @@
  * - Re-registers the allowed tools with the built-in read-only implementations
  * - State is in-memory only and resets when pi restarts/reloads
  */
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { createFindTool, createGrepTool, createLsTool, createReadTool } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { createFindTool, createGrepTool, createLsTool, createReadTool } from "@earendil-works/pi-coding-agent";
 
 const COMMAND_NAME = "read-only";
 const STATUS_KEY = "read-only-mode";
@@ -171,16 +171,6 @@ export default function readOnlyModeExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
-		if (enabled) applyReadOnlyTools(pi);
-		updateUi(pi, ctx, enabled);
-	});
-
-	pi.on("session_switch", async (_event, ctx) => {
-		if (enabled) applyReadOnlyTools(pi);
-		updateUi(pi, ctx, enabled);
-	});
-
-	pi.on("session_fork", async (_event, ctx) => {
 		if (enabled) applyReadOnlyTools(pi);
 		updateUi(pi, ctx, enabled);
 	});

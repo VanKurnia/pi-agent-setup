@@ -17,11 +17,7 @@ if [ -z "${BASH_VERSION:-}" ]; then
 fi
 
 # Cross-platform null device
-case "$(uname -s)" in
-  Linux*|Darwin*) NULL_DEV="/dev/null" ;;
-  CYGWIN*|MINGW*|MSYS*) NULL_DEV="nul" ;;
-  *) NULL_DEV="/dev/null" ;;
-esac
+NULL_DEV="/dev/null"
 
 # tput cursor-up helper (no-op on non-ANSI terminals)
 if command -v tput &> $NULL_DEV && [ -t 1 ]; then
@@ -75,6 +71,17 @@ fi
 # ──────────────────────────────────────────────────────────────
 #  WORKSPACE UPDATE (running from ~/.pi)
 # ──────────────────────────────────────────────────────────────
+
+# ── Clean existing packages list — rebuild from scratch ──
+SETTINGS="$SCRIPT_DIR/agent/settings.json"
+if [ -f "$SETTINGS" ]; then
+  node -e "
+    const fs = require('fs');
+    const s = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+    s.packages = [];
+    fs.writeFileSync(process.argv[1], JSON.stringify(s, null, 2) + '\n');
+  " "$SETTINGS" 2>$NULL_DEV || true
+fi
 
 # ── Gather Packages & Standalone Extensions ──────────────
 PKGS=()
@@ -130,7 +137,6 @@ fi
 echo "Progress: [--------------------] 0%"
 
 # ── Install Dependencies & Extensions ─────────────────────────
-SETTINGS="$SCRIPT_DIR/agent/settings.json"
 for pkg in "${PKGS[@]}"; do
   update_ui
   if [[ "$pkg" == *.ts ]]; then

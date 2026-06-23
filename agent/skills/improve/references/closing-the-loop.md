@@ -2,7 +2,7 @@
 
 The advisor's job doesn't end at the plan. This file covers the three follow-through flows: dispatching an executor and reviewing its work (`execute`), keeping the plan backlog alive (`reconcile`), and publishing plans where work gets picked up (`--issues`).
 
-The founding rule survives unchanged: **the advisor never edits source code.** In `execute`, a `worker` subagent edits code; the advisor dispatches, reviews, and renders a verdict — like a tech lead who doesn't push commits to your branch.
+The founding rule survives unchanged: **the advisor never edits source code.** In `execute`, a `worker` subagent edits code; the advisor dispatches, reviews, and renders a verdict — like a tech lead who reviews, not authors, the code changes.
 
 ---
 
@@ -15,7 +15,7 @@ The founding rule survives unchanged: **the advisor never edits source code.** I
 
 ### Dispatch
 
-Spawn **one** `worker` subagent. Executor model: default `sonnet`; use what the user named if they named one (`execute 003 haiku`).
+Spawn **one** `worker` subagent.
 
 The subagent prompt must contain:
 
@@ -26,7 +26,6 @@ The subagent prompt must contain:
 > step. Run every verification command and confirm the expected result before
 > moving on. Touch only the files listed as in scope. If any STOP condition
 > occurs, stop immediately and report. Do not improvise around obstacles.
-> Commit your work following the plan's git workflow section.
 > One override: SKIP the plan's instruction to update `.plans/README.md` —
 > your reviewer maintains the index. Before reporting, audit every claim in
 > your report against an actual tool result from this session — only report
@@ -59,7 +58,7 @@ Review like a tech lead reviewing a PR against the spec — never fix anything y
 
 | Verdict | When | Action |
 |---|---|---|
-| **APPROVE** | Criteria pass, scope clean, quality holds | Update index status to DONE. Present to the user: diff summary, branch, anything from NOTES. **Merging is the user's decision — never merge, push, or commit to their branch.** |
+| **APPROVE** | Criteria pass, scope clean, quality holds | Update index status to DONE. Present to the user: diff summary and anything from NOTES. **The user decides whether and how to apply changes.** |
 | **REVISE** | Fixable gaps | SendMessage to the same executor with specific, actionable feedback ("criterion 3 fails: X; the error handling in `api.ts:90` swallows the error — use the Result pattern per the plan"). **Max 2 revision rounds**, then BLOCK. |
 | **BLOCK** | STOP condition hit, scope violated unrecoverably, or revisions exhausted | Mark BLOCKED in the index with the reason. Refine or rewrite the plan with what was learned. Tell the user what happened and what changed in the plan. |
 
