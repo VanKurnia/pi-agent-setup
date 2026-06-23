@@ -5,6 +5,16 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { spawn, execSync } from "node:child_process";
 
+// ── Global type augmentation for injected browser script ────
+declare global {
+	interface Window {
+		/** Whether the element picker is already injected */
+		__browser_pick_defined?: boolean;
+		/** Picker function injected into the page by browser_pick tool */
+		__browser_pick?: (message: string) => Promise<any>;
+	}
+}
+
 // ── Chrome binary detection (Windows-first) ────────────────
 
 function findChromePath(): string | null {
@@ -265,11 +275,13 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
               ? "✓ Chrome already running on :9222"
               : "✓ Chrome started on :9222",
           }],
+          details: {},
         };
       } catch (e: any) {
         return {
           content: [{ type: "text", text: `✗ ${e.message}` }],
           isError: true,
+          details: {},
         };
       }
     },
@@ -303,11 +315,12 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
           await p.goto(params.url, { waitUntil: "domcontentloaded" });
         }
         await b.disconnect();
-        return { content: [{ type: "text", text: `✓ Navigated to: ${params.url}` }] };
+        return { content: [{ type: "text", text: `✓ Navigated to: ${params.url}` }], details: {} };
       } catch (e: any) {
         return {
           content: [{ type: "text", text: `✗ ${e.message}\n  Run browser_start first.` }],
           isError: true,
+          details: {},
         };
       }
     },
@@ -350,6 +363,7 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
         return {
           content: [{ type: "text", text: `✗ JavaScript eval failed: ${e.message}` }],
           isError: true,
+          details: {},
         };
       }
     },
@@ -391,6 +405,7 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
         return {
           content: [{ type: "text", text: `✗ Screenshot failed: ${e.message}` }],
           isError: true,
+          details: {},
         };
       }
     },
@@ -416,11 +431,12 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
         let text = `URL: ${extracted.finalUrl}\n`;
         if (extracted.title) text += `Title: ${extracted.title}\n\n`;
         text += extracted.markdown;
-        return { content: [{ type: "text", text }] };
+        return { content: [{ type: "text", text }], details: {} };
       } catch (e: any) {
         return {
           content: [{ type: "text", text: `✗ Content extraction failed: ${e.message}` }],
           isError: true,
+          details: {},
         };
       }
     },
@@ -448,17 +464,18 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
         await b.disconnect();
 
         if (cookies.length === 0) {
-          return { content: [{ type: "text", text: "No cookies for this page." }] };
+          return { content: [{ type: "text", text: "No cookies for this page." }], details: {} };
         }
 
         const lines = cookies.map((c: any) =>
           `${c.name}: ${c.value}\n  domain: ${c.domain}\n  path: ${c.path}\n  httpOnly: ${c.httpOnly}\n  secure: ${c.secure}`
         );
-        return { content: [{ type: "text", text: lines.join("\n\n") }] };
+        return { content: [{ type: "text", text: lines.join("\n\n") }], details: {} };
       } catch (e: any) {
         return {
           content: [{ type: "text", text: `✗ ${e.message}` }],
           isError: true,
+          details: {},
         };
       }
     },
@@ -488,10 +505,10 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
 
         // Inject picker helper
         await p.evaluate(() => {
-          if ((window as any).__browser_pick_defined) return;
-          (window as any).__browser_pick_defined = true;
+          if (window.__browser_pick_defined) return;
+          window.__browser_pick_defined = true;
 
-          (window as any).__browser_pick = async (message: string) => {
+          window.__browser_pick = async (message: string) => {
             return new Promise((resolve) => {
               const selections: any[] = [];
               const selectedElements = new Set<Element>();
@@ -595,7 +612,7 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
 
         // Call the picker and wait for user interaction
         const result = await p.evaluate(
-          (msg: string) => (window as any).__browser_pick(msg),
+          (msg: string) => window.__browser_pick!(msg),
           params.message
         );
 
@@ -609,6 +626,7 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
         return {
           content: [{ type: "text", text: `✗ Element picker failed: ${e.message}` }],
           isError: true,
+          details: {},
         };
       }
     },

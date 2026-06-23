@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { withFileMutationQueue, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateHead } from "@mariozechner/pi-coding-agent";
+import { withFileMutationQueue, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateHead } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig, AgentProgress, AgentResult, SubagentEvent } from "./types.js";
 import { KNOWN_EVENT_TYPES } from "./types.js";
 import { BUILTIN_TOOLS, CUSTOM_TOOL_EXTENSIONS, resolvePiBinary } from "./config.js";

@@ -93,14 +93,6 @@ executor's environment. Skip the section otherwise.)
   changing it wastes effort and risks the v1 clients still pinned to it.
 - Any change to the public response shape — clients depend on it.
 
-## Git workflow
-
-(Filled from recon — match the repo's observed conventions.)
-
-- Branch: `advisor/NNN-<slug>` (or the repo's branch-naming convention if one is evident)
-- Commit per step or per logical unit; message style: <match repo, e.g. conventional commits — include an example from `git log`>
-- Do NOT push or open a PR unless the operator instructed it.
-
 ## Steps
 
 ### Step 1: <imperative title>
@@ -131,7 +123,7 @@ Machine-checkable. ALL must hold:
 
 - [ ] `pnpm typecheck` exits 0
 - [ ] `pnpm test` exits 0; new tests for <X> exist and pass
-- [ ] `grep -rn "<old pattern>" src/` returns no matches
+- [ ] `pi.grep({ pattern: "<old pattern>", path: "src/" })` returns 0 matches
 - [ ] No files outside the in-scope list are modified (`git status`)
 - [ ] `.plans/README.md` status row updated
 
