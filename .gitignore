@@ -41,10 +41,14 @@ tmp/
 
 # Personal notes
 TODO.md
+AGENTS.md
 
 # Ignore all directories starting with a dot
 .*/
 
 # TypeScript
 tsconfig.tsbuildinfo
+
+# IDE workspace
+pi-x-ide/
 

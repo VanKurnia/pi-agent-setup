@@ -128,13 +128,9 @@ On Windows, configure the integrated terminal shell path in `settings.json` to u
 | `orchestrator` | Top-level session orchestration rules — subagent routing, context hygiene, implementation discipline |
 | `stop-slop` | Remove AI writing patterns from prose |
 
-### Dev Dependencies
+### Prompts
 
-| Package | Version |
-|---------|---------|
-| `@earendil-works/pi-ai` | ^0.79.10 |
-| `@earendil-works/pi-coding-agent` | ^0.79.10 |
-| `@earendil-works/pi-tui` | ^0.79.10 |
-| `@types/node` | ^22.0.0 |
-| `typescript` | ^5.7.0 |
-| `vitest` | ^4.1.9 |
+| Prompt | Description |
+|--------|-------------|
+| `commit-auto` | Draft conventional commit messages from staged changes, confirm with user, then commit |
+| `review-changes` | Systematic diff review — correctness, edge cases, side effects, consistency |
