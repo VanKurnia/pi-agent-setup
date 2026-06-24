@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Subagent extension for pi",
   "pi": {
-    "extensions": "./index.ts"
+    "extensions": ["./index.ts"]
   },
   "dependencies": {
     "chokidar": "^3.5.3"
