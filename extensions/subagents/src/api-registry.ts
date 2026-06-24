@@ -2,9 +2,8 @@ const registry = new Map<string, unknown>();
 
 /** Register a cross-extension API. Throws on duplicate name. */
 export function registerExtensionApi<T>(name: string, api: T): void {
-    if (registry.has(name)) {
-        throw new Error(`Extension API '${name}' is already registered`);
-    }
+    // Idempotent: allow re-registration on extension reload (/new, /resume).
+    // The module-level Map survives jiti cache across reloads.
     registry.set(name, api);
 }
 
