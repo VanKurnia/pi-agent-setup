@@ -53,3 +53,25 @@ export const KNOWN_EVENT_TYPES = new Set([
 	"tool_execution_start", "tool_execution_end", "tool_result_end",
 	"message_end", "ask_user_question_pending",
 ]);
+
+/**
+ * API that the filechanges extension exposes to subagents.
+ * Registered via `ExtensionAPI.registerExtensionApi('filechanges', ...)`.
+ */
+export interface FilechangesApi {
+    trackFile: (
+        ctx: any,
+        relPath: string,
+        absPath: string,
+        originalContent: string | null,
+    ) => Promise<void>;
+}
+
+/**
+ * API that the subagents extension exposes to other extensions.
+ * Registered via `ExtensionAPI.registerExtensionApi('subagents', ...)`.
+ */
+export interface SubagentsApi {
+    registerAgent: (config: AgentConfig) => void;
+    unregisterAgent: (name: string) => void;
+}

@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { withFileMutationQueue, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateHead } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig, AgentProgress, AgentResult, SubagentEvent } from "./types.js";
 import { KNOWN_EVENT_TYPES } from "./types.js";
-import { BUILTIN_TOOLS, CUSTOM_TOOL_EXTENSIONS, resolvePiBinary } from "./config.js";
+import { resolvePiBinary } from "./config.js";
 import { relayOrLog } from "./ipc.js";
 import { throttle } from "./utils.js";
 
@@ -26,32 +26,11 @@ async function buildPiArgs(
 
 	const args = [...piBin.baseArgs, "--mode", "json", "-p", "--no-session", "--no-skills"];
 
-	// Separate builtin tools from custom tools
-	const builtinTools: string[] = [];
-	const extensionPaths = new Set<string>();
-
-	for (const tool of agent.tools) {
-		if (BUILTIN_TOOLS.has(tool)) {
-			builtinTools.push(tool);
-		} else if (CUSTOM_TOOL_EXTENSIONS[tool]) {
-			extensionPaths.add(CUSTOM_TOOL_EXTENSIONS[tool]);
-		}
-	}
-
-	// Use --no-extensions then add only what we need
-	args.push("--no-extensions");
-
-	// Include all tool names so the model knows they're available
-	// (builtin tools are native, extension tools are registered via --extension)
-	const allToolNames = [...agent.tools];
-	if (allToolNames.length > 0) {
-		args.push("--tools", allToolNames.join(","));
+	// Pass tools list so the model knows which tools are available
+	if (agent.tools.length > 0) {
+		args.push("--tools", agent.tools.join(","));
 	} else {
 		args.push("--no-tools");
-	}
-
-	for (const extPath of extensionPaths) {
-		args.push("--extension", extPath);
 	}
 
 	args.push("--models", agent.model);
@@ -149,7 +128,6 @@ export async function runSubagent(
 	signal: AbortSignal | undefined,
 	onUpdate?: (progress: AgentProgress) => void,
 	ctx?: any,
-	filechangesApi?: any,
 ): Promise<AgentResult> {
 	const { args, tempDir } = await buildPiArgs(agent, task, cwd);
 	const command = args[0];
@@ -177,9 +155,6 @@ export async function runSubagent(
 	const startTime = Date.now();
 	const progress = result.progress;
 
-	// Pending file change to register with filechanges after the subagent's tool executes
-	let pendingFileChange: { relPath: string; absPath: string; originalContent: string | null } | null = null;
-
 	const fireUpdate = throttle(() => {
 		progress.durationMs = Date.now() - startTime;
 		onUpdate?.(progress);
@@ -204,23 +179,6 @@ export async function runSubagent(
 					progress.currentTool = evt.toolName;
 					progress.currentToolArgs = extractToolArgsPreview((evt.args || {}) as Record<string, unknown>);
 
-					// Capture file content before modification for filechanges integration
-					if (filechangesApi && (evt.toolName === "edit" || evt.toolName === "write")) {
-						const toolArgs = (evt.args || {}) as Record<string, unknown>;
-						const rawPath = toolArgs.path as string | undefined;
-						if (rawPath && ctx) {
-							const cleanedPath = rawPath.startsWith("@") ? rawPath.slice(1) : rawPath;
-							const absPath = path.resolve(cwd, cleanedPath);
-							let originalContent: string | null = null;
-							try {
-								originalContent = fs.readFileSync(absPath, "utf-8");
-							} catch {
-								// File doesn't exist yet (write to a new file)
-							}
-							pendingFileChange = { relPath: cleanedPath, absPath, originalContent };
-						}
-					}
-
 					fireUpdate();
 					break;
 				case "tool_execution_end":
@@ -235,14 +193,6 @@ export async function runSubagent(
 					}
 					progress.currentTool = undefined;
 					progress.currentToolArgs = undefined;
-
-					// Register the file change with the parent's filechanges extension now
-					// (file has been modified by the subagent since tool_execution_start)
-					if (pendingFileChange && filechangesApi && ctx) {
-						const fc = pendingFileChange;
-						pendingFileChange = null;
-						filechangesApi(ctx, fc.relPath, fc.absPath, fc.originalContent);
-					}
 
 					fireUpdate();
 					break;

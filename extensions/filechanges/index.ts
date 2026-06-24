@@ -8,78 +8,22 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { SelectItem } from "@earendil-works/pi-tui";
 import { Container, Key, Markdown, SelectList, Text, matchesKey } from "@earendil-works/pi-tui";
-import { createTwoFilesPatch } from "diff";
-import { readFile, writeFile, rm, mkdir } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
-
-// Custom session entry types
-// New name: filechanges
-const ENTRY_BASELINE = "filechanges:baseline";
-const ENTRY_CLEAR = "filechanges:clear";
-const ENTRY_UNTRACK = "filechanges:untrack";
-
-type Baseline = {
-	path: string; // normalized path relative to ctx.cwd where possible
-	absPath: string;
-	originalContent: string | null; // null => file did not exist (created)
-	createdAt: number;
-};
-
-type TrackedFile = {
-	path: string;
-	absPath: string;
-	displayPath: string;
-	originalContent: string | null;
-	currentContent: string;
-	diff: string;
-	added: number;
-	removed: number;
-	kind: "new" | "edited";
-	updatedAt: number;
-};
-
-type PendingSnapshot = {
-	path: string;
-	absPath: string;
-	before: string | null;
-};
-
-function stripAtPrefix(p: string): string {
-	return p.startsWith("@") ? p.slice(1) : p;
-}
-
-function normalizeToolPath(cwd: string, raw: string): { absPath: string; relPath: string } {
-	const cleaned = stripAtPrefix(raw);
-	const absPath = resolve(cwd, cleaned);
-	// Use relative path for storage/UI when possible. If it escapes cwd, keep the cleaned input.
-	const rel = relative(cwd, absPath);
-	const relPath = rel && !rel.startsWith("..") && rel !== "" ? rel : cleaned;
-	return { absPath, relPath };
-}
-
-async function readTextOrNull(absPath: string): Promise<string | null> {
-	try {
-		return await readFile(absPath, "utf-8");
-	} catch {
-		return null;
-	}
-}
-
-function countDiffLines(unifiedDiff: string): { added: number; removed: number } {
-	let added = 0;
-	let removed = 0;
-	for (const line of unifiedDiff.split("\n")) {
-		if (line.startsWith("+++ ") || line.startsWith("--- ") || line.startsWith("@@")) continue;
-		if (line.startsWith("+")) added++;
-		else if (line.startsWith("-")) removed++;
-	}
-	return { added, removed };
-}
+import { writeFile, rm, mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
+import { registerExtensionApi } from "../subagents/src/api-registry.js";
+import {
+	FileChangeTracker,
+	ENTRY_BASELINE,
+	ENTRY_CLEAR,
+	ENTRY_UNTRACK,
+	normalizeToolPath,
+	readTextOrNull,
+} from "./tracker.js";
+import type { FilechangesApi } from "../subagents/src/types.js";
 
 function formatAddedRemovedPlain(added: number, removed: number): string {
 	return `(+${added}/-${removed})`;
 }
-
 
 function styleAddedRemovedForList(theme: any, text: string): string {
 	// File rows use "+x/-y" as description; other rows use normal sentences.
@@ -93,29 +37,27 @@ function styleAddedRemovedForList(theme: any, text: string): string {
 	return plus + theme.fg("text", "/") + minus;
 }
 
-function formatStatus(tracked: Map<string, TrackedFile>, theme?: any): string | undefined {
-	if (tracked.size === 0) return undefined;
+function formatStatus(tracker: FileChangeTracker, theme?: any): string | undefined {
+	const size = tracker.getTrackedSize();
+	if (size === 0) return undefined;
 	let edited = 0;
 	let created = 0;
-	for (const t of tracked.values()) {
+	for (const t of tracker.getAllTracked()) {
 		if (t.kind === "new") created++;
 		else edited++;
 	}
 	if (!theme) {
-			return `Δ ${edited}  + ${created}`;
-		}
+		return `Δ ${edited}  + ${created}`;
+	}
 	return theme.fg("muted", `Δ ${edited}  + ${created}`);
 }
 
-function buildWidgetLines(tracked: Map<string, TrackedFile>, theme?: any): string[] | undefined {
-	if (tracked.size === 0) return undefined;
-	const items = [...tracked.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+function buildWidgetLines(tracker: FileChangeTracker, theme?: any): string[] | undefined {
+	const size = tracker.getTrackedSize();
+	if (size === 0) return undefined;
+	const items = tracker.getAllTracked().sort((a, b) => b.updatedAt - a.updatedAt);
 	const max = 8;
 	const lines: string[] = [];
-
-	// Separator between chat history and this widget (widget renders above the editor).
-	//const sep = "─".repeat(60);
-	//lines.push(theme ? theme.fg("borderMuted", sep) : sep);
 
 	for (const t of items.slice(0, max)) {
 		const tag = t.kind === "new" ? "+" : "Δ";
@@ -139,137 +81,38 @@ function buildWidgetLines(tracked: Map<string, TrackedFile>, theme?: any): strin
 	return lines;
 }
 
-function patchFromBaseline(displayPath: string, original: string | null, current: string): string {
-	return createTwoFilesPatch(
-		displayPath,
-		displayPath,
-		original ?? "",
-		current,
-		"",
-		"",
-		{ context: 3 }
-	);
-}
-
 async function ensureParentDir(absPath: string): Promise<void> {
 	await mkdir(dirname(absPath), { recursive: true });
 }
 
 export default function (pi: ExtensionAPI) {
-	// In-memory state (reconstructed on session_start from custom entries)
-	const baselines = new Map<string, Baseline>(); // key: relPath
-	const tracked = new Map<string, TrackedFile>(); // key: relPath
-
-	// Per-tool-call snapshot, only committed on successful tool_result
-	const pendingByToolCallId = new Map<string, PendingSnapshot>();
+	const tracker = new FileChangeTracker();
 
 	function updateUi(ctx: any) {
 		if (!ctx?.hasUI) return;
 
-		ctx.ui.setStatus("filechanges", formatStatus(tracked, ctx.ui.theme));
-		ctx.ui.setWidget("filechanges", buildWidgetLines(tracked, ctx.ui.theme));
+		ctx.ui.setStatus("filechanges", formatStatus(tracker, ctx.ui.theme));
+		ctx.ui.setWidget("filechanges", buildWidgetLines(tracker, ctx.ui.theme));
 	}
 
 	// ── Cross-extension API for subagent file tracking ──────────────
 
-	(globalThis as any).__pi_filechanges = {
+	registerExtensionApi<FilechangesApi>("filechanges", {
 		trackFile: async (ctx: any, relPath: string, absPath: string, originalContent: string | null): Promise<void> => {
-			if (baselines.has(relPath)) return; // already tracked
-
-			baselines.set(relPath, {
-				path: relPath,
-				absPath,
-				originalContent,
-				createdAt: Date.now(),
-			});
-			pi.appendEntry(ENTRY_BASELINE, {
-				path: relPath,
-				originalContent,
-				timestamp: Date.now(),
-			});
-
-			await recomputeTrackedFile(ctx, relPath);
-			updateUi(ctx);
-		},
-	};
-
-	async function recomputeTrackedFile(ctx: any, relPath: string) {
-		const baseline = baselines.get(relPath);
-		if (!baseline) return;
-
-		const current = await readTextOrNull(baseline.absPath);
-		if (baseline.originalContent === null) {
-			// file was created
-			if (current === null) {
-				tracked.delete(relPath);
-				return;
+			const added = await tracker.trackFile(relPath, absPath, originalContent);
+			if (added) {
+				pi.appendEntry(ENTRY_BASELINE, {
+					path: relPath,
+					originalContent,
+					timestamp: Date.now(),
+				});
+				updateUi(ctx);
 			}
-			const displayPath = baseline.path;
-			const diff = patchFromBaseline(displayPath, null, current);
-			const { added, removed } = countDiffLines(diff);
-			tracked.set(relPath, {
-				path: baseline.path,
-				absPath: baseline.absPath,
-				displayPath,
-				originalContent: null,
-				currentContent: current,
-				diff,
-				added,
-				removed,
-				kind: "new",
-				updatedAt: Date.now(),
-			});
-			return;
-		}
-
-		// file existed before
-		if (current === null) {
-			// Deleted outside of tracked tools (or manually). Still track as edited; diff will show removal.
-			const displayPath = baseline.path;
-			const diff = patchFromBaseline(displayPath, baseline.originalContent, "");
-			const { added, removed } = countDiffLines(diff);
-			tracked.set(relPath, {
-				path: baseline.path,
-				absPath: baseline.absPath,
-				displayPath,
-				originalContent: baseline.originalContent,
-				currentContent: "",
-				diff,
-				added,
-				removed,
-				kind: "edited",
-				updatedAt: Date.now(),
-			});
-			return;
-		}
-
-		if (current === baseline.originalContent) {
-			// back to original; untrack
-			tracked.delete(relPath);
-			return;
-		}
-
-		const displayPath = baseline.path;
-		const diff = patchFromBaseline(displayPath, baseline.originalContent, current);
-		const { added, removed } = countDiffLines(diff);
-		tracked.set(relPath, {
-			path: baseline.path,
-			absPath: baseline.absPath,
-			displayPath,
-			originalContent: baseline.originalContent,
-			currentContent: current,
-			diff,
-			added,
-			removed,
-			kind: "edited",
-			updatedAt: Date.now(),
-		});
-	}
+		},
+	});
 
 	async function clearLog(ctx: ExtensionCommandContext, reason: "accept" | "decline") {
-		baselines.clear();
-		tracked.clear();
-		pendingByToolCallId.clear();
+		tracker.clear();
 		pi.appendEntry(ENTRY_CLEAR, { timestamp: Date.now(), reason });
 		updateUi(ctx);
 	}
@@ -277,7 +120,7 @@ export default function (pi: ExtensionAPI) {
 	async function declineAll(ctx: ExtensionCommandContext) {
 		await ctx.waitForIdle();
 
-		if (tracked.size === 0) {
+		if (tracker.getTrackedSize() === 0) {
 			if (ctx.hasUI) ctx.ui.notify("filechanges: nothing to decline.", "info");
 			return;
 		}
@@ -293,7 +136,7 @@ export default function (pi: ExtensionAPI) {
 			throw new Error("Decline requires confirmation. Run: /filechanges-decline force");
 		}
 
-		const items = [...tracked.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+		const items = tracker.getAllTracked().sort((a, b) => b.updatedAt - a.updatedAt);
 		let reverted = 0;
 		const errors: string[] = [];
 
@@ -330,7 +173,7 @@ export default function (pi: ExtensionAPI) {
 	async function acceptAll(ctx: ExtensionCommandContext) {
 		await ctx.waitForIdle();
 
-		if (tracked.size === 0) {
+		if (tracker.getTrackedSize() === 0) {
 			if (ctx.hasUI) ctx.ui.notify("filechanges: nothing to accept.", "info");
 			return;
 		}
@@ -346,7 +189,7 @@ export default function (pi: ExtensionAPI) {
 			throw new Error("Accept requires confirmation. Run: /filechanges-accept force");
 		}
 
-		const count = tracked.size;
+		const count = tracker.getTrackedSize();
 		await clearLog(ctx, "accept");
 		if (ctx.hasUI) ctx.ui.notify(`filechanges: accepted changes for ${count} file(s).`, "info");
 	}
@@ -363,20 +206,18 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("filechanges", {
 		description: "Show files changed by pi and inspect diffs",
 		handler: async (_args, ctx) => {
-			// Provide args to helpers (a bit hacky but keeps code compact)
 			(ctx as any).args = parseCommandArgs(_args);
 
 			await ctx.waitForIdle();
 			updateUi(ctx);
 
 			if (!ctx.hasUI) {
-				const items = [...tracked.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+				const items = tracker.getAllTracked().sort((a, b) => b.updatedAt - a.updatedAt);
 				if (items.length === 0) {
 					console.log("filechanges: no pi-made modifications recorded.");
 					return;
 				}
-				// Non-interactive: just print a summary to stdout
-				const lines = buildWidgetLines(tracked) ?? [];
+				const lines = buildWidgetLines(tracker) ?? [];
 				console.log(lines.join("\n"));
 				return;
 			}
@@ -386,7 +227,7 @@ export default function (pi: ExtensionAPI) {
 				await ctx.waitForIdle();
 				updateUi(ctx);
 
-				const items = [...tracked.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+				const items = tracker.getAllTracked().sort((a, b) => b.updatedAt - a.updatedAt);
 				if (items.length === 0) {
 					ctx.ui.notify("filechanges: no pi-made modifications recorded.", "info");
 					return;
@@ -448,7 +289,7 @@ export default function (pi: ExtensionAPI) {
 					return;
 				}
 
-				const t = tracked.get(picked);
+				const t = tracker.getTracked(picked);
 				if (!t) {
 					ctx.ui.notify("filechanges: entry not found (maybe log was cleared).", "warning");
 					continue;
@@ -495,48 +336,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	async function rebuildFromSession(ctx: any): Promise<void> {
-		baselines.clear();
-		tracked.clear();
-		pendingByToolCallId.clear();
-
-		// Replay custom entries on current branch
-		for (const entry of ctx.sessionManager.getBranch()) {
-			if (entry.type !== "custom") continue;
-
-			if (entry.customType === ENTRY_CLEAR) {
-				baselines.clear();
-				tracked.clear();
-				continue;
-			}
-
-			if (entry.customType === ENTRY_BASELINE) {
-				const data = entry.data as any;
-				if (!data?.path) continue;
-				const { absPath, relPath } = normalizeToolPath(ctx.cwd, data.path);
-				baselines.set(relPath, {
-					path: relPath,
-					absPath,
-					originalContent: typeof data.originalContent === "string" ? data.originalContent : null,
-					createdAt: typeof data.timestamp === "number" ? data.timestamp : Date.now(),
-				});
-				continue;
-			}
-
-			if (entry.customType === ENTRY_UNTRACK) {
-				const data = entry.data as any;
-				if (!data?.path) continue;
-				const { relPath } = normalizeToolPath(ctx.cwd, data.path);
-				baselines.delete(relPath);
-				tracked.delete(relPath);
-				continue;
-			}
-		}
-
-		// Compute current diffs
-		for (const relPath of baselines.keys()) {
-			await recomputeTrackedFile(ctx, relPath);
-		}
-
+		await tracker.rebuildFromEntries(ctx.sessionManager.getBranch(), ctx.cwd);
 		updateUi(ctx);
 	}
 
@@ -554,52 +354,40 @@ export default function (pi: ExtensionAPI) {
 		if (isToolCallEventType("edit", event) || isToolCallEventType("write", event)) {
 			const { absPath, relPath } = normalizeToolPath(ctx.cwd, event.input.path);
 			const before = await readTextOrNull(absPath);
-			pendingByToolCallId.set(event.toolCallId, { path: relPath, absPath, before });
+			tracker.setPending(event.toolCallId, relPath, absPath, before);
 		}
 	});
 
 	// Commit on successful results
 	pi.on("tool_result", async (event, ctx) => {
 		if (event.isError) {
-			pendingByToolCallId.delete(event.toolCallId);
+			tracker.deletePending(event.toolCallId);
 			return;
 		}
 
 		if (!isEditToolResult(event) && !isWriteToolResult(event)) return;
 
-		const pending = pendingByToolCallId.get(event.toolCallId);
-		pendingByToolCallId.delete(event.toolCallId);
+		const pending = tracker.getPending(event.toolCallId);
 		if (!pending) return;
 
 		// If no baseline exists yet for this file, create one now from the successful call's snapshot.
-		if (!baselines.has(pending.path)) {
-			baselines.set(pending.path, {
-				path: pending.path,
-				absPath: pending.absPath,
-				originalContent: pending.before,
-				createdAt: Date.now(),
-			});
+		if (!tracker.hasBaseline(pending.path)) {
+			await tracker.trackFile(pending.path, pending.absPath, pending.before);
 			pi.appendEntry(ENTRY_BASELINE, {
 				path: pending.path,
 				originalContent: pending.before,
 				timestamp: Date.now(),
 			});
+		} else {
+			// Recompute cumulative diff against baseline
+			await tracker.recomputeTrackedFile(pending.path);
 		}
 
-		// Recompute cumulative diff against baseline
-		await recomputeTrackedFile(ctx, pending.path);
-
 		// If file is back to baseline, untrack + persist
-		const baseline = baselines.get(pending.path);
-		const current = await readTextOrNull(pending.absPath);
-		if (baseline) {
-			const backToOriginal =
-				(baseline.originalContent !== null && current === baseline.originalContent) ||
-				(baseline.originalContent === null && current === null);
-
-			if (backToOriginal) {
-				baselines.delete(pending.path);
-				tracked.delete(pending.path);
+		if (tracker.hasBaseline(pending.path)) {
+			const current = await readTextOrNull(pending.absPath);
+			if (current !== undefined && tracker.isBackToBaseline(pending.path, current)) {
+				tracker.deleteBaseline(pending.path);
 				pi.appendEntry(ENTRY_UNTRACK, { path: pending.path, timestamp: Date.now() });
 			}
 		}

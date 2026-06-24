@@ -48,13 +48,10 @@ export default function (pi: ExtensionAPI) {
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const cwd = ctx.cwd;
 
-			// Detect filechanges API for tracking subagent file modifications
-			const filechangesApi = (globalThis as any).__pi_filechanges?.trackFile;
-
-			if (params.tasks && params.tasks.length > 0) {
-				return executeParallel(params.tasks, maxConcurrency, cwd, signal, ctx, onUpdate, filechangesApi);
+				if (params.tasks && params.tasks.length > 0) {
+				return executeParallel(params.tasks, maxConcurrency, cwd, signal, ctx, onUpdate);
 			} else if (params.agent && params.task) {
-				return executeSingle(params.agent, params.task, params.cwd ?? cwd, signal, ctx, onUpdate, filechangesApi);
+				return executeSingle(params.agent, params.task, params.cwd ?? cwd, signal, ctx, onUpdate);
 			} else {
 				throw new Error("Provide either (agent + task) for single mode, or tasks[] for parallel mode.");
 			}
