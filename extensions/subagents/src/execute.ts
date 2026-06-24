@@ -27,7 +27,6 @@ export async function executeSingle(
 	signal: AbortSignal | undefined,
 	ctx: any,
 	onUpdate: any,
-	filechangesApi?: any,
 ): Promise<{ content: any[]; details: Details; isError?: boolean }> {
 	const agents = getAgents();
 	const agent = agents.find((a) => a.name === agentName);
@@ -43,7 +42,7 @@ export async function executeSingle(
 			content: [{ type: "text", text: "(running...)" }],
 			details: { mode: "single" as const, results: [liveResult] },
 		});
-	}, ctx, filechangesApi);
+	}, ctx);
 
 	// Compute post-hoc file diffs for worker subagent results
 	if (agent.name === "worker" && result.output) {
@@ -68,7 +67,6 @@ export async function executeParallel(
 	signal: AbortSignal | undefined,
 	ctx: any,
 	onUpdate: any,
-	filechangesApi?: any,
 ): Promise<{ content: any[]; details: Details }> {
 	const agents = getAgents();
 	// Validate all agents
@@ -102,7 +100,7 @@ export async function executeParallel(
 		const result = await runSubagent(agent, t.task, t.cwd ?? cwd, signal, (progress) => {
 			allResults[idx].progress = progress;
 			fireParallelUpdate();
-		}, ctx, filechangesApi);
+		}, ctx);
 
 		// Compute post-hoc file diffs for worker subagent results
 		if (agent.name === "worker" && result.output) {

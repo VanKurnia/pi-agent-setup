@@ -14,46 +14,7 @@ export const AGENTS_DIR = path.join(EXT_DIR, "..", "agents");
 export const TOOLS_DIR = path.join(EXT_DIR, "..", "tools");
 export const DEFAULT_MAX_CONCURRENCY = 4;
 
-// Built-in tools that pi provides natively (no extension needed)
-export const BUILTIN_TOOLS = new Set(["read", "write", "edit", "bash", "grep", "find", "ls"]);
-
-// Custom tools that require loading an extension into the subagent process
 const EXT_BASE = path.join(EXT_DIR, "..", "..");
-export const CUSTOM_TOOL_EXTENSIONS: Record<string, string> = {
-	ninerouter_web_fetch: "npm:pi-9router-ext",
-	ninerouter_web_search: "npm:pi-9router-ext",
-	safe_bash: path.join(TOOLS_DIR, "safe-bash.ts"),
-	git_status: path.join(EXT_BASE, "git-toolkit.ts"),
-	git_diff_unstaged: path.join(EXT_BASE, "git-toolkit.ts"),
-	git_diff_staged: path.join(EXT_BASE, "git-toolkit.ts"),
-	git_diff: path.join(EXT_BASE, "git-toolkit.ts"),
-	git_add: path.join(EXT_BASE, "git-toolkit.ts"),
-	git_commit: path.join(EXT_BASE, "git-toolkit.ts"),
-	git_reset: path.join(EXT_BASE, "git-toolkit.ts"),
-	git_log: path.join(EXT_BASE, "git-toolkit.ts"),
-	git_create_branch: path.join(EXT_BASE, "git-toolkit.ts"),
-	git_checkout: path.join(EXT_BASE, "git-toolkit.ts"),
-	git_show: path.join(EXT_BASE, "git-toolkit.ts"),
-	git_branch: path.join(EXT_BASE, "git-toolkit.ts"),
-	query_sqlite: path.join(EXT_BASE, "db-viewer", "index.ts"),
-	query_mysql: path.join(EXT_BASE, "db-viewer", "index.ts"),
-	browser_start: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
-	browser_nav: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
-	browser_eval: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
-	browser_screenshot: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
-	browser_content: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
-	browser_cookies: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
-	browser_pick: path.join(EXT_BASE, "browser-tools", "src", "index.ts"),
-	ask_user_question: path.join(EXT_BASE, "ask-user-question.ts"),
-};
-
-// Validate all tool extension paths at startup
-for (const [tool, ext] of Object.entries(CUSTOM_TOOL_EXTENSIONS)) {
-  if (ext.startsWith("npm:")) continue;
-  if (!fs.existsSync(ext)) {
-    console.warn(`[subagents] Tool "${tool}" extension not found: ${ext}`);
-  }
-}
 
 export function loadEnv(): void {
 	const envPath = path.join(EXT_BASE, "..", ".env");

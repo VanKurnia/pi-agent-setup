@@ -92,12 +92,6 @@ export function computeWorkerDiffs(output: string, cwd: string, ctx?: any): stri
       const isTracked = showResult.status === 0;
       const originalContent = isTracked ? (showResult.stdout || "").toString().trim() : null;
 
-      // Register with filechanges if available
-      const fc = (globalThis as any).__pi_filechanges;
-      if (fc && ctx) {
-        fc.trackFile(ctx, relPath, absPath, originalContent);
-      }
-
       const diff = getFileDiff(filePath, cwd);
       if (diff) {
         parts.push(`### ${filePath}\n\n\`\`\`diff\n${diff}\n\`\`\``);

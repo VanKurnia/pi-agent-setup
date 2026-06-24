@@ -1,5 +1,6 @@
 
-import type { AgentConfig } from "./types.js";
+import type { AgentConfig, SubagentsApi } from "./types.js";
+import { registerExtensionApi } from "./api-registry.js";
 
 // ── Agent Discovery & Registration ────────────────────────────────────
 
@@ -24,6 +25,7 @@ export function setAgents(newAgents: AgentConfig[]) {
     agents = newAgents;
 }
 
-// Expose registration functions globally so other extensions loaded via jiti
-// (which creates separate module instances) can access the shared agents array.
-(globalThis as any).__pi_subagents = { registerAgent, unregisterAgent };
+// Expose registration functions via the cross-extension API registry so other
+// extensions (loaded via jiti, which creates separate module instances) can
+// access the shared agents array.
+registerExtensionApi<SubagentsApi>("subagents", { registerAgent, unregisterAgent });
