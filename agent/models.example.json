@@ -1,0 +1,42 @@
+{
+  "providers": {
+    "9router": {
+      "api": "openai-completions",
+      "baseUrl": "http://localhost:20128/v1",
+      "apiKey": "-",
+      "models": [
+        {
+          "id": "versatile",
+          "name": "Versatile"
+        },
+        {
+          "id": "coder",
+          "name": "Coder"
+        },
+        {
+          "id": "assistant",
+          "name": "Assistant"
+        },
+        {
+          "id": "reason",
+          "name": "Reason"
+        }
+      ]
+    },
+    "omniroute": {
+      "api": "openai-completions",
+      "baseUrl": "http://localhost:20128/v1",
+      "apiKey": "-",
+      "models": [
+        {
+          "id": "versatile",
+          "name": "Versatile"
+        },
+        {
+          "id": "coder",
+          "name": "Coder"
+        }
+      ]
+    }
+  }
+}
