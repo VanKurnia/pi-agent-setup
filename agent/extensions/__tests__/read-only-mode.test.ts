@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getReadOnlyToolNames, applyReadOnlyTools, restoreTools } from "../zz-read-only-mode.js";
+import { getReadOnlyToolNames, applyReadOnlyTools, restoreTools } from "../plan-mode/index.js";
 
 // Mock pi's ExtensionAPI minimally for testing
 function createMockPi(tools: string[], activeTools: string[]) {

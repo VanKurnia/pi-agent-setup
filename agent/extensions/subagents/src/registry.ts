@@ -24,6 +24,10 @@ export function setAgents(newAgents: AgentConfig[]) {
     agents = newAgents;
 }
 
+export function refreshAgents(newAgents: AgentConfig[]) {
+    agents = newAgents;
+}
+
 // Expose registration functions via the cross-extension API registry so other
 // extensions (loaded via jiti, which creates separate module instances) can
 // access the shared agents array.

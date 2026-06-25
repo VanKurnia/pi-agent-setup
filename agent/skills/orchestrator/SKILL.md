@@ -1,9 +1,23 @@
 ---
 name: orchestrator
-description: Top-level session orchestration rules — subagent routing, context hygiene, and implementation discipline. Not intended for subagents.
+description: Default session rules governing tool choice (subagent vs direct tools), context-window budgeting, implementation workflow, and output discipline. Load this as the session baseline — it tells you when to delegate to scout/researcher/worker/chain vs. work directly, how to explore without blowing your context, how to investigate before fixing, and how to verify before claiming done. Referenced by most other skills as the top-level orchestrator.
 ---
 
 # Session Orchestration
+
+## When This Applies
+
+This skill is the **default session governor** — it applies to every turn, not just specific situations. Load it whenever you:
+
+- **Start a new task** — sets the baseline workflow: investigate → verify → implement → prove
+- **Decide between subagent vs. direct tool** — tells you when to delegate (scout/researcher/worker/chain) vs. when to just edit the file yourself
+- **Worry about context limits** — gives you the discipline to use scouts instead of reading files directly
+- **Fix a bug** — prescribes observe → hypothesize → verify → fix, not guess-and-pray
+- **Claim something is done** — requires a concrete verification command and its output
+- **Write output** — keeps it concise, no fluff, run stop-slop on anything over 2 sentences
+- **Get asked to /improve or /grill-me** — those skills reference this one as the top-level orchestrator
+
+In short: if you're executing a user request in a codebase, this skill applies.
 
 ## Understand Before You Build
 
@@ -39,6 +53,8 @@ Your context window is a finite, non-renewable resource. Every file you read dir
 **Never explore a codebase by reading files yourself.** That's what scouts are for.
 
 **Use parallel mode** (`tasks[]`) when dispatching multiple independent subagents — e.g. a scout investigating file structure while a researcher looks up API docs. Max 4 concurrent.
+
+**Use chain mode** (`chain[]`) when steps depend on each other — e.g. a scout maps the architecture, then a worker implements the change guided by the scout's findings. The `{previous}` placeholder interpolates the prior step's full output into the next task string.
 
 ### When NOT to Use Subagents
 

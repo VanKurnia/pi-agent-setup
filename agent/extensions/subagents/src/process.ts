@@ -178,6 +178,7 @@ export async function runSubagent(
 					progress.toolCount++;
 					progress.currentTool = evt.toolName;
 					progress.currentToolArgs = extractToolArgsPreview((evt.args || {}) as Record<string, unknown>);
+					progress.currentToolArgsObj = (evt.args || {}) as Record<string, unknown>;
 
 					fireUpdate();
 					break;
@@ -186,6 +187,7 @@ export async function runSubagent(
 						progress.recentTools.push({
 							tool: progress.currentTool,
 							args: progress.currentToolArgs || "",
+							argsObj: progress.currentToolArgsObj,
 						});
 						if (progress.recentTools.length > 20) {
 							progress.recentTools.splice(0, progress.recentTools.length - 20);
@@ -193,6 +195,7 @@ export async function runSubagent(
 					}
 					progress.currentTool = undefined;
 					progress.currentToolArgs = undefined;
+					progress.currentToolArgsObj = undefined;
 
 					fireUpdate();
 					break;

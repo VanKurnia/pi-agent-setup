@@ -1,4 +1,7 @@
 
+export type AgentScope = "user" | "project" | "both";
+export type AgentSource = "user" | "project";
+
 export interface AgentConfig {
 	name: string;
 	description: string;
@@ -6,11 +9,13 @@ export interface AgentConfig {
 	model: string;
 	systemPrompt: string;
 	filePath: string;
+	source?: AgentSource;
 }
 
 export interface ToolEvent {
 	tool: string;
-	args: string;
+	args: string;  // preview string (backward compat)
+	argsObj?: Record<string, unknown>;  // full args object for richer rendering
 }
 
 export interface AgentProgress {
@@ -19,6 +24,7 @@ export interface AgentProgress {
 	task: string;
 	currentTool?: string;
 	currentToolArgs?: string;
+	currentToolArgsObj?: Record<string, unknown>;  // full args object for richer rendering
 	recentTools: ToolEvent[];
 	toolCount: number;
 	tokens: number;
@@ -35,11 +41,14 @@ export interface AgentResult {
 	progress: AgentProgress;
 	model?: string;
 	usage: { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number; turns: number };
+	step?: number;
 }
 
 export interface Details {
-	mode: "single" | "parallel";
+	mode: "single" | "parallel" | "chain";
 	results: AgentResult[];
+	agentScope?: AgentScope;
+	projectAgentsDir?: string | null;
 }
 
 export type SubagentEvent =

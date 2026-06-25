@@ -1,9 +1,8 @@
-
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
-import type { AgentConfig } from "./types.js";
+import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import type { AgentConfig, AgentScope, AgentSource } from "./types.js";
 
 // ── Config ─────────────────────────────────────────────────────────────
 // Config is read from .env (SUBAGENTS_MAX_CONCURRENCY) at the pi root.
@@ -36,16 +35,40 @@ export function loadEnv(): void {
 	} catch {}
 }
 
-export function loadAgents(): AgentConfig[] {
-	loadEnv();
+function isDirectory(p: string): boolean {
+	try {
+		return fs.statSync(p).isDirectory();
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Load agent .md files from a single directory.
+ * Returns an empty array if the directory does not exist.
+ */
+export function loadAgentsFromDir(dir: string, source: AgentSource): AgentConfig[] {
 	const agents: AgentConfig[] = [];
-	if (!fs.existsSync(AGENTS_DIR)) return agents;
-	for (const entry of fs.readdirSync(AGENTS_DIR)) {
-		if (!entry.endsWith(".md")) continue;
-		const filePath = path.join(AGENTS_DIR, entry);
-		const content = fs.readFileSync(filePath, "utf-8");
+	if (!fs.existsSync(dir)) return agents;
+	let entries: fs.Dirent[];
+	try {
+		entries = fs.readdirSync(dir, { withFileTypes: true });
+	} catch {
+		return agents;
+	}
+	for (const entry of entries) {
+		if (!entry.name.endsWith(".md")) continue;
+		if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+		const filePath = path.join(dir, entry.name);
+		let content: string;
+		try {
+			content = fs.readFileSync(filePath, "utf-8");
+		} catch {
+			continue;
+		}
 		const { frontmatter, body } = parseFrontmatter<Record<string, string>>(content);
 		if (!frontmatter.name) continue;
+
 		const tools = (frontmatter.tools || "")
 			.split(",")
 			.map((t) => t.trim())
@@ -68,9 +91,88 @@ export function loadAgents(): AgentConfig[] {
 			model,
 			systemPrompt: body,
 			filePath,
+			source,
 		});
 	}
 	return agents;
+}
+
+/**
+ * Walk up from `cwd` looking for a `.pi/agents/` directory (project-local agents).
+ */
+export function findNearestProjectAgentsDir(cwd: string): string | null {
+	let currentDir = cwd;
+	while (true) {
+		const candidate = path.join(currentDir, CONFIG_DIR_NAME, "agents");
+		if (isDirectory(candidate)) return candidate;
+		const parentDir = path.dirname(currentDir);
+		if (parentDir === currentDir) return null;
+		currentDir = parentDir;
+	}
+}
+
+/**
+ * Result of discoverAgents().
+ */
+export interface AgentDiscoveryResult {
+	agents: AgentConfig[];
+	projectAgentsDir: string | null;
+}
+
+/**
+ * Discover agents from the standard user directory (~/.pi/agent/agents/)
+ * and optionally from a project-local .pi/agents/ directory.
+ *
+ * For "user" scope, also falls back to the extension's own agents/ directory
+ * for built-in agents shipped with the subagents extension.
+ */
+export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryResult {
+	const userDir = path.join(getAgentDir(), "agents");
+	const projectAgentsDir = findNearestProjectAgentsDir(cwd);
+
+	const userAgents = scope === "project" ? [] : loadAgentsFromDir(userDir, "user");
+
+	// Fallback: also check the extension's own agents/ dir for built-in agents
+	if (scope !== "project" && userDir !== AGENTS_DIR) {
+		const extAgents = loadAgentsFromDir(AGENTS_DIR, "user");
+		// Merge: standard location takes priority over extension fallback
+		const agentMap = new Map<string, AgentConfig>();
+		for (const a of extAgents) agentMap.set(a.name, a);
+		for (const a of userAgents) agentMap.set(a.name, a);
+		const merged = Array.from(agentMap.values());
+
+		const projectAgents = scope === "user" || !projectAgentsDir ? [] : loadAgentsFromDir(projectAgentsDir, "project");
+
+		if (scope === "both") {
+			for (const a of merged) agentMap.set(a.name, a);
+			for (const a of projectAgents) agentMap.set(a.name, a);
+			return { agents: Array.from(agentMap.values()), projectAgentsDir };
+		}
+		return { agents: merged, projectAgentsDir };
+	}
+
+	const projectAgents = scope === "user" || !projectAgentsDir ? [] : loadAgentsFromDir(projectAgentsDir, "project");
+
+	const agentMap = new Map<string, AgentConfig>();
+	if (scope === "both") {
+		for (const a of userAgents) agentMap.set(a.name, a);
+		for (const a of projectAgents) agentMap.set(a.name, a);
+	} else if (scope === "user") {
+		for (const a of userAgents) agentMap.set(a.name, a);
+	} else {
+		for (const a of projectAgents) agentMap.set(a.name, a);
+	}
+
+	return { agents: Array.from(agentMap.values()), projectAgentsDir };
+}
+
+/**
+ * Backward-compatible wrapper: loads agents from the standard user directory
+ * via discoverAgents(), falling back to the extension's own agents/ directory.
+ */
+export function loadAgents(): AgentConfig[] {
+	loadEnv();
+	return discoverAgents(process.cwd(), "user").agents;
 }
 
 export function resolvePiBinary(): { command: string; baseArgs: string[] } {

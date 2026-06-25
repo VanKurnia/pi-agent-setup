@@ -1,8 +1,9 @@
-import type { AgentResult, Details } from "./types.js";
+import type { AgentConfig, AgentResult, Details, AgentScope } from "./types.js";
 import { runSubagent } from "./process.js";
 import { computeWorkerDiffs } from "./diff.js";
 import { mapConcurrent, throttle } from "./utils.js";
 import { getAgents } from "./registry.js";
+import { discoverAgents } from "./config.js";
 
 function emptyResult(agent: string, task: string, model?: string, status: "pending" | "running" = "running"): AgentResult {
 	return {
@@ -26,8 +27,9 @@ export async function executeSingle(
 	signal: AbortSignal | undefined,
 	ctx: any,
 	onUpdate: any,
+	agentScope: AgentScope = "user",
 ): Promise<{ content: any[]; details: Details; isError?: boolean }> {
-	const agents = getAgents();
+	const { agents } = discoverAgents(cwd, agentScope);
 	const agent = agents.find((a) => a.name === agentName);
 	if (!agent) {
 		const available = agents.map((a) => a.name).join(", ") || "none";
@@ -39,7 +41,7 @@ export async function executeSingle(
 		liveResult.progress = progress;
 		onUpdate?.({
 			content: [{ type: "text", text: "(running...)" }],
-			details: { mode: "single" as const, results: [liveResult] },
+			details: { mode: "single" as const, results: [liveResult], agentScope },
 		});
 	}, ctx);
 
@@ -54,7 +56,7 @@ export async function executeSingle(
 	const isError = result.exitCode !== 0 || !!result.progress.error;
 	return {
 		content: [{ type: "text", text: result.output || "(no output)" }],
-		details: { mode: "single" as const, results: [result] },
+		details: { mode: "single" as const, results: [result], agentScope },
 		...(isError ? { isError: true } : {}),
 	};
 }
@@ -66,8 +68,9 @@ export async function executeParallel(
 	signal: AbortSignal | undefined,
 	ctx: any,
 	onUpdate: any,
+	agentScope: AgentScope = "user",
 ): Promise<{ content: any[]; details: Details }> {
-	const agents = getAgents();
+	const { agents } = discoverAgents(cwd, agentScope);
 	// Validate all agents
 	const available = agents.map((a) => a.name).join(", ") || "none";
 	for (const t of taskList) {
@@ -89,6 +92,7 @@ export async function executeParallel(
 			details: {
 				mode: "parallel" as const,
 				results: [...allResults],
+				agentScope,
 			},
 		});
 	};
@@ -124,6 +128,74 @@ export async function executeParallel(
 
 	return {
 		content: [{ type: "text", text: outputParts.join("\n\n---\n\n") }],
-		details: { mode: "parallel" as const, results },
+		details: { mode: "parallel" as const, results, agentScope },
+	};
+}
+
+/**
+ * Execute a chain of subagent steps sequentially.
+ * Each step can reference the previous step's output via `{previous}` placeholder.
+ * Stops on first failure and returns `isError: true`.
+ */
+export async function executeChain(
+	chainSteps: Array<{ agent: string; task: string; cwd?: string }>,
+	maxConcurrency: number,
+	cwd: string,
+	signal: AbortSignal | undefined,
+	ctx: any,
+	onUpdate: any,
+	agentScope: AgentScope = "user",
+): Promise<{ content: any[]; details: Details; isError?: boolean }> {
+	const { agents } = discoverAgents(cwd, agentScope);
+	const allResults: AgentResult[] = [];
+	let previousOutput = "";
+
+	for (let i = 0; i < chainSteps.length; i++) {
+		const step = chainSteps[i];
+		const agent = agents.find((a) => a.name === step.agent);
+		if (!agent) {
+			const available = agents.map((a) => a.name).join(", ") || "none";
+			throw new Error(`Unknown agent: ${step.agent}. Available agents: ${available}`);
+		}
+
+		const taskWithContext = step.task.replace(/\{previous\}/g, previousOutput);
+
+		// Create an update callback that shows chain progress with step number
+		const emitChainUpdate = (progress: any) => {
+			const liveResult: AgentResult = {
+				...emptyResult(step.agent, taskWithContext, agent.model, "running"),
+				step: i + 1,
+			};
+			liveResult.progress = progress;
+			onUpdate?.({
+				content: [{ type: "text", text: `Chain step ${i + 1}/${chainSteps.length}: ${step.agent}...` }],
+				details: {
+					mode: "chain" as const,
+					results: [...allResults, liveResult],
+					agentScope,
+				},
+			});
+		};
+
+		const result = await runSubagent(agent, taskWithContext, step.cwd ?? cwd, signal, emitChainUpdate, ctx);
+		result.step = i + 1;
+		allResults.push(result);
+
+		// Stop on failure
+		if (result.exitCode !== 0 || !!result.progress.error) {
+			return {
+				content: [{ type: "text", text: `Chain stopped at step ${i + 1} (${step.agent}): ${result.output || result.progress.error || "(no output)"}` }],
+				details: { mode: "chain" as const, results: allResults, agentScope },
+				isError: true,
+			};
+		}
+
+		previousOutput = result.output || previousOutput;
+	}
+
+	const last = allResults[allResults.length - 1];
+	return {
+		content: [{ type: "text", text: last?.output || "(no output)" }],
+		details: { mode: "chain" as const, results: allResults, agentScope },
 	};
 }

@@ -1,7 +1,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { DynamicBorder, isToolCallEventType } from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, DynamicBorder, getAgentDir, isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { SelectItem } from "@earendil-works/pi-tui";
 import { Container, SelectList, Text } from "@earendil-works/pi-tui";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { parse as shellParse } from "shell-quote";
 
 type Severity = "high" | "medium";
@@ -10,6 +12,40 @@ type Risk = {
 	severity: Severity;
 	reasons: string[];
 };
+
+// ── Config ─────────────────────────────────────────────────────────────
+interface BashGuardConfig {
+	enabled?: boolean;
+	headlessBlocked?: Array<{ pattern: string; reason: string }>;
+	customRisks?: {
+		highRiskCommands?: string[];
+		whitelistedCommands?: string[];
+	};
+}
+
+const DEFAULT_GUARD_CONFIG: BashGuardConfig = { enabled: true };
+
+function loadGuardConfig(cwd: string): BashGuardConfig {
+	const projectConfigPath = join(cwd, CONFIG_DIR_NAME, "bash-guard.json");
+	const globalConfigPath = join(getAgentDir(), "extensions", "bash-guard.json");
+	let globalConfig: Partial<BashGuardConfig> = {};
+	let projectConfig: Partial<BashGuardConfig> = {};
+	if (existsSync(globalConfigPath)) {
+		try {
+			globalConfig = JSON.parse(readFileSync(globalConfigPath, "utf-8"));
+		} catch {
+			/* ignore parse errors */
+		}
+	}
+	if (existsSync(projectConfigPath)) {
+		try {
+			projectConfig = JSON.parse(readFileSync(projectConfigPath, "utf-8"));
+		} catch {
+			/* ignore parse errors */
+		}
+	}
+	return { ...DEFAULT_GUARD_CONFIG, ...globalConfig, ...projectConfig };
+}
 
 type OpToken = { op: string; [k: string]: unknown };
 
@@ -360,7 +396,7 @@ const _isSubagent = Number.isFinite(_subagentDepth) && _subagentDepth >= 1;
 // Hard-block patterns for subagent (headless) mode. Criteria: unrecoverable by default AND
 // unlikely to be intentional in an automated context. Fewer false positives over broad coverage —
 // the interactive prompt handles the rest for main sessions.
-const HEADLESS_BLOCKED: Array<{ pattern: RegExp; reason: string }> = [
+const DEFAULT_HEADLESS_BLOCKED: Array<{ pattern: RegExp; reason: string }> = [
 	// Recursive deletion
 	{ pattern: /(?<!\bgit\s+)\brm\b[^#\n]*\s-(?:[a-zA-Z]*[rR]|-\brecursive\b)/, reason: "recursive delete (rm -r / -rf / -Rf)" },
 	// Privilege escalation
@@ -392,13 +428,21 @@ const HEADLESS_BLOCKED: Array<{ pattern: RegExp; reason: string }> = [
 	{ pattern: /\bgit\s+gc\b[^#\n]*--prune\b/, reason: "prune unreachable objects (git gc --prune)" },
 ];
 
+function getHeadlessBlocked(config?: BashGuardConfig): Array<{ pattern: RegExp; reason: string }> {
+	if (config?.headlessBlocked) {
+		return config.headlessBlocked.map((item) => ({ pattern: new RegExp(item.pattern), reason: item.reason }));
+	}
+	return DEFAULT_HEADLESS_BLOCKED;
+}
+
 export default function (pi: ExtensionAPI) {
 	if (_isSubagent) {
 		// Subagent mode: hard-block catastrophic operations, no prompting.
 		pi.on("tool_call", async (event) => {
 			if (!isToolCallEventType("bash", event)) return;
 			const command = event.input.command;
-			for (const { pattern, reason } of HEADLESS_BLOCKED) {
+			const blocked = getHeadlessBlocked();
+			for (const { pattern, reason } of blocked) {
 				if (pattern.test(command)) {
 					return {
 						block: true,
@@ -414,6 +458,30 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	// Main session mode: interactive prompting.
+	let userDisabled = false;
+
+	pi.registerCommand("bash-guard", {
+		description: "Show or toggle bash-guard configuration",
+		handler: async (args, ctx) => {
+			const action = args.trim().toLowerCase();
+			if (action === "toggle") {
+				userDisabled = !userDisabled;
+				ctx.ui.notify(`bash-guard ${userDisabled ? "disabled" : "enabled"}`, "info");
+				return;
+			}
+			// status
+			const config = loadGuardConfig(ctx.cwd);
+			const lines = [
+				`bash-guard ${userDisabled ? "DISABLED (user)" : config.enabled !== false ? "ENABLED" : "DISABLED (config)"}`,
+				`Config: global=${join(getAgentDir(), "extensions", "bash-guard.json")}`,
+				`Config: project=${join(ctx.cwd, CONFIG_DIR_NAME, "bash-guard.json")}`,
+				`Whitelisted: ${config.customRisks?.whitelistedCommands?.join(", ") || "(none)"}`,
+				`High risk commands: ${config.customRisks?.highRiskCommands?.join(", ") || "(none)"}`,
+			];
+			ctx.ui.notify(lines.join("\n"), "info");
+		},
+	});
+
 	pi.registerFlag("bash-guard-auto-allow", {
 		description: "If set, bash-guard will not block when no UI is available (non-interactive modes).",
 		type: "boolean",
@@ -427,7 +495,29 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", async (event, ctx) => {
 		if (!isToolCallEventType("bash", event)) return;
 
+		const config = loadGuardConfig(ctx.cwd);
+
+		// Early return if disabled by config or user toggle
+		if (userDisabled || config.enabled === false) return;
+
 		const command = event.input.command;
+
+		// Check whitelisted commands
+		if (config.customRisks?.whitelistedCommands?.some((cmd) => command.startsWith(cmd))) return;
+
+		// Check high-risk command list
+		if (config.customRisks?.highRiskCommands?.some((cmd) => command.startsWith(cmd))) {
+			const risk: Risk = { severity: "high", reasons: [`${command} is on the high-risk command list`] };
+			const choice = await promptRunOrAbort(ctx, command, risk);
+			if (choice === "run") return;
+			recentlyAborted.set(command, Date.now());
+			return {
+				block: true,
+				reason:
+					"Blocked by bash-guard: command is on the high-risk list. Ask the user for confirmation or propose a safer alternative.",
+			};
+		}
+
 		const risk = analyzeBashCommand(command);
 		if (!risk) return;
 
