@@ -41,7 +41,14 @@ If the repo has no working verification command (no tests, broken build), record
 
 Audit the codebase across the categories in [references/audit-playbook.md](references/audit-playbook.md) — read it now. Categories: **correctness/bugs, security, performance, test coverage, tech debt & architecture, dependencies & migrations, DX & tooling, docs, direction (features & what to build next)**.
 
-For repos of any real size, fan out with parallel read-only subagents (`scout` for code recon, `researcher` for web research) — one per category (or cluster of related categories). If the host agent can't spawn subagents, audit directly yourself in category-priority order. **Subagents do not inherit this skill's context**, so each subagent prompt must include:
+For repos of any real size, fan out with parallel read-only subagents (`scout` for code recon, `researcher` for web research) — one per category (or cluster of related categories). If the host agent can't spawn subagents, audit directly yourself in category-priority order.
+
+**Use chain mode** (`chain: [{agent, task}, ...]`) when subagent tasks depend on each other — e.g. a scout maps a module's architecture, then a researcher investigates the libraries it depends on. Each step after the first can reference prior output via `{previous}`. Chain mode stops on first failure, so order steps from cheapest/risk-est to most expensive.
+
+**Set `agentScope`** to control where agents are discovered: use `"user"` for the user's `~/.pi/agent/agents/`, `"project"` for repo-local `agent/agents/`. Subagents don't inherit scoping context, so when dispatching project-specific audit tasks, include `agentScope: "project"` or `"both"` explicitly.
+
+**Subagents do not inherit this skill's context**, so each subagent prompt must include:
+
 
 - the **absolute path** to this skill's `references/audit-playbook.md` plus the exact section headings to read — **always including "## Finding format"** (subagents can read files — this is far cheaper than pasting; paste the sections only if the path may not resolve in the subagent's environment),
 - the recon facts that scope the search (languages, frameworks, key directories, what to skip),
@@ -114,7 +121,7 @@ Finish by writing `.plans/README.md` with the recommended execution order, depen
 - `next` (or `features`, `roadmap`) → run Recon, then audit only the direction category, in more depth: 4–6 grounded suggestions, each with evidence, trade-offs, and a coarse effort estimate. Selected ones become design/spike plans, not build-everything plans.
 - `plan <description>` → skip the audit; the user already knows what they want. Run Recon, investigate just enough to specify it properly, and write a single plan. If the description is too ambiguous to specify honestly, first try to resolve each ambiguity from the codebase itself; only what's left becomes questions to the user — **use the `ask_user_question` tool** asked one at a time, each with a recommended answer.
 - `review-plan <file>` → critique an existing plan in `.plans/` against the template's standards and tighten it. If you authored the plan in this same session, also have a fresh-context `scout` subagent read it cold and report ambiguities — self-critique misses gaps you mentally fill from context the executor won't have.
-- `execute <plan>` → dispatch a `worker` subagent on one plan, then review its diff like a tech lead — re-run done criteria, check scope, read the code — and render a verdict. Treat the executor's diff as untrusted until reviewed: verify every hunk traces to a plan step and reject any out-of-scope change, however plausible it looks. **Read [references/closing-the-loop.md](references/closing-the-loop.md) before the first dispatch.**
+- `execute <plan>` → dispatch as many subagent as you necessarily need following [orchestrator guidelines](../orchestrator/SKILL.md). Treat the executor's diff as untrusted until reviewed: verify every hunk traces to a plan step and reject any out-of-scope change, however plausible it looks. **Read [references/closing-the-loop.md](references/closing-the-loop.md) before the first dispatch.**
 - `reconcile` → process what happened since last session: verify DONE plans, investigate BLOCKED ones, refresh drifted TODOs, retire dead findings. See [references/closing-the-loop.md](references/closing-the-loop.md).
 - `--issues` (modifier on any planning invocation) → also publish each written plan as a GitHub issue via `gh`, URL recorded in the plan and index. Only with the explicit flag. **Before creating any issue, check whether the repo is public (`gh repo view --json visibility`). If it is, warn the user that issues are publicly visible and get explicit confirmation before publishing any plan that describes a security vulnerability, credential location, or other sensitive finding.** See [references/closing-the-loop.md](references/closing-the-loop.md).
 

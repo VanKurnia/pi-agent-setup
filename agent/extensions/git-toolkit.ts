@@ -46,6 +46,10 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		name: "git_status",
 		label: "Git Status",
 		description: "Shows the working tree status",
+		promptSnippet: "Check git working tree status",
+		promptGuidelines: [
+			"Use this to check what files are modified, staged, or untracked before other git operations",
+		],
 		parameters: Type.Object({
 			repo_path: Type.String({ description: "Path to Git repository" })
 		}),
@@ -64,6 +68,10 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		name: "git_diff_unstaged",
 		label: "Git Diff Unstaged",
 		description: "Shows changes in working directory not yet staged",
+		promptSnippet: "Show unstaged changes in working directory",
+		promptGuidelines: [
+			"Shows changes not yet staged — use to review local edits before committing",
+		],
 		parameters: Type.Object({
 			repo_path: Type.String({ description: "Path to Git repository" }),
 			context_lines: Type.Optional(Type.Number({ description: "Number of context lines to show (default: 3)" }))
@@ -84,6 +92,10 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		name: "git_diff_staged",
 		label: "Git Diff Staged",
 		description: "Shows changes that are staged for commit",
+		promptSnippet: "Show staged changes ready for commit",
+		promptGuidelines: [
+			"Use after git_add to review what will be committed",
+		],
 		parameters: Type.Object({
 			repo_path: Type.String({ description: "Path to Git repository" }),
 			context_lines: Type.Optional(Type.Number({ description: "Number of context lines to show (default: 3)" }))
@@ -104,6 +116,10 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		name: "git_diff",
 		label: "Git Diff",
 		description: "Shows differences between branches or commits",
+		promptSnippet: "Show differences between branches or commits",
+		promptGuidelines: [
+			"Use for comparing branches or viewing commit diffs",
+		],
 		parameters: Type.Object({
 			repo_path: Type.String({ description: "Path to Git repository" }),
 			target: Type.String({ description: "Target branch or commit to compare with" }),
@@ -125,6 +141,11 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		name: "git_add",
 		label: "Git Add",
 		description: "Adds file contents to the staging area",
+		promptSnippet: "Stage file contents for commit",
+		promptGuidelines: [
+			"Stage files before git_commit",
+			"Use file paths relative to repo root",
+		],
 		parameters: Type.Object({
 			repo_path: Type.String({ description: "Path to Git repository" }),
 			files: Type.Array(Type.String(), { description: "Array of file paths to stage" })
@@ -157,6 +178,11 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		name: "git_commit",
 		label: "Git Commit",
 		description: "Records changes to the repository",
+		promptSnippet: "Record staged changes with a commit message",
+		promptGuidelines: [
+			"Requires files to be staged via git_add first",
+			"Write clear, descriptive commit messages",
+		],
 		parameters: Type.Object({
 			repo_path: Type.String({ description: "Path to Git repository" }),
 			message: Type.String({ description: "Commit message" })
@@ -176,6 +202,10 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		name: "git_reset",
 		label: "Git Reset",
 		description: "Unstages all staged changes",
+		promptSnippet: "Unstage all staged changes",
+		promptGuidelines: [
+			"Use to undo git_add — unstages all files without changing working tree",
+		],
 		parameters: Type.Object({
 			repo_path: Type.String({ description: "Path to Git repository" })
 		}),
@@ -194,6 +224,10 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		name: "git_log",
 		label: "Git Log",
 		description: "Shows the commit logs with optional date filtering",
+		promptSnippet: "View commit history with optional date filtering",
+		promptGuidelines: [
+			"Use to browse recent commits or check history in a date range",
+		],
 		parameters: Type.Object({
 			repo_path: Type.String({ description: "Path to Git repository" }),
 			max_count: Type.Optional(Type.Number({ description: "Maximum number of commits to show (default: 10)" })),
@@ -222,6 +256,10 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		name: "git_create_branch",
 		label: "Git Create Branch",
 		description: "Creates a new branch",
+		promptSnippet: "Create a new git branch",
+		promptGuidelines: [
+			"Creates a branch from an optional base branch",
+		],
 		parameters: Type.Object({
 			repo_path: Type.String({ description: "Path to Git repository" }),
 			branch_name: Type.String({ description: "Name of the new branch" }),
@@ -246,6 +284,10 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		name: "git_checkout",
 		label: "Git Checkout",
 		description: "Switches branches",
+		promptSnippet: "Switch to a different git branch",
+		promptGuidelines: [
+			"Switches branches — use with caution as it changes working tree",
+		],
 		parameters: Type.Object({
 			repo_path: Type.String({ description: "Path to Git repository" }),
 			branch_name: Type.String({ description: "Name of branch to checkout" })
@@ -265,6 +307,10 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		name: "git_show",
 		label: "Git Show",
 		description: "Shows the contents of a commit",
+		promptSnippet: "Show the contents of a specific commit",
+		promptGuidelines: [
+			"Use with a commit hash, branch name, or tag to inspect changes",
+		],
 		parameters: Type.Object({
 			repo_path: Type.String({ description: "Path to Git repository" }),
 			revision: Type.String({ description: "The revision (commit hash, branch name, tag) to show" })
@@ -284,6 +330,10 @@ export default function gitMcpExtension(pi: ExtensionAPI) {
 		name: "git_branch",
 		label: "Git Branch",
 		description: "Lists Git branches",
+		promptSnippet: "List git branches",
+		promptGuidelines: [
+			"Use to see local, remote, or all branches",
+		],
 		parameters: Type.Object({
 			repo_path: Type.String({ description: "Path to Git repository" }),
 			branch_type: Type.String({ description: "List 'local', 'remote', or 'all' branches" }),
