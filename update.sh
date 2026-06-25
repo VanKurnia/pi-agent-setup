@@ -72,6 +72,25 @@ fi
 #  WORKSPACE UPDATE (running from ~/.pi)
 # ──────────────────────────────────────────────────────────────
 
+# ── Migration: handle old extensions/ directory ──────────────
+if [ -d "$SCRIPT_DIR/extensions" ] && [ ! -d "$SCRIPT_DIR/agent/extensions" ]; then
+  if [ -n "$(ls -A "$SCRIPT_DIR/extensions" 2>/dev/null)" ]; then
+    echo "Migrating extensions/ to agent/extensions/..."
+    mkdir -p "$SCRIPT_DIR/agent"
+    # Move everything from old extensions/ to agent/extensions/
+    mv "$SCRIPT_DIR/extensions" "$SCRIPT_DIR/agent/extensions"
+    echo "Migration complete. Extensions now at agent/extensions/."
+  else
+    # Empty directory — just remove it
+    rmdir "$SCRIPT_DIR/extensions" 2>/dev/null || true
+  fi
+elif [ -d "$SCRIPT_DIR/extensions" ] && [ -d "$SCRIPT_DIR/agent/extensions" ] && [ -n "$(ls -A "$SCRIPT_DIR/extensions" 2>/dev/null)" ]; then
+  # Both exist — user may have local changes in old location
+  echo "WARNING: Both extensions/ and agent/extensions/ exist."
+  echo "Files in extensions/ will NOT be moved automatically."
+  echo "If you have custom extensions in extensions/, please move them manually."
+fi
+
 # ── Clean existing packages list — rebuild from scratch ──
 SETTINGS="$SCRIPT_DIR/agent/settings.json"
 if [ -f "$SETTINGS" ]; then
@@ -83,6 +102,22 @@ if [ -f "$SETTINGS" ]; then
   " "$SETTINGS" 2>$NULL_DEV || true
 fi
 
+# Add npm pi packages (these are NOT auto-discovered)
+npm_packages=(
+  "npm:@ff-labs/pi-fff"
+  "npm:pi-9router-ext"
+  "npm:pi-x-ide"
+  "npm:pi-zentui"
+)
+for pkg in "${npm_packages[@]}"; do
+  node -e "
+    const fs = require('fs');
+    const s = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+    const p = process.argv[2];
+    if (!s.packages.includes(p)) { s.packages.push(p); fs.writeFileSync(process.argv[1], JSON.stringify(s, null, 2) + '\n'); }
+  " "$SETTINGS" "$pkg" 2>$NULL_DEV || true
+done
+
 # ── Gather Packages & Standalone Extensions ──────────────
 PKGS=()
 while read -r pkg_path; do
@@ -91,10 +126,9 @@ while read -r pkg_path; do
   fi
 done < <(find "$SCRIPT_DIR" \( -name "node_modules" -o -name ".git" -o -name "tmp" \) -prune -o -name "package.json" -print)
 
-# Also find standalone .ts files directly in extensions/ (no package.json)
-while read -r ts_file; do
-  PKGS+=("$ts_file")
-done < <(find "$SCRIPT_DIR/extensions" -maxdepth 1 -name "*.ts" -print)
+# Standalone .ts files in agent/extensions/ — auto-discovered by pi
+# (pi scans ~/.pi/agent/extensions/*.ts and ~/.pi/agent/extensions/*/index.ts).
+# No need to add them to settings.json packages.
 
 TOTAL_STEPS=${#PKGS[@]}
 CURRENT_STEP=0
@@ -154,8 +188,7 @@ for pkg in "${PKGS[@]}"; do
     # Directory package
     pkg_json="$pkg/package.json"
     if [ -f "$pkg_json" ] && grep -q '"pi"' "$pkg_json" 2>$NULL_DEV; then
-      # Has "pi" key → local pi extension
-      pi install "$pkg" > $NULL_DEV 2>&1 || true
+      # Has "pi" key → local pi extension (auto-discovered, no pi install needed)
       (cd "$pkg" && npm install) > $NULL_DEV 2>&1 || true
     elif [ -f "$pkg_json" ] && grep -q '"pi-extensions"' "$pkg_json" 2>$NULL_DEV; then
       # agent/npm style manifest → install each dep as npm pi extension

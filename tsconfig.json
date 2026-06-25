@@ -18,7 +18,7 @@
     "noUnusedParameters": false
   },
   "include": [
-    "extensions/**/*.ts"
+    "agent/extensions/**/*.ts"
   ],
   "exclude": [
     "**/node_modules",

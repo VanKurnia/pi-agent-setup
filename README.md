@@ -98,18 +98,18 @@ On Windows, configure the integrated terminal shell path in `settings.json` to u
 
 | Extension | Description | Source |
 |-----------|-------------|--------|
-| `bash-guard` | Safeguards bash commands — validates and sanitises before execution | `extensions/bash-guard/` |
-| `browser-tools` | Chrome DevTools Protocol browser automation (puppeteer, Readability, jsdom, Turndown) | `extensions/browser-tools/` |
-| `db-viewer` | Secure read-only viewer for SQLite and MySQL databases | `extensions/db-viewer/` |
-| `filechanges` | Tracks file diffs and changes across edits | `extensions/filechanges/` |
-| `subagents` | Subagent orchestration for delegating sub-tasks | `extensions/subagents/` |
-| `ask-user-question.ts` | Interactive question/answer dialog for clarifying requirements | `extensions/ask-user-question.ts` |
-| `context.ts` | Visualises context/token usage as a coloured grid overlay (`/context`) | `extensions/context.ts` |
-| `custom-header.ts` | Customisable startup header (edit the file and `/reload`) | `extensions/custom-header.ts` |
-| `git-toolkit.ts` | Git operations: status, diff, log, branch, commit, add, etc. | `extensions/git-toolkit.ts` |
-| `md-link.ts` | Link `.md` files for collaborative editing (`/link-md`, `/send-diff`) | `extensions/md-link.ts` |
-| `update-setup.ts` | Auto-discovers bash paths on Windows, runs `update.sh` setup logic | `extensions/update-setup.ts` |
-| `zz-read-only-mode.ts` | Toggle read-only mode (`/read-only`) to prevent accidental edits | `extensions/zz-read-only-mode.ts` |
+| `bash-guard` | Safeguards bash commands — validates and sanitises before execution | `agent/extensions/bash-guard/` |
+| `browser-tools` | Chrome DevTools Protocol browser automation (puppeteer, Readability, jsdom, Turndown) | `agent/extensions/browser-tools/` |
+| `db-viewer` | Secure read-only viewer for SQLite and MySQL databases | `agent/extensions/db-viewer/` |
+| `filechanges` | Tracks file diffs and changes across edits | `agent/extensions/filechanges/` |
+| `subagents` | Subagent orchestration for delegating sub-tasks | `agent/extensions/subagents/` |
+| `ask-user-question.ts` | Interactive question/answer dialog for clarifying requirements | `agent/extensions/ask-user-question.ts` |
+| `context.ts` | Visualises context/token usage as a coloured grid overlay (`/context`) | `agent/extensions/context.ts` |
+| `custom-header.ts` | Customisable startup header (edit the file and `/reload`) | `agent/extensions/custom-header.ts` |
+| `git-toolkit.ts` | Git operations: status, diff, log, branch, commit, add, etc. | `agent/extensions/git-toolkit.ts` |
+| `md-link.ts` | Link `.md` files for collaborative editing (`/link-md`, `/send-diff`) | `agent/extensions/md-link.ts` |
+| `update-setup.ts` | Auto-discovers bash paths on Windows, runs `update.sh` setup logic | `agent/extensions/update-setup.ts` |
+| `zz-read-only-mode.ts` | Toggle read-only mode (`/read-only`) to prevent accidental edits | `agent/extensions/zz-read-only-mode.ts` |
 
 ### External Packages
 
