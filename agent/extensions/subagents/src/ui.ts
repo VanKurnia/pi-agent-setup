@@ -179,8 +179,11 @@ export function renderAgentProgress(
 	// Expanded: full final output
 	if (!isRunning && r.output && expanded) {
 		c.addChild(new Spacer(1));
-		const mdTheme = getMarkdownTheme();
-		c.addChild(new Markdown(r.output, 0, 0, mdTheme));
+		if (!r._renderedOutput) {
+			const mdTheme = getMarkdownTheme();
+			(r as any)._renderedOutput = new Markdown(r.output, 0, 0, mdTheme);
+		}
+		c.addChild(r._renderedOutput);
 	}
 
 	// Usage breakdown
