@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig, AgentScope, AgentSource } from "./types.js";
 
+let envLoaded = false;
+
 // ── Config ─────────────────────────────────────────────────────────────
 // Config is read from .env (SUBAGENTS_MAX_CONCURRENCY) at the pi root.
 // See loadEnv() below for .env parsing.
@@ -16,6 +18,8 @@ export const DEFAULT_MAX_CONCURRENCY = 4;
 const EXT_BASE = path.join(EXT_DIR, "..", "..");
 
 export function loadEnv(): void {
+	if (envLoaded) return;
+	envLoaded = true;
 	const envPath = path.join(EXT_BASE, "..", ".env");
 	if (!fs.existsSync(envPath)) return;
 	try {
@@ -119,6 +123,9 @@ export interface AgentDiscoveryResult {
 	projectAgentsDir: string | null;
 }
 
+// Module-level cache for discoverAgents() — agent files don't change mid-session
+const agentDiscoveryCache = new Map<string, AgentDiscoveryResult>();
+
 /**
  * Discover agents from the standard user directory (~/.pi/agent/agents/)
  * and optionally from a project-local .pi/agents/ directory.
@@ -127,6 +134,10 @@ export interface AgentDiscoveryResult {
  * for built-in agents shipped with the subagents extension.
  */
 export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryResult {
+	const cacheKey = `${cwd}:${scope}`;
+	const cached = agentDiscoveryCache.get(cacheKey);
+	if (cached) return cached;
+
 	const userDir = path.join(getAgentDir(), "agents");
 	const projectAgentsDir = findNearestProjectAgentsDir(cwd);
 
@@ -146,9 +157,13 @@ export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryRe
 		if (scope === "both") {
 			for (const a of merged) agentMap.set(a.name, a);
 			for (const a of projectAgents) agentMap.set(a.name, a);
-			return { agents: Array.from(agentMap.values()), projectAgentsDir };
+			const result: AgentDiscoveryResult = { agents: Array.from(agentMap.values()), projectAgentsDir };
+			agentDiscoveryCache.set(cacheKey, result);
+			return result;
 		}
-		return { agents: merged, projectAgentsDir };
+		const result2: AgentDiscoveryResult = { agents: merged, projectAgentsDir };
+		agentDiscoveryCache.set(cacheKey, result2);
+		return result2;
 	}
 
 	const projectAgents = scope === "user" || !projectAgentsDir ? [] : loadAgentsFromDir(projectAgentsDir, "project");
@@ -163,7 +178,9 @@ export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryRe
 		for (const a of projectAgents) agentMap.set(a.name, a);
 	}
 
-	return { agents: Array.from(agentMap.values()), projectAgentsDir };
+	const result: AgentDiscoveryResult = { agents: Array.from(agentMap.values()), projectAgentsDir };
+	agentDiscoveryCache.set(cacheKey, result);
+	return result;
 }
 
 /**

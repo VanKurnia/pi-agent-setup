@@ -1,5 +1,8 @@
-import { spawnSync } from "node:child_process";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import * as path from "node:path";
+
+const execAsync = promisify(exec);
 
 // Heuristic: a "file path" inside backticks has at least one / or \\
 // plus an extension (dot followed by alphanumeric). This excludes things
@@ -47,34 +50,34 @@ function extractFilePaths(output: string): string[] {
   return paths;
 }
 
-function getFileDiff(filePath: string, cwd: string): string {
+async function getFileDiff(filePath: string, cwd: string): Promise<string> {
   const relPath = makeRelPath(filePath, cwd);
 
-  const check = spawnSync(`git`, [`cat-file`, `-e`, `HEAD:${relPath}`], {
-    cwd,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const isTracked = check.status === 0;
+  let isTracked = false;
+  try {
+    await execAsync(`git cat-file -e HEAD:${relPath}`, { cwd });
+    isTracked = true;
+  } catch {}
 
-  let raw: Buffer;
+  let raw: string;
   if (isTracked) {
-    raw = spawnSync(`git`, [`diff`, `HEAD`, `--`, relPath], {
+    const { stdout } = await execAsync(`git diff HEAD -- "${relPath}"`, {
       cwd,
       maxBuffer: 1024 * 64,
-      stdio: ["ignore", "pipe", "pipe"],
-    }).stdout;
+    });
+    raw = stdout;
   } else {
-    raw = spawnSync(`git`, [`diff`, `--no-index`, `/dev/null`, relPath], {
+    const { stdout } = await execAsync(`git diff --no-index /dev/null "${relPath}"`, {
       cwd,
       maxBuffer: 1024 * 64,
-      stdio: ["ignore", "pipe", "pipe"],
-    }).stdout;
+    });
+    raw = stdout;
   }
 
-  return (raw || "").toString().trim();
+  return (raw || "").trim();
 }
 
-export function computeWorkerDiffs(output: string, cwd: string, ctx?: any): string {
+export async function computeWorkerDiffs(output: string, cwd: string, ctx?: any): Promise<string> {
   const filePaths = extractFilePaths(output);
   const parts: string[] = [];
 
@@ -84,21 +87,28 @@ export function computeWorkerDiffs(output: string, cwd: string, ctx?: any): stri
       const absPath = path.resolve(cwd, relPath);
 
       // Read original content from git
-      const showResult = spawnSync(`git`, [`show`, `HEAD:${relPath}`], {
+      const showResult = await execAsync(`git show HEAD:${relPath}`, {
         cwd,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      const isTracked = showResult.status === 0;
-      const originalContent = isTracked ? (showResult.stdout || "").toString().trim() : null;
+      }).catch(() => ({ stdout: "" }));
+      const isTracked = showResult.stdout !== "";
+      const originalContent = isTracked ? showResult.stdout.trim() : null;
 
-      const diff = getFileDiff(filePath, cwd);
+      const diff = await getFileDiff(filePath, cwd);
       if (diff) {
-        parts.push(`### ${filePath}\n\n\`\`\`diff\n${diff}\n\`\`\``);
+        parts.push(`### ${filePath}
+
+\`\`\`diff
+${diff}
+\`\`\``);
       }
     } catch {
       // File might have been deleted or path invalid — skip
     }
   }
 
-  return parts.length ? `\n\n## File changes\n\n${parts.join("\n\n")}` : "";
+  return parts.length ? `
+
+## File changes
+
+${parts.join("\n\n")}` : "";
 }

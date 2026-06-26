@@ -42,6 +42,8 @@ export interface AgentResult {
 	model?: string;
 	usage: { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number; turns: number };
 	step?: number;
+	/** Cached rendered Markdown component for the output (performance optimization) */
+	_renderedOutput?: any; // Markdown instance, cached to avoid re-parse per frame
 }
 
 export interface Details {

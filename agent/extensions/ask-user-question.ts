@@ -5,7 +5,7 @@ import {
 	Key,
 	Text,
 	matchesKey,
-	truncateToWidth,
+	visibleWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
@@ -120,10 +120,26 @@ function createEditorTheme(theme: any): EditorTheme {
 	};
 }
 
-function addWrapped(lines: string[], text: string, width: number, indent = ""): void {
-	const contentWidth = Math.max(1, width - indent.length);
-	for (const line of wrapTextWithAnsi(text, contentWidth)) {
-		lines.push(truncateToWidth(`${indent}${line}`, width));
+function addWrappedWithPrefix(
+	prefix: string,
+	text: string,
+	lines: string[],
+	width: number,
+): void {
+	const prefixWidth = visibleWidth(prefix);
+	if (prefixWidth >= width) {
+		// Prefix alone fills the line — fall back: push prefix, then wrap text
+		lines.push(prefix);
+		for (const line of wrapTextWithAnsi(text, width)) {
+			lines.push(line);
+		}
+		return;
+	}
+	const contentWidth = width - prefixWidth;
+	const wrapped = wrapTextWithAnsi(text, contentWidth);
+	const continuationPrefix = " ".repeat(prefixWidth);
+	for (let i = 0; i < wrapped.length; i++) {
+		lines.push(`${i === 0 ? prefix : continuationPrefix}${wrapped[i]}`);
 	}
 }
 
@@ -153,7 +169,7 @@ export function sortAnswers(answers: AskAnswer[]): AskAnswer[] {
 	return [...answers].sort((a, b) => answerSortRank(a) - answerSortRank(b));
 }
 
-export function buildStructuredResult(
+function buildStructuredResult(
 	status: AskUserQuestionStatus,
 	question: string,
 	mode: AskUserQuestionMode,
@@ -237,19 +253,45 @@ async function relayToParent(
   // The parent's runSubagent parses stderr lines for our relay events.
   process.stderr.write(event + "\n");
 
-  // Poll the answer file until the parent writes back
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+  // Wait for the answer file via watch, with timeout
+  const answer = await new Promise<any>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      unwatch();
+      reject(new Error("User did not respond in time"));
+    }, timeoutMs);
+
+    const unwatch = () => {
+      clearTimeout(timeout);
+      fs.unwatchFile(answerFile, listener);
+    };
+
+    const listener = (curr: fs.Stats, prev: fs.Stats) => {
+      if (curr.mtimeMs === prev.mtimeMs) return; // no change (stat noise)
+      try {
+        const content = fs.readFileSync(answerFile, "utf-8");
+        const data = JSON.parse(content);
+        unwatch();
+        resolve(data);
+      } catch {
+        // File exists but not fully written yet, or invalid JSON — wait for next stat
+      }
+    };
+
+    // Also check if file already exists (race: parent wrote before watch started)
     try {
       const content = fs.readFileSync(answerFile, "utf-8");
-      return JSON.parse(content);
+      const data = JSON.parse(content);
+      unwatch();
+      resolve(data);
+      return;
     } catch {
-      // file doesn't exist yet — sleep and retry
+      // File doesn't exist yet — start watching
     }
-    await new Promise((r) => setTimeout(r, 200));
-  }
 
-  throw new Error("User did not respond in time");
+    fs.watchFile(answerFile, { interval: 200 }, listener);
+  });
+
+  return answer;
 }
 
 async function askSingleChoice(
@@ -329,13 +371,13 @@ async function askSingleChoice(
 			if (cachedLines) return cachedLines;
 
 			const lines: string[] = [];
-			const add = (text: string) => lines.push(truncateToWidth(text, width));
+			const add = (text: string) => lines.push(text);
 
 			add(theme.fg("accent", "─".repeat(width)));
-			addWrapped(lines, theme.fg("text", ` ${question}`), width);
+			addWrappedWithPrefix(" ", theme.fg("text", question), lines, width);
 			if (context) {
 				lines.push("");
-				addWrapped(lines, theme.fg("muted", ` ${context}`), width);
+				addWrappedWithPrefix(" ", theme.fg("muted", context), lines, width);
 			}
 			lines.push("");
 
@@ -347,7 +389,7 @@ async function askSingleChoice(
 				const styled = selected ? theme.fg("accent", label) : theme.fg("text", label);
 				add(`${prefix}${styled}`);
 				if (option.description) {
-					addWrapped(lines, theme.fg("muted", option.description), width, "     ");
+					addWrappedWithPrefix("     ", theme.fg("muted", option.description), lines, width);
 				}
 			}
 
@@ -500,13 +542,13 @@ async function askMultiChoice(
 			if (cachedLines) return cachedLines;
 
 			const lines: string[] = [];
-			const add = (text: string) => lines.push(truncateToWidth(text, width));
+			const add = (text: string) => lines.push(text);
 
 			add(theme.fg("accent", "─".repeat(width)));
-			addWrapped(lines, theme.fg("text", ` ${question}`), width);
+			addWrappedWithPrefix(" ", theme.fg("text", question), lines, width);
 			if (context) {
 				lines.push("");
-				addWrapped(lines, theme.fg("muted", ` ${context}`), width);
+				addWrappedWithPrefix(" ", theme.fg("muted", context), lines, width);
 			}
 			lines.push("");
 
@@ -543,7 +585,7 @@ async function askMultiChoice(
 					: theme.fg(checked ? "success" : "text", label);
 				add(`${prefix}${styled}`);
 				if (item.description) {
-					addWrapped(lines, theme.fg("muted", item.description), width, "     ");
+					addWrappedWithPrefix("     ", theme.fg("muted", item.description), lines, width);
 				}
 			}
 

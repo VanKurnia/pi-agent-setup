@@ -28,11 +28,12 @@ export async function executeSingle(
 	ctx: any,
 	onUpdate: any,
 	agentScope: AgentScope = "user",
+	agents?: AgentConfig[],
 ): Promise<{ content: any[]; details: Details; isError?: boolean }> {
-	const { agents } = discoverAgents(cwd, agentScope);
-	const agent = agents.find((a) => a.name === agentName);
+	const agentConfigs = agents ?? discoverAgents(cwd, agentScope).agents;
+	const agent = agentConfigs.find((a) => a.name === agentName);
 	if (!agent) {
-		const available = agents.map((a) => a.name).join(", ") || "none";
+		const available = agentConfigs.map((a) => a.name).join(", ") || "none";
 		throw new Error(`Unknown agent: ${agentName}. Available agents: ${available}`);
 	}
 
@@ -47,7 +48,7 @@ export async function executeSingle(
 
 	// Compute post-hoc file diffs for worker subagent results
 	if (agent.name === "worker" && result.output) {
-		const diffs = computeWorkerDiffs(result.output, cwd, ctx);
+		const diffs = await computeWorkerDiffs(result.output, cwd, ctx);
 		if (diffs) {
 			result.output += diffs;
 		}
@@ -69,12 +70,13 @@ export async function executeParallel(
 	ctx: any,
 	onUpdate: any,
 	agentScope: AgentScope = "user",
+	agents?: AgentConfig[],
 ): Promise<{ content: any[]; details: Details }> {
-	const { agents } = discoverAgents(cwd, agentScope);
+	const agentConfigs = agents ?? discoverAgents(cwd, agentScope).agents;
 	// Validate all agents
-	const available = agents.map((a) => a.name).join(", ") || "none";
+	const available = agentConfigs.map((a) => a.name).join(", ") || "none";
 	for (const t of taskList) {
-		if (!agents.find((a) => a.name === t.agent)) {
+		if (!agentConfigs.find((a) => a.name === t.agent)) {
 			throw new Error(`Unknown agent: ${t.agent}. Available agents: ${available}`);
 		}
 	}
@@ -99,7 +101,7 @@ export async function executeParallel(
 	const fireParallelUpdate = throttle(flushParallelUpdate, 150);
 
 	const results = await mapConcurrent(taskList, maxConcurrency, async (t, idx) => {
-		const agent = agents.find((a) => a.name === t.agent)!;
+		const agent = agentConfigs.find((a) => a.name === t.agent)!;
 		const result = await runSubagent(agent, t.task, t.cwd ?? cwd, signal, (progress) => {
 			allResults[idx].progress = progress;
 			fireParallelUpdate();
@@ -107,7 +109,7 @@ export async function executeParallel(
 
 		// Compute post-hoc file diffs for worker subagent results
 		if (agent.name === "worker" && result.output) {
-			const diffs = computeWorkerDiffs(result.output, t.cwd ?? cwd, ctx);
+			const diffs = await computeWorkerDiffs(result.output, t.cwd ?? cwd, ctx);
 			if (diffs) {
 				result.output += diffs;
 			}
@@ -145,16 +147,17 @@ export async function executeChain(
 	ctx: any,
 	onUpdate: any,
 	agentScope: AgentScope = "user",
+	agents?: AgentConfig[],
 ): Promise<{ content: any[]; details: Details; isError?: boolean }> {
-	const { agents } = discoverAgents(cwd, agentScope);
+	const agentConfigs = agents ?? discoverAgents(cwd, agentScope).agents;
 	const allResults: AgentResult[] = [];
 	let previousOutput = "";
 
 	for (let i = 0; i < chainSteps.length; i++) {
 		const step = chainSteps[i];
-		const agent = agents.find((a) => a.name === step.agent);
+		const agent = agentConfigs.find((a) => a.name === step.agent);
 		if (!agent) {
-			const available = agents.map((a) => a.name).join(", ") || "none";
+			const available = agentConfigs.map((a) => a.name).join(", ") || "none";
 			throw new Error(`Unknown agent: ${step.agent}. Available agents: ${available}`);
 		}
 

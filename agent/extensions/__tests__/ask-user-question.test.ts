@@ -3,7 +3,6 @@ import {
 	normalizeOptions,
 	formatAnswerForModel,
 	sortAnswers,
-	buildStructuredResult,
 	buildResult,
 	cancelledResult,
 	unavailableResult,

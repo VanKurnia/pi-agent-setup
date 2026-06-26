@@ -56,6 +56,17 @@ function findChromePath(): string | null {
   return null;
 }
 
+// ── Lazy cached wrapper ─────────────────────────────────────
+
+let cachedChromePath: string | null | undefined = undefined;
+
+function getChromePath(): string | null {
+  if (cachedChromePath === undefined) {
+    cachedChromePath = findChromePath();
+  }
+  return cachedChromePath;
+}
+
 // ── Chrome profile dir ──────────────────────────────────────
 
 function chromeProfileDir(): string {
@@ -221,7 +232,7 @@ async function ensureChromeRunning(): Promise<boolean> {
   } catch {}
 
   // Need to start Chrome
-  const chromePath = findChromePath();
+  const chromePath = getChromePath();
   if (!chromePath) {
     throw new Error(
       "Chrome not found. Install Google Chrome or set your Chrome binary path."
