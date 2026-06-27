@@ -93,6 +93,15 @@ fi
 
 # ── Clean existing packages list — rebuild from scratch ──
 SETTINGS="$SCRIPT_DIR/agent/settings.json"
+
+# npm pi packages to register (these are NOT auto-discovered)
+npm_packages=(
+  "npm:@ff-labs/pi-fff"
+  "npm:pi-9router-ext"
+  "npm:pi-x-ide"
+  "npm:pi-zentui"
+)
+
 if [ -f "$SETTINGS" ]; then
   node -e "
     const fs = require('fs');
@@ -100,15 +109,51 @@ if [ -f "$SETTINGS" ]; then
     s.packages = [];
     fs.writeFileSync(process.argv[1], JSON.stringify(s, null, 2) + '\n');
   " "$SETTINGS" 2>$NULL_DEV || true
+else
+  # Bootstrap settings.json from scratch
+  # ponytail: windows-shellpath, verify on Windows — no access to Windows test environment
+  auto_shell=""
+  if [[ "$(uname -s)" =~ ^[Mm][Ss][Yy] ]] || [[ "$(uname -s)" =~ ^[Cc][Yy][Gg] ]]; then
+    for candidate in "$PROGRAMFILES/Git/bin/bash.exe" \
+                    "/c/Program Files (x86)/Git/bin/bash.exe"; do
+      if [ -f "$candidate" ]; then
+        auto_shell="$candidate"
+        break
+      fi
+    done
+    if [ -z "$auto_shell" ] && command -v bash &> /dev/null; then
+      auto_shell="$(command -v bash)"
+    fi
+  fi
+
+  shell_args=()
+  if [ -n "$auto_shell" ]; then
+    shell_args=(__SHELL__ "$auto_shell")
+  fi
+
+  pi_version="$(node -e "try{console.log(require('@earendil-works/pi-coding-agent/package.json').version)}catch(e){console.log('0.80.2')}" 2>/dev/null)"
+
+  node -e "
+    const fs = require('fs');
+    const args = process.argv.slice(2);
+    const shellIdx = args.indexOf('__SHELL__');
+    const verIdx = args.indexOf('__VERSION__');
+    const pkgs = args.slice(0, Math.min(
+      shellIdx !== -1 ? shellIdx : Infinity,
+      verIdx !== -1 ? verIdx : Infinity
+    ));
+    const shell = shellIdx !== -1 ? args[shellIdx + 1] : null;
+    const piVersion = verIdx !== -1 ? args[verIdx + 1] : '0.80.2';
+    const settings = {
+      packages: pkgs,
+      theme: 'dark',
+    };
+    if (piVersion) settings.lastChangelogVersion = piVersion;
+    if (shell) settings.shellPath = shell;
+    fs.writeFileSync(process.argv[1], JSON.stringify(settings, null, 2) + '\n');
+  " "$SETTINGS" "${npm_packages[@]}" __VERSION__ "$pi_version" "${shell_args[@]}" 2>$NULL_DEV || true
 fi
 
-# Add npm pi packages (these are NOT auto-discovered)
-npm_packages=(
-  "npm:@ff-labs/pi-fff"
-  "npm:pi-9router-ext"
-  "npm:pi-x-ide"
-  "npm:pi-zentui"
-)
 for pkg in "${npm_packages[@]}"; do
   node -e "
     const fs = require('fs');
@@ -213,3 +258,11 @@ done
 
 update_ui
 echo -e "\n${GREEN}✅ Update complete!${NC}"
+
+# ponytail: manual-tests, add automated bash tests when the test infra supports shell
+# Warn if .env is missing — user must create it manually from .env.example
+if [ ! -f "$SCRIPT_DIR/.env" ] && [ -f "$SCRIPT_DIR/.env.example" ]; then
+  echo ""
+  echo -e "${YELLOW}⚠️  No .env found — copy .env.example to .env and edit it${NC}"
+  echo -e "${YELLOW}   cp .env.example .env${NC}"
+fi
