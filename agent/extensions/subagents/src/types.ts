@@ -1,4 +1,3 @@
-
 export type AgentScope = "user" | "project" | "both";
 export type AgentSource = "user" | "project";
 
@@ -53,17 +52,7 @@ export interface Details {
 	projectAgentsDir?: string | null;
 }
 
-export type SubagentEvent =
-	| { type: "tool_execution_start"; toolName: string; args: Record<string, unknown> }
-	| { type: "tool_execution_end" }
-	| { type: "tool_result_end" }
-	| { type: "message_end"; message: any }
-	| { type: "ask_user_question_pending"; id: string; question: string; context?: string; mode: string; options?: any[]; answerFile: string };
 
-export const KNOWN_EVENT_TYPES = new Set([
-	"tool_execution_start", "tool_execution_end", "tool_result_end",
-	"message_end", "ask_user_question_pending",
-]);
 
 /**
  * API that the filechanges extension exposes to subagents.
@@ -85,4 +74,42 @@ export interface FilechangesApi {
 export interface SubagentsApi {
     registerAgent: (config: AgentConfig) => void;
     unregisterAgent: (name: string) => void;
+}
+
+/** Subagent lifecycle event channels emitted via pi.events */
+export const SUBAGENT_EVENTS = {
+  CREATED: "subagents:created",
+  COMPLETED: "subagents:completed",
+  FAILED: "subagents:failed",
+} as const;
+
+/** Payload for subagents:created event */
+export interface SubagentCreatedEvent {
+  agentId: string;
+  agentName: string;
+  task: string;
+  mode: "single" | "parallel" | "chain";
+  agentScope: string;
+  timestamp: number;
+}
+
+/** Payload for subagents:completed event */
+export interface SubagentCompletedEvent {
+  agentId: string;
+  agentName: string;
+  task: string;
+  output: string;
+  usage: { input: number; output: number; turns: number; cost: number };
+  durationMs: number;
+  timestamp: number;
+}
+
+/** Payload for subagents:failed event */
+export interface SubagentFailedEvent {
+  agentId: string;
+  agentName: string;
+  task: string;
+  error: string;
+  durationMs: number;
+  timestamp: number;
 }

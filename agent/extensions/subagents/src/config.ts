@@ -1,19 +1,18 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import { AuthStorage, CONFIG_DIR_NAME, getAgentDir, ModelRegistry, parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import type { Model } from "@earendil-works/pi-ai";
 import type { AgentConfig, AgentScope, AgentSource } from "./types.js";
 
 let envLoaded = false;
 
 // ── Config ─────────────────────────────────────────────────────────────
-// Config is read from .env (SUBAGENTS_MAX_CONCURRENCY) at the pi root.
-// See loadEnv() below for .env parsing.
 
 export const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const AGENTS_DIR = path.join(EXT_DIR, "..", "agents");
 export const TOOLS_DIR = path.join(EXT_DIR, "..", "tools");
-export const DEFAULT_MAX_CONCURRENCY = 4;
+export { DEFAULT_MAX_CONCURRENCY } from "./settings.js";
 
 const EXT_BASE = path.join(EXT_DIR, "..", "..");
 
@@ -192,16 +191,25 @@ export function loadAgents(): AgentConfig[] {
 	return discoverAgents(process.cwd(), "user").agents;
 }
 
-export function resolvePiBinary(): { command: string; baseArgs: string[] } {
-	// Resolve the pi entry point from process.argv[1]
-	const entry = process.argv[1];
-	if (entry) {
-		try {
-			const realEntry = fs.realpathSync(entry);
-			if (/\.(?:mjs|cjs|js)$/i.test(realEntry)) {
-				return { command: process.execPath, baseArgs: [realEntry] };
-			}
-		} catch {}
+/**
+ * Resolve a model string (e.g. "anthropic/claude-sonnet-4-6") to a Model object.
+ * Returns undefined if the model cannot be resolved.
+ */
+export async function resolveModel(
+	modelId: string,
+	agentDir: string,
+): Promise<Model<any> | undefined> {
+	const slashIdx = modelId.lastIndexOf("/");
+	if (slashIdx === -1) return undefined;
+	const provider = modelId.slice(0, slashIdx);
+	const name = modelId.slice(slashIdx + 1);
+	try {
+		const authStorage = AuthStorage.create(path.join(agentDir, "auth.json"));
+		const registry = ModelRegistry.create(authStorage, path.join(agentDir, "models.json"));
+		registry.refresh();
+		const model = registry.find(provider, name);
+		return model ?? undefined;
+	} catch {
+		return undefined;
 	}
-	return { command: "pi", baseArgs: [] };
 }

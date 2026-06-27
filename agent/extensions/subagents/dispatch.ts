@@ -1,15 +1,27 @@
 import { discoverAgents } from "./src/config.js";
 import { executeChain, executeParallel, executeSingle } from "./src/execute.js";
 import type { AgentScope } from "./src/types.js";
+import type { SettingsManager } from "./src/settings.js";
 
-export function buildSubagentExecute(maxConcurrency: number) {
+export function buildSubagentExecute(maxConcurrency: number, settings?: SettingsManager) {
 	return async (toolCallId: string, params: any, signal: AbortSignal | undefined, onUpdate: any, ctx: any) => {
 		const cwd = ctx.cwd;
 		const agentScope: AgentScope = params.agentScope ?? "user";
 		const confirmProjectAgents = params.confirmProjectAgents ?? true;
 
 		// Discover agents once, share across confirmation + dispatch
-		const { agents } = discoverAgents(ctx.cwd, agentScope);
+		let { agents } = discoverAgents(ctx.cwd, agentScope);
+
+		// Apply per-agent model overrides from settings
+		if (settings) {
+			const overrides = settings.getAllAgentModels();
+			if (Object.keys(overrides).length > 0) {
+				agents = agents.map(a => ({
+					...a,
+					model: overrides[a.name] ?? a.model,
+				}));
+			}
+		}
 
 		// Confirm project agents if needed
 		if ((agentScope === "project" || agentScope === "both") && confirmProjectAgents && ctx.hasUI) {
