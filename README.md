@@ -1,15 +1,36 @@
-# Pi Config
+<p align="center">
+  <img src="https://pi.dev/logo-auto.svg" width="120" alt="pi">
+</p>
 
-Personal configuration for `pi` (the terminal AI coding assistant).
+<h1 align="center">Pi Agent Setup</h1>
 
-This setup is inspired by the minimal setup of [amosblomqvist/pi-config](https://github.com/amosblomqvist/pi-config).
+<p align="center">
+  <a href="https://github.com/VanKurnia/pi-agent-setup"><img src="https://img.shields.io/github/stars/VanKurnia/pi-agent-setup?style=flat-square&logo=github" alt="Stars"></a>
+  <a href="https://github.com/VanKurnia/pi-agent-setup/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
+  <a href="https://pi.dev"><img src="https://img.shields.io/badge/pi-0.80.2-8A2BE2?style=flat-square" alt="pi"></a>
+</p>
+
+<p align="center">
+  Personal configuration, extensions, skills, and prompts for
+  <a href="https://pi.dev">pi</a> — the terminal AI coding assistant.
+</p>
+
+<p align="center">
+  <a href="#quick-setup">Quick Setup</a> •
+  <a href="#whats-included">What's Included</a> •
+  <a href="#configuration">Configuration</a> •
+  <a href="#custom-models">Custom Models</a>
+</p>
+
+---
 
 ## Quick Setup
 
-To configure this environment on your local machine:
+Clone this repo to `~/.pi` — pi reads everything from there.
 
-### If `~/.pi` does not exist or is empty :
-Clone the repository directly into your `~/.pi` directory:
+> **Run these commands in Git Bash.** On Windows, `~` expands in bash but **not** in cmd or PowerShell. Alternatives: `%USERPROFILE%\.pi` (cmd) or `$HOME\.pi` (PowerShell).
+
+### Fresh machine
 
 ```bash
 git clone https://github.com/VanKurnia/pi-agent-setup.git ~/.pi
@@ -17,32 +38,123 @@ cd ~/.pi
 bash update.sh
 ```
 
-### If `~/.pi` already exists and is not empty :
-If you already have a `~/.pi` directory with existing configurations, run these commands to safely backup and set up:
+Then create `agent/auth.json` — run `/login` inside pi to set up your provider.
+
+### Upgrading an existing setup
 
 ```bash
-# 1. Backup your existing config
 mv ~/.pi ~/.pi.backup
-
-# 2. Clone this repository to ~/.pi
 git clone https://github.com/VanKurnia/pi-agent-setup.git ~/.pi
 cd ~/.pi
 
-# 3. (Optional) Restore any custom settings (e.g. models.json) from backup
-if [ -f ~/.pi.backup/agent/models.json ]; then
-  cp ~/.pi.backup/agent/models.json ~/.pi/agent/
-fi
+# Restore custom settings (models, auth, .env)
+cp ~/.pi.backup/agent/models.json ~/.pi/agent/ 2>/dev/null || true
+cp ~/.pi.backup/agent/auth.json ~/.pi/agent/    2>/dev/null || true
+cp ~/.pi.backup/.env ~/.pi/                      2>/dev/null || true
 
-# 4. Initialize extensions and dependencies
 bash update.sh
 ```
 
-## Custom Models
+### Post-install
 
-To configure custom endpoints or local models (like Ollama, LM Studio, or custom proxy models), create a `models.json` file inside `agent/` using this template:
+- **`.env`** — `cp .env.example .env` then edit to configure subagent models
+- **`/login`** — authenticate with your provider (API key or subscription)
+- **Nerd Font** — install one for proper TUI icons ([download](https://www.nerdfonts.com/font-downloads))
+
+---
+
+## What's Included
+
+### Extensions
+
+| Extension | Description |
+|-----------|-------------|
+| `bash-guard` | Safeguards bash commands — validates before execution |
+| `browser-tools` | Chrome DevTools automation (puppeteer, Readability, jsdom) |
+| `db-viewer` | Secure read-only SQLite/MySQL viewer |
+| `filechanges` | Tracks diffs across edits |
+| `subagents` | Subagent orchestration for delegating tasks |
+| `plan-mode` | Step-by-step plan authoring and tracking |
+| `handoff` | Model-switch briefs for /compact |
+| `update-setup` | Runs `update.sh` inside pi with live output widget |
+| `ask-user-question.ts` | Interactive Q&A dialog |
+| `context.ts` | Token usage grid overlay (`/context`) |
+| `custom-header.ts` | Customizable startup header |
+| `git-toolkit.ts` | Git status, diff, log, commit, branch |
+| `md-link.ts` | Collaborative `.md` editing (`/link-md`, `/send-diff`) |
+| `zz-read-only-mode.ts` | Toggle read-only (`/read-only`) |
+
+### External Packages
+
+| Package | Description |
+|---------|-------------|
+| `@ff-labs/pi-fff` | Fuzzy file finder (`fffind`) and content grep (`ffgrep`) |
+| `pi-9router-ext` | Web search and fetch via 9router |
+| `pi-x-ide` | VS Code / IDE integration |
+| `pi-zentui` | TUI components |
+
+### Skills
+
+| Skill | Description |
+|-------|-------------|
+| `grill-me` | Stress-test plans through relentless questioning |
+| `improve` | Read-only codebase audit with prioritized implementation plans |
+| `orchestrator` | Session orchestration: subagent routing, context hygiene |
+| `stop-slop` | Strips AI writing patterns from prose |
+
+### Prompts
+
+| Prompt | Description |
+|--------|-------------|
+| `commit-auto` | Conventional commit messages from staged changes |
+| `review-changes` | Systematic diff review — correctness, edge cases, side effects |
+
+---
+
+## Configuration
+
+### Provider & Models
+
+Set your default provider and model in `agent/settings.json`:
+
+```json
+{
+  "defaultProvider": "9router",
+  "defaultModel": "versatile",
+  "defaultThinkingLevel": "medium"
+}
+```
+
+### Shell (Windows)
+
+Pi auto-detects Git Bash. Only set a custom path for non-standard installations:
+
+```json
+{
+  "shellPath": "C:\\Program Files\\Git\\bin\\bash.exe"
+}
+```
+
+### Subagent Models (`.env`)
+
+Configure which models subagents use:
+
+```env
+RESEARCHER_MODEL=reason
+SCOUT_MODEL=assistant
+WORKER_MODEL=coder
+
+SUBAGENTS_MAX_CONCURRENCY=8
+PI_FFF_MODE=override
+```
+
+Copy `.env.example` to `.env` and edit.
+
+### Custom Models
+
+Add local or custom API endpoints in `agent/models.json`:
 
 ```jsonc
-// agent/models.json
 {
   "providers": {
     "ollama": {
@@ -51,8 +163,7 @@ To configure custom endpoints or local models (like Ollama, LM Studio, or custom
       "apiKey": "ollama",
       "models": [
         { "id": "llama3.2" },
-        { "id": "deepseek-coder:6.7b" },
-        { "id": "qwen2.5-coder:7b" }
+        { "id": "deepseek-coder:6.7b" }
       ]
     },
     "lm-studio": {
@@ -67,70 +178,10 @@ To configure custom endpoints or local models (like Ollama, LM Studio, or custom
 }
 ```
 
-Refer to the official documentation on [Custom Models](https://pi.dev/docs/latest/models) for details on provider base URLs, keys, and model lists.
+See [pi.dev/docs/latest/models](https://pi.dev/docs/latest/models) for provider details.
 
-## Installation and Updates
+---
 
-Run the update script to install the extensions and configure dependencies:
+## Acknowledgements
 
-```bash
-bash update.sh
-```
-## Font Recommendations
-
-Install a **Nerd Font** for proper icon rendering of TUI elements. Download from [Here](https://www.nerdfonts.com/font-downloads)
-
-After installing the font, set it as the terminal font family in VS Code (`terminal.integrated.fontFamily`) and/or your terminal emulator settings.
-
-## Shell Configuration (Windows)
-
-On Windows, configure the integrated terminal shell path in `settings.json` to use a POSIX-compatible shell (e.g., Git Bash, Cygwin, WSL):
-
-```jsonc
-{
-  "shellPath": "C:\\Program Files\\Git\\bin\\bash.exe"
-}
-```
-
-## Inventory
-
-### Extensions
-
-| Extension | Description | Source |
-|-----------|-------------|--------|
-| `bash-guard` | Safeguards bash commands — validates and sanitises before execution | `agent/extensions/bash-guard/` |
-| `browser-tools` | Chrome DevTools Protocol browser automation (puppeteer, Readability, jsdom, Turndown) | `agent/extensions/browser-tools/` |
-| `db-viewer` | Secure read-only viewer for SQLite and MySQL databases | `agent/extensions/db-viewer/` |
-| `filechanges` | Tracks file diffs and changes across edits | `agent/extensions/filechanges/` |
-| `subagents` | Subagent orchestration for delegating sub-tasks | `agent/extensions/subagents/` |
-| `ask-user-question.ts` | Interactive question/answer dialog for clarifying requirements | `agent/extensions/ask-user-question.ts` |
-| `context.ts` | Visualises context/token usage as a coloured grid overlay (`/context`) | `agent/extensions/context.ts` |
-| `custom-header.ts` | Customisable startup header (edit the file and `/reload`) | `agent/extensions/custom-header.ts` |
-| `git-toolkit.ts` | Git operations: status, diff, log, branch, commit, add, etc. | `agent/extensions/git-toolkit.ts` |
-| `md-link.ts` | Link `.md` files for collaborative editing (`/link-md`, `/send-diff`) | `agent/extensions/md-link.ts` |
-| `update-setup.ts` | Auto-discovers bash paths on Windows, runs `update.sh` setup logic | `agent/extensions/update-setup.ts` |
-| `zz-read-only-mode.ts` | Toggle read-only mode (`/read-only`) to prevent accidental edits | `agent/extensions/zz-read-only-mode.ts` |
-
-### External Packages
-
-| Package | Description |
-|---------|-------------|
-| `@ff-labs/pi-fff` | Fuzzy file finder (`fffind`) and content grep (`ffgrep`) tools |
-| `pi-9router-ext` | Web search and fetch integration via 9router |
-| `pi-zentui` | TUI (terminal UI) components for pi |
-
-### Skills
-
-| Skill | Description |
-|-------|-------------|
-| `grill-me` | Interview the user relentlessly about a plan or design until reaching shared understanding |
-| `improve` | Survey any codebase as a senior advisor and produce prioritised implementation plans (read-only) |
-| `orchestrator` | Top-level session orchestration rules — subagent routing, context hygiene, implementation discipline |
-| `stop-slop` | Remove AI writing patterns from prose |
-
-### Prompts
-
-| Prompt | Description |
-|--------|-------------|
-| `commit-auto` | Draft conventional commit messages from staged changes, confirm with user, then commit |
-| `review-changes` | Systematic diff review — correctness, edge cases, side effects, consistency |
+Inspired by [amosblomqvist/pi-config](https://github.com/amosblomqvist/pi-config).

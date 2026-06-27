@@ -188,6 +188,20 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify(`⚠️  Update completed with exit code ${exitCode}`, "warning");
       } else {
         ctx.ui.notify("✅ Update completed successfully", "info");
+
+        // After successful update, check for common missing config
+        const envFile = join(piDir, ".env");
+        const authFile = join(piDir, "agent", "auth.json");
+
+        if (!existsSync(envFile)) {
+          allLines.push("⚠️  .env not found — copy .env.example to .env and edit it");
+          updateWidget();
+        }
+
+        if (!existsSync(authFile)) {
+          allLines.push("⚠️  No auth.json found — run /login inside pi to authenticate");
+          updateWidget();
+        }
       }
 
       ctx.ui.notify("🔄 Reloading pi...", "info");
