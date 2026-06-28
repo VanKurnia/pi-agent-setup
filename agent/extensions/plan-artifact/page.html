@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan Review</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20800%20800%22%3E%0A%20%20%3Crect%20width%3D%22800%22%20height%3D%22800%22%20rx%3D%22120%22%20fill%3D%22%2309090b%22%2F%3E%0A%20%20%3Cpath%20fill%3D%22%23fff%22%20fill-rule%3D%22evenodd%22%20d%3D%22%0A%20%20%20%20M165.29%20165.29%0A%20%20%20%20H517.36%0A%20%20%20%20V400%0A%20%20%20%20H400%0A%20%20%20%20V517.36%0A%20%20%20%20H282.65%0A%20%20%20%20V634.72%0A%20%20%20%20H165.29%0A%20%20%20%20Z%0A%20%20%20%20M282.65%20282.65%0A%20%20%20%20V400%0A%20%20%20%20H400%0A%20%20%20%20V282.65%0A%20%20%20%20Z%0A%20%20%22%2F%3E%0A%20%20%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M517.36%20400%20H634.72%20V634.72%20H517.36%20Z%22%2F%3E%0A%3C%2Fsvg%3E">
+<link rel="stylesheet" href="/page.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/styles/github-dark.min.css">
+</head>
+<body>
+<div class="status-bar"><span class="dot connected"></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3fb950" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Connected</span><span class="status-divider"></span><span class="dot connected" id="statusDot"></span><span class="status-badge" id="statusBadge">Pending</span><span style="flex:1"></span><button class="status-btn accept" id="acceptBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Accept</button><button class="status-btn reject" id="rejectBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Request</button></div>
+<h1>Plan Review</h1>
+<div class="summary" id="summary"></div>
+<div id="sections"></div>
+<div class="toast" id="toast"></div>
+<div class="modal-overlay" id="commentModal">
+  <div class="modal-box">
+    <h3 id="modalTitle">Add Comment</h3>
+    <textarea id="modalText" placeholder="Type your comment..."></textarea>
+    <div class="modal-actions">
+      <button class="modal-btn secondary" id="cancelBtn">Cancel</button>
+      <button class="modal-btn primary" id="submitBtn">Submit</button>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js"></script>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  window.mermaid = mermaid;
+  mermaid.initialize({ startOnLoad: false, theme: "dark" });
+</script>
+<script src="/page.js"></script>
+</body>
+</html>
