@@ -52,3 +52,8 @@ tsconfig.tsbuildinfo
 # IDE workspace
 pi-x-ide/
 
+# pi-speeed extension generated data
+agent/pi-speeed.json
+agent/pi-speeed-stats.json
+pi-session-*.html
+
