@@ -59,9 +59,18 @@ bash update.sh
 
 - **`.env`** — `cp .env.example .env` then edit to configure subagent models
 - **`/login`** — authenticate with your provider (API key or subscription)
-- **Nerd Font** — install one for proper TUI icons ([download](https://www.nerdfonts.com/font-downloads))
+- **Nerd Font** — required for icons in the TUI. Without one, you'll see garbled characters in menus and dialogs. [Download here](https://www.nerdfonts.com/font-downloads).
 
 ---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `bash` not found | Install [Git for Windows](https://git-scm.com/download/win). Pi auto-detects Git Bash. |
+| Extension not loading | Run `bash update.sh` to reinstall deps. Check `agent/auth.json` exists. |
+| Icons look broken | Install a Nerd Font and set it as your terminal font. |
+| `update.sh` fails | Run in Git Bash, not cmd/PowerShell. The `~` path doesn't expand in Windows shells. |
 
 ## What's Included
 
@@ -77,22 +86,22 @@ bash update.sh
 | `plan-mode` | Step-by-step plan authoring and tracking |
 | `handoff` | Model-switch briefs for /compact |
 | `update-setup` | Runs `update.sh` inside pi with live output widget |
-| `ask-user-question.ts` | Interactive Q&A dialog |
-| `context.ts` | Token usage grid overlay (`/context`) |
-| `custom-header.ts` | Customizable startup header |
-| `git-toolkit.ts` | Git status, diff, log, commit, branch |
-| `md-link.ts` | Collaborative `.md` editing (`/link-md`, `/send-diff`) |
-| `plan-artifact` | Renders `.plans/` markdown as a browser UI with commenting, syntax highlighting, and mermaid diagrams (`plan_artifact` tool, `/plan-artifact` command) |
-| `zz-read-only-mode.ts` | Toggle read-only (`/read-only`) |
+| `ask-user-question` | Interactive Q&A dialog |
+| `context` | Token usage grid overlay (`/context`) |
+| `custom-header` | Customizable startup header |
+| `git-toolkit` | Git status, diff, log, commit, branch |
+| `md-link` | Collaborative `.md` editing (`/link-md`, `/send-diff`) |
+| `plan-artifact` | Browser UI for `.plans/` markdown with commenting and syntax highlighting |
+| `zz-read-only-mode` | Toggle read-only (`/read-only`) |
 
 ### External Packages
 
 | Package | Description |
 |---------|-------------|
 | `@ff-labs/pi-fff` | Fuzzy file finder (`fffind`) and content grep (`ffgrep`) |
-| `pi-9router-ext` | Web search and fetch via 9router |
+| `pi-9router-ext` | Web search and URL content extraction |
 | `pi-x-ide` | VS Code / IDE integration |
-| `pi-zentui` | TUI components |
+| `pi-zentui` | Extended TUI components |
 
 ### Skills
 
@@ -180,8 +189,6 @@ Add local or custom API endpoints in `agent/models.json`:
 ```
 
 See [pi.dev/docs/latest/models](https://pi.dev/docs/latest/models) for provider details.
-
----
 
 ## Acknowledgements
 
