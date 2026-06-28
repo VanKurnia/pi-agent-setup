@@ -13,6 +13,7 @@ agent/sessions/
 agent/bin/
 agent/auth.json
 agent/settings.json
+agent/pi-blackhole/
 git/
 mcp-cache.json
 mcp-npx-cache.json

@@ -76,6 +76,20 @@ export interface SubagentsApi {
     unregisterAgent: (name: string) => void;
 }
 
+
+/**
+ * API that the plan-artifact extension exposes to other extensions.
+ * Registered via `ExtensionAPI.registerExtensionApi('plan-artifact', ...)`.
+ */
+export interface PlanArtifactApi {
+    /** Whether the plan server is currently running. */
+    isRunning: () => boolean;
+    /** The browser URL for the current plan, or null if not running. */
+    getUrl: () => string | null;
+    /** The plan summary, or null if no proposal. */
+    getSummary: () => string | null;
+}
+
 /** Subagent lifecycle event channels emitted via pi.events */
 export const SUBAGENT_EVENTS = {
   CREATED: "subagents:created",

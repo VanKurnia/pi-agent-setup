@@ -82,6 +82,7 @@ bash update.sh
 | `custom-header.ts` | Customizable startup header |
 | `git-toolkit.ts` | Git status, diff, log, commit, branch |
 | `md-link.ts` | Collaborative `.md` editing (`/link-md`, `/send-diff`) |
+| `plan-artifact` | Renders `.plans/` markdown as a browser UI with commenting, syntax highlighting, and mermaid diagrams (`plan_artifact` tool, `/plan-artifact` command) |
 | `zz-read-only-mode.ts` | Toggle read-only (`/read-only`) |
 
 ### External Packages
