@@ -4,15 +4,29 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "eslint agent/extensions/",
+    "lint:fix": "eslint agent/extensions/ --fix",
+    "format": "prettier --write agent/extensions/",
+    "format:check": "prettier --check agent/extensions/",
+    "prepare": "husky"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.79.10",
-    "@earendil-works/pi-coding-agent": "^0.79.10",
-    "@earendil-works/pi-tui": "^0.79.10",
+    "@earendil-works/pi-ai": "^0.80.2",
+    "@earendil-works/pi-coding-agent": "^0.80.2",
+    "@earendil-works/pi-tui": "^0.80.2",
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "eslint": "^9.0.0",
+    "@eslint/js": "^9.0.0",
+    "typescript-eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0"
+  },
+  "lint-staged": {
+    "*.ts": ["eslint --fix", "prettier --write"]
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.80.2"

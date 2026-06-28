@@ -2,57 +2,62 @@ export type AgentScope = "user" | "project" | "both";
 export type AgentSource = "user" | "project";
 
 export interface AgentConfig {
-	name: string;
-	description: string;
-	tools: string[];
-	model: string;
-	systemPrompt: string;
-	filePath: string;
-	source?: AgentSource;
+    name: string;
+    description: string;
+    tools: string[];
+    model: string;
+    systemPrompt: string;
+    filePath: string;
+    source?: AgentSource;
 }
 
 export interface ToolEvent {
-	tool: string;
-	args: string;  // preview string (backward compat)
-	argsObj?: Record<string, unknown>;  // full args object for richer rendering
+    tool: string;
+    args: string; // preview string (backward compat)
+    argsObj?: Record<string, unknown>; // full args object for richer rendering
 }
 
 export interface AgentProgress {
-	agent: string;
-	status: "pending" | "running" | "completed" | "failed";
-	task: string;
-	currentTool?: string;
-	currentToolArgs?: string;
-	currentToolArgsObj?: Record<string, unknown>;  // full args object for richer rendering
-	recentTools: ToolEvent[];
-	toolCount: number;
-	tokens: number;
-	durationMs: number;
-	lastMessage: string;
-	error?: string;
+    agent: string;
+    status: "pending" | "running" | "completed" | "failed";
+    task: string;
+    currentTool?: string;
+    currentToolArgs?: string;
+    currentToolArgsObj?: Record<string, unknown>; // full args object for richer rendering
+    recentTools: ToolEvent[];
+    toolCount: number;
+    tokens: number;
+    durationMs: number;
+    lastMessage: string;
+    error?: string;
 }
 
 export interface AgentResult {
-	agent: string;
-	task: string;
-	output: string;
-	exitCode: number;
-	progress: AgentProgress;
-	model?: string;
-	usage: { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number; turns: number };
-	step?: number;
-	/** Cached rendered Markdown component for the output (performance optimization) */
-	_renderedOutput?: any; // Markdown instance, cached to avoid re-parse per frame
+    agent: string;
+    task: string;
+    output: string;
+    exitCode: number;
+    progress: AgentProgress;
+    model?: string;
+    usage: {
+        input: number;
+        output: number;
+        cacheRead: number;
+        cacheWrite: number;
+        cost: number;
+        turns: number;
+    };
+    step?: number;
+    /** Cached rendered Markdown component for the output (performance optimization) */
+    _renderedOutput?: any; // Markdown instance, cached to avoid re-parse per frame
 }
 
 export interface Details {
-	mode: "single" | "parallel" | "chain";
-	results: AgentResult[];
-	agentScope?: AgentScope;
-	projectAgentsDir?: string | null;
+    mode: "single" | "parallel" | "chain";
+    results: AgentResult[];
+    agentScope?: AgentScope;
+    projectAgentsDir?: string | null;
 }
-
-
 
 /**
  * API that the filechanges extension exposes to subagents.
@@ -76,7 +81,6 @@ export interface SubagentsApi {
     unregisterAgent: (name: string) => void;
 }
 
-
 /**
  * API that the plan-artifact extension exposes to other extensions.
  * Registered via `ExtensionAPI.registerExtensionApi('plan-artifact', ...)`.
@@ -90,40 +94,58 @@ export interface PlanArtifactApi {
     getSummary: () => string | null;
 }
 
+/**
+ * API that the git-toolkit extension exposes to other extensions.
+ * Registered via `ExtensionAPI.registerExtensionApi('git-toolkit', ...)`,
+ */
+export interface GitToolkitApi {
+    /** Run a git command and return stdout. Throws on non-zero exit. */
+    runGit: (repoPath: string, args: string[]) => Promise<string>;
+}
+
+/**
+ * API that the update-setup extension exposes to other extensions.
+ * Registered via `ExtensionAPI.registerExtensionApi('update-setup', ...)`,
+ */
+export interface UpdateSetupApi {
+    /** Run the update script and return output. */
+    runUpdate: () => Promise<string>;
+}
+
 /** Subagent lifecycle event channels emitted via pi.events */
 export const SUBAGENT_EVENTS = {
-  CREATED: "subagents:created",
-  COMPLETED: "subagents:completed",
-  FAILED: "subagents:failed",
+    CREATED: "subagents:created",
+    COMPLETED: "subagents:completed",
+    FAILED: "subagents:failed",
 } as const;
 
 /** Payload for subagents:created event */
 export interface SubagentCreatedEvent {
-  agentId: string;
-  agentName: string;
-  task: string;
-  mode: "single" | "parallel" | "chain";
-  agentScope: string;
-  timestamp: number;
+    agentId: string;
+    agentName: string;
+    task: string;
+    mode: "single" | "parallel" | "chain";
+    agentScope: string;
+    timestamp: number;
 }
 
 /** Payload for subagents:completed event */
 export interface SubagentCompletedEvent {
-  agentId: string;
-  agentName: string;
-  task: string;
-  output: string;
-  usage: { input: number; output: number; turns: number; cost: number };
-  durationMs: number;
-  timestamp: number;
+    agentId: string;
+    agentName: string;
+    task: string;
+    output: string;
+    usage: { input: number; output: number; turns: number; cost: number };
+    durationMs: number;
+    timestamp: number;
 }
 
 /** Payload for subagents:failed event */
 export interface SubagentFailedEvent {
-  agentId: string;
-  agentName: string;
-  task: string;
-  error: string;
-  durationMs: number;
-  timestamp: number;
+    agentId: string;
+    agentName: string;
+    task: string;
+    error: string;
+    durationMs: number;
+    timestamp: number;
 }
