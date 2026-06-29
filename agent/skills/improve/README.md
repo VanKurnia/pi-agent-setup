@@ -93,7 +93,7 @@ Each plan also stamps the git commit it was written against, so executors run a 
 
 Plans aren't fire-and-forget:
 
-- **`execute <plan>`** spawns a cheaper executor subagent, hands it the plan, then reviews the result like a tech lead — re-runs every done criterion, checks scope compliance, reads the diff against intent. Verdict: approve (applying changes stays your call), send back for revision (max 2 rounds), or block and refine the plan.
+- **`execute <plan>`** dispatches executor subagents (as many as the plan demands), hands them the plan, then reviews the result like a tech lead — re-runs every done criterion, checks scope compliance, reads the diff against intent. Verdict: approve (applying changes stays your call), send back for revision (max 2 rounds), or block and refine the plan.
 - **`reconcile`** processes what happened since: verifies DONE plans still hold, investigates BLOCKED ones and rewrites around the obstacle, refreshes drifted plans, retires findings that got fixed independently.
 - **`--issues`** publishes plans as GitHub issues — same self-contained body, so any agent or human can pick them up where work already lives.
 

@@ -15,11 +15,11 @@ The founding rule survives unchanged: **the advisor never edits source code.** I
 
 ### Dispatch
 
-Spawn **one** `worker` subagent.
+Spawn as many subagents as the plan demands, following [orchestrator guidelines](../../orchestrator/SKILL.md). Use your judgment on how to split the work — the model decides the right number and parallelism.
 
 The subagent prompt must contain:
 
-1. **The full plan file text, inlined.** The subagent has no context from your session. Never assume; always inline.
+1. **The full plan file text, inlined** (or the relevant slice if dispatching per-work-stream). The subagent has no context from your session. Never assume; always inline.
 2. The executor preamble:
 
 > You are the executor for the implementation plan below. Follow it step by

@@ -52,7 +52,7 @@ Your context window is a finite, non-renewable resource. Every file you read dir
 
 **Never explore a codebase by reading files yourself.** That's what scouts are for.
 
-**Use parallel mode** (`tasks[]`) when dispatching multiple independent subagents — e.g. a scout investigating file structure while a researcher looks up API docs. Max 4 concurrent.
+**Use parallel mode** (`tasks[]`) when dispatching multiple independent subagents — e.g. a scout investigating file structure while a researcher looks up API docs.
 
 **Use chain mode** (`chain[]`) when steps depend on each other — e.g. a scout maps the architecture, then a worker implements the change guided by the scout's findings. The `{previous}` placeholder interpolates the prior step's full output into the next task string.
 
