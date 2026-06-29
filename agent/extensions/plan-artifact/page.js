@@ -92,8 +92,27 @@ function loadPlan() {
         html += "</div>";
       }
       document.getElementById("sections").innerHTML = html;
-      // Re-run syntax highlighting and mermaid rendering on new content
-      if (window.hljs) window.hljs.highlightAll();
+      // Re-run syntax highlighting and mermaid rendering
+      if (window.hljs) {
+        // Highlight non-.code-block pre elements directly
+        document.querySelectorAll('pre:not(.mermaid)').forEach(function(el) {
+          if (!el.closest('.code-block')) hljs.highlightElement(el);
+        });
+        // For .code-block: highlight raw text, then wrap lines
+        document.querySelectorAll('.code-block code').forEach(function(codeEl) {
+          var langClass = Array.from(codeEl.classList).find(function(c) { return c.startsWith('language-'); });
+          var lang = langClass ? langClass.replace('language-', '') : null;
+          var raw = codeEl.textContent;
+          var tmp = document.createElement('code');
+          if (lang) tmp.className = 'language-' + lang;
+          tmp.textContent = raw;
+          hljs.highlightElement(tmp);
+          var highlighted = tmp.innerHTML;
+          codeEl.innerHTML = highlighted.split('\n').map(function(l) {
+            return '<span class="line">' + (l || ' ') + '</span>';
+          }).join('\n');
+        });
+      }
       if (window.mermaid) window.mermaid.run({ querySelector: "pre.mermaid" }).catch(function(){});
     })
     .catch(function () {
