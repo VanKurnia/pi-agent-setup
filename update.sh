@@ -256,6 +256,36 @@ for pkg in "${PKGS[@]}"; do
   CURRENT_STEP=$(( CURRENT_STEP + 1 ))
 done
 
+# ── Post-install: patch pi-speeed HOME resolution bug ─────────
+# pi-speeed uses process.env.HOME which is often unset on Windows,
+# causing ENOENT when it resolves paths relative to CWD instead of ~.
+# Patch to use os.homedir() which is cross-platform and always works.
+SPEEDD_SRC="$SCRIPT_DIR/agent/npm/node_modules/pi-speeed/src"
+if [ -d "$SPEEDD_SRC" ]; then
+  node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const dir = process.argv[1];
+    for (const file of ['config.ts', 'stats.ts']) {
+      const fp = path.join(dir, file);
+      if (!fs.existsSync(fp)) continue;
+      let src = fs.readFileSync(fp, 'utf8');
+      if (!src.includes('process.env.HOME')) continue;
+      // Add homedir import if not already present
+      if (!src.includes('homedir')) {
+        src = src.replace(
+          /(import.*from ['\"]node:path['\"];?)/,
+          '\$1\nimport { homedir } from \"node:os\";'
+        );
+      }
+      // Replace all process.env.HOME fallback patterns with homedir()
+      src = src.replace(/process\.env\.HOME\s*\?\?\s*\"\"/g, 'homedir()');
+      src = src.replace(/process\.env\.HOME\s*\|\|\s*\"\"/g, 'homedir()');
+      fs.writeFileSync(fp, src);
+    }
+  " "$SPEEDD_SRC" 2>$NULL_DEV || true
+fi
+
 update_ui
 echo -e "\n${GREEN}✅ Update complete!${NC}"
 
