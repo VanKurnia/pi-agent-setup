@@ -172,7 +172,7 @@ export default function (pi: ExtensionAPI) {
             }
 
             vaultPath = resolved;
-            saveConfig(ctx.cwd, { vaultPath: resolved });
+            saveConfig({ vaultPath: resolved });
             ctx.ui.notify(`Vault path set to: ${resolved}`, "success");
         },
     });

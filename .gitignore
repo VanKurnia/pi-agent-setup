@@ -61,4 +61,5 @@ pi-session-*.html
 # Agent trust & Obsidian config
 agent/trust.json
 obsidian-config.json
+agent/subagents.json
 
