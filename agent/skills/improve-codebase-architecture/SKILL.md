@@ -26,32 +26,60 @@ Use the Agent tool with **`subagent` scout** to walk the codebase. Don't follow 
 
 Apply the **deletion test** to anything you suspect is shallow: would deleting it concentrate complexity, or just move it? A "yes, concentrates" is the signal you want.
 
-### 2. Present candidates as a Markdown analysis report
+### 2. Present candidates via `plan_artifact`
 
-Write a self-contained Markdown file inside the current workspace under `.plans/analysis/architecture-review-<timestamp>.md` (create the directory if it does not exist).
+Call the `plan_artifact` tool with:
 
-The report should be highly visual, using standard Markdown features and **Mermaid code blocks** (` ```mermaid `) for before/after system visualization.
+- **`summary`**: Short summary, e.g. `"Architecture review: <repo> — <N> deepening candidates"`
+- **`plan`**: Full markdown with `##` headings for each candidate section.
 
-For each candidate, include:
-- **Involved Files**: Provide the exact absolute and repo-relative paths of the files/modules involved, linked to the source tree if supported.
-- **Strength**: One of `Strong`, `Worth exploring`, or `Speculative`.
-- **Category**: The dependency category (`in-process`, `local-substitutable`, `ports & adapters`, `mock`).
-- **Problem**: One sentence. Why the current interface causes friction, referencing the exact lines of code where the friction occurs.
-- **Solution**: One sentence. What changes.
-- **Before / After Diagrams**: A Mermaid flowchart showing the dependency/call graph and how the shallow modules collapse into a deep module.
-- **Wins**: Bullet points of ≤6 words each (e.g. "Tests hit one interface", "pricing logic stops leaking").
+The plan markdown should follow this structure:
 
-End the report with a **Top Recommendation** section indicating which candidate should be tackled first and why.
+```
+## Top Recommendation
 
-**Use the `/codebase-design` vocabulary for the architecture.** Talk about modular interfaces rather than implementation details.
+- **Candidate**: <Title>
+- **Why**: One sentence.
 
-See [MARKDOWN-REPORT.md](MARKDOWN-REPORT.md) for the full Markdown scaffold and layout guidance.
+## <Candidate Title>
 
-Do NOT propose interfaces yet. After writing the file, print the report's path and ask the user: "Which of these would you like to explore?"
+- **Involved Files**: `repo/rel/path.ts` — absolute: `/abs/path.ts`
+- **Strength**: Strong | Worth exploring | Speculative
+- **Category**: in-process | local-substitutable | ports & adapters | mock
+- **Problem**: One sentence referencing exact lines.
+- **Solution**: One sentence.
+
+### Before
+
+```mermaid
+flowchart TD
+  A[Caller] --> B[ShallowWrapper]
+  B --> C[Implementation]
+```
+
+### After
+
+```mermaid
+flowchart TD
+  A[Caller] --> D[DeepModule]
+```
+
+### Wins
+- **Locality**: ≤6 words
+- **Leverage**: ≤6 words
+```
+
+Repeat the candidate section for each candidate. End with the **Top Recommendation**.
+
+**Use the `/codebase-design` vocabulary**: module, interface, implementation, depth, deep, shallow, seam, adapter, leverage, locality. Never substitute: component, service, API, signature, boundary, layer, wrapper.
+
+The browser UI supports inline commenting and accept/request-changes workflow — no manual `ask_user_question` needed for candidate selection.
 
 ### 3. Grilling loop
 
-Once the user picks a candidate, run the `/grill-me` skill to walk the design tree with them — constraints, dependencies, the shape of the deepened module, what sits behind the seam, what tests survive.
+Once the user accepts a plan (via the browser UI's Accept button), run the `/grill-me` skill to walk the design tree with them — constraints, dependencies, the shape of the deepened module, what sits behind the seam, what tests survive.
+
+If the user requests changes via the browser UI, revise the plan and call `plan_artifact` again with updated content.
 
 - **What would you like to do next?**
   - Use `ask_user_question` to offer choices:

@@ -52,6 +52,13 @@ Your context window is a finite, non-renewable resource. Every file you read dir
 
 **Never explore a codebase by reading files yourself.** That's what scouts are for.
 
+### Distinction: Scout vs Direct Read
+
+- **Scout** = exploration of unknown territory: finding files, mapping architecture, tracing dependencies.
+- **Direct read** = verifying a specific finding at a known `file:line` before editing or writing a plan.
+
+The rule is: use scouts for *exploration*, direct reads for *verification of a known claim*. If you know the file and line number already, reading it directly is faster and more reliable than delegating.
+
 **Use parallel mode** (`tasks[]`) when dispatching multiple independent subagents — e.g. a scout investigating file structure while a researcher looks up API docs.
 
 **Use chain mode** (`chain[]`) when steps depend on each other — e.g. a scout maps the architecture, then a worker implements the change guided by the scout's findings. The `{previous}` placeholder interpolates the prior step's full output into the next task string.

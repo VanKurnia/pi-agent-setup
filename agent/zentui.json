@@ -9,5 +9,13 @@
   },
   "features": {
     "copyFriendly": true
+  },
+  "extensionStatuses": {
+    "placements": {
+      "pi-speeed": "right"
+    },
+    "colorModes": {
+      "pi-speeed": "original"
+    }
   }
 }

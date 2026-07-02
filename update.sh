@@ -100,6 +100,9 @@ npm_packages=(
   "npm:pi-9router-ext"
   "npm:pi-x-ide"
   "npm:pi-zentui"
+  "npm:@nukcole-xinluo9510/pi-extension-guy"
+  "npm:pi-blackhole"
+  "npm:pi-speeed"
 )
 
 if [ -f "$SETTINGS" ]; then

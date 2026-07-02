@@ -131,32 +131,14 @@ function registerMyAgents(): void {
 
 Call `registerMyAgents()` when your extension activates (e.g. in a command handler). The agents become available to the `subagent` tool immediately.
 
-### 3. Adding custom tool support
+### 3. Custom tool support
 
-If your agents need tools beyond the built-in set, those tools must be mapped in the `CUSTOM_TOOL_EXTENSIONS` record in `subagents/index.ts`:
-
-```typescript
-const CUSTOM_TOOL_EXTENSIONS: Record<string, string> = {
-  web_fetch: path.join(EXT_BASE, "web-fetch", "index.ts"),
-  safe_bash: path.join(TOOLS_DIR, "safe-bash.ts"),
-  git_status: path.join(EXT_BASE, "git-toolkit.ts"),
-  git_diff_unstaged: path.join(EXT_BASE, "git-toolkit.ts"),
-  git_diff_staged: path.join(EXT_BASE, "git-toolkit.ts"),
-  git_diff: path.join(EXT_BASE, "git-toolkit.ts"),
-  git_add: path.join(EXT_BASE, "git-toolkit.ts"),
-  git_commit: path.join(EXT_BASE, "git-toolkit.ts"),
-  git_reset: path.join(EXT_BASE, "git-toolkit.ts"),
-  git_log: path.join(EXT_BASE, "git-toolkit.ts"),
-  git_create_branch: path.join(EXT_BASE, "git-toolkit.ts"),
-  git_checkout: path.join(EXT_BASE, "git-toolkit.ts"),
-  git_show: path.join(EXT_BASE, "git-toolkit.ts"),
-  git_branch: path.join(EXT_BASE, "git-toolkit.ts"),
-  query_sqlite: path.join(EXT_BASE, "db-viewer", "index.ts"),
-  query_mysql: path.join(EXT_BASE, "db-viewer", "index.ts"),
-};
-```
-
-Built-in tools (`read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`) work automatically. Any other tool the agent lists in its frontmatter must have a corresponding entry here pointing to the extension's `index.ts`.
+Tools listed in agent configs are passed to `createAgentSession()`. Built-in tools
+(`read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`) work automatically.
+Extension-provided tools registered via `pi.registerTool()` in the main session
+are also available in subagent processes through the pi SDK's session creation.
+If an agent needs a tool that isn't available, verify it's registered as a pi
+extension in the main session.
 
 ## Structure
 
