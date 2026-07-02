@@ -102,6 +102,8 @@ bash update.sh
 | `pi-9router-ext` | Web search and URL content extraction |
 | `pi-x-ide` | VS Code / IDE integration |
 | `pi-zentui` | Extended TUI components |
+| `pi-blackhole` | Session compaction & observation engine — manages context window via truncation, reflection, and automatic archival |
+| `pi-speeed` | Performance monitoring for pi agent sessions |
 
 ### Skills
 

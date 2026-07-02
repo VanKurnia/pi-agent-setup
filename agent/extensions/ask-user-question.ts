@@ -1,12 +1,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
-	Editor,
-	type EditorTheme,
-	Key,
-	Text,
-	matchesKey,
-	visibleWidth,
-	wrapTextWithAnsi,
+    Editor,
+    type EditorTheme,
+    Key,
+    Text,
+    matchesKey,
+    visibleWidth,
+    wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { randomUUID } from "node:crypto";
@@ -14,35 +14,35 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 interface AskOption {
-	label: string;
-	value: string;
-	description?: string;
+    label: string;
+    value: string;
+    description?: string;
 }
 
 interface DisplayOption extends AskOption {
-	id: string;
-	index?: number;
-	isOther?: boolean;
-	isSubmit?: boolean;
+    id: string;
+    index?: number;
+    isOther?: boolean;
+    isSubmit?: boolean;
 }
 
 interface TextAnswer {
-	type: "text";
-	label: string;
-	value: string;
+    type: "text";
+    label: string;
+    value: string;
 }
 
 interface OptionAnswer {
-	type: "option";
-	label: string;
-	value: string;
-	index: number;
+    type: "option";
+    label: string;
+    value: string;
+    index: number;
 }
 
 interface OtherAnswer {
-	type: "other";
-	label: string;
-	value: string;
+    type: "other";
+    label: string;
+    value: string;
 }
 
 type AskAnswer = TextAnswer | OptionAnswer | OtherAnswer;
@@ -50,173 +50,188 @@ type AskUserQuestionStatus = "answered" | "cancelled" | "unavailable";
 type AskUserQuestionMode = "text" | "single-select" | "multi-select";
 
 interface AskUserQuestionResultDetails {
-	status: AskUserQuestionStatus;
-	question: string;
-	context?: string;
-	mode: AskUserQuestionMode;
-	answers: AskAnswer[];
-	message?: string;
+    status: AskUserQuestionStatus;
+    question: string;
+    context?: string;
+    mode: AskUserQuestionMode;
+    answers: AskAnswer[];
+    message?: string;
 }
 
 const OptionSchema = Type.Object({
-	label: Type.String({
-		description:
-			'Display label for the option. If you recommend an option, place it first and append "(Recommended)" to the label.',
-	}),
-	value: Type.Optional(
-		Type.String({
-			description: "Optional machine-readable value returned for the option. Defaults to the label.",
-		}),
-	),
-	description: Type.Optional(Type.String({ description: "Optional extra detail shown below the option." })),
+    label: Type.String({
+        description:
+            'Display label for the option (max 50 chars — longer labels overflow in interactive UI). If you recommend an option, place it first and append "(Recommended)" to the label.',
+    }),
+    value: Type.Optional(
+        Type.String({
+            description:
+                "Optional machine-readable value returned for the option. Defaults to the label.",
+        }),
+    ),
+    description: Type.Optional(
+        Type.String({ description: "Optional extra detail shown below the option." }),
+    ),
 });
 
 const AskUserQuestionParams = Type.Object({
-	question: Type.String({
-		description: "The single question to ask the user. Ask exactly one question per tool call.",
-	}),
-	details: Type.Optional(
-		Type.String({
-			description: "Optional extra context or instructions shown under the question.",
-		}),
-	),
-	options: Type.Optional(
-		Type.Array(OptionSchema, {
-			description:
-				"Optional multiple-choice options. Omit or pass an empty array for free-form text input. Users will always be able to choose Other and type a custom answer when options are provided.",
-		}),
-	),
-	multiSelect: Type.Optional(
-		Type.Boolean({
-			description: "Set to true to allow multiple answers to be selected for a question.",
-		}),
-	),
+    question: Type.String({
+        description: "The single question to ask the user. Ask exactly one question per tool call.",
+    }),
+    details: Type.Optional(
+        Type.String({
+            description: "Optional extra context or instructions shown under the question.",
+        }),
+    ),
+    options: Type.Optional(
+        Type.Array(OptionSchema, {
+            description:
+                "Optional multiple-choice options. Omit or pass an empty array for free-form text input. Users will always be able to choose Other and type a custom answer when options are provided.",
+        }),
+    ),
+    multiSelect: Type.Optional(
+        Type.Boolean({
+            description: "Set to true to allow multiple answers to be selected for a question.",
+        }),
+    ),
 });
 
-export function normalizeOptions(options: Array<{ label: string; value?: string; description?: string }> | undefined): AskOption[] {
-	return (options || [])
-		.map((option) => ({
-			label: option.label.trim(),
-			value: option.value?.trim() || option.label.trim(),
-			description: option.description?.trim() || undefined,
-		}))
-		.filter((option) => option.label.length > 0);
+export function normalizeOptions(
+    options: Array<{ label: string; value?: string; description?: string }> | undefined,
+): AskOption[] {
+    return (options || [])
+        .map((option) => ({
+            label: option.label.trim(),
+            value: option.value?.trim() || option.label.trim(),
+            description: option.description?.trim() || undefined,
+        }))
+        .filter((option) => option.label.length > 0);
 }
 
 function getOtherLabel(options: AskOption[]): string {
-	return options.some((option) => option.label.toLowerCase() === "other") ? "Other (custom)" : "Other";
+    return options.some((option) => option.label.toLowerCase() === "other")
+        ? "Other (custom)"
+        : "Other";
 }
 
 function createEditorTheme(theme: any): EditorTheme {
-	return {
-		borderColor: (s) => theme.fg("accent", s),
-		selectList: {
-			selectedPrefix: (t) => theme.fg("accent", t),
-			selectedText: (t) => theme.fg("accent", t),
-			description: (t) => theme.fg("muted", t),
-			scrollInfo: (t) => theme.fg("dim", t),
-			noMatch: (t) => theme.fg("warning", t),
-		},
-	};
+    return {
+        borderColor: (s) => theme.fg("accent", s),
+        selectList: {
+            selectedPrefix: (t) => theme.fg("accent", t),
+            selectedText: (t) => theme.fg("accent", t),
+            description: (t) => theme.fg("muted", t),
+            scrollInfo: (t) => theme.fg("dim", t),
+            noMatch: (t) => theme.fg("warning", t),
+        },
+    };
 }
 
-function addWrappedWithPrefix(
-	prefix: string,
-	text: string,
-	lines: string[],
-	width: number,
-): void {
-	const prefixWidth = visibleWidth(prefix);
-	if (prefixWidth >= width) {
-		// Prefix alone fills the line — fall back: push prefix, then wrap text
-		lines.push(prefix);
-		for (const line of wrapTextWithAnsi(text, width)) {
-			lines.push(line);
-		}
-		return;
-	}
-	const contentWidth = width - prefixWidth;
-	const wrapped = wrapTextWithAnsi(text, contentWidth);
-	const continuationPrefix = " ".repeat(prefixWidth);
-	for (let i = 0; i < wrapped.length; i++) {
-		lines.push(`${i === 0 ? prefix : continuationPrefix}${wrapped[i]}`);
-	}
+function addWrappedWithPrefix(prefix: string, text: string, lines: string[], width: number): void {
+    const prefixWidth = visibleWidth(prefix);
+    if (prefixWidth >= width) {
+        // Prefix alone fills the line — fall back: push prefix, then wrap text
+        lines.push(prefix);
+        for (const line of wrapTextWithAnsi(text, width)) {
+            lines.push(line);
+        }
+        return;
+    }
+    const contentWidth = width - prefixWidth;
+    const wrapped = wrapTextWithAnsi(text, contentWidth);
+    const continuationPrefix = " ".repeat(prefixWidth);
+    for (let i = 0; i < wrapped.length; i++) {
+        lines.push(`${i === 0 ? prefix : continuationPrefix}${wrapped[i]}`);
+    }
 }
 
 export function formatAnswerForModel(answer: AskAnswer): string {
-	switch (answer.type) {
-		case "text":
-			return answer.label;
-		case "other":
-			return `Other: ${answer.label}`;
-		case "option":
-			return `${answer.index}. ${answer.label}`;
-	}
+    switch (answer.type) {
+        case "text":
+            return answer.label;
+        case "other":
+            return `Other: ${answer.label}`;
+        case "option":
+            return `${answer.index}. ${answer.label}`;
+    }
 }
 
 function answerSortRank(answer: AskAnswer): number {
-	switch (answer.type) {
-		case "option":
-			return answer.index;
-		case "other":
-			return Number.MAX_SAFE_INTEGER - 1;
-		case "text":
-			return Number.MAX_SAFE_INTEGER;
-	}
+    switch (answer.type) {
+        case "option":
+            return answer.index;
+        case "other":
+            return Number.MAX_SAFE_INTEGER - 1;
+        case "text":
+            return Number.MAX_SAFE_INTEGER;
+    }
 }
 
 export function sortAnswers(answers: AskAnswer[]): AskAnswer[] {
-	return [...answers].sort((a, b) => answerSortRank(a) - answerSortRank(b));
+    return [...answers].sort((a, b) => answerSortRank(a) - answerSortRank(b));
 }
 
 function buildStructuredResult(
-	status: AskUserQuestionStatus,
-	question: string,
-	mode: AskUserQuestionMode,
-	answers: AskAnswer[],
-	context?: string,
-	message?: string,
+    status: AskUserQuestionStatus,
+    question: string,
+    mode: AskUserQuestionMode,
+    answers: AskAnswer[],
+    context?: string,
+    message?: string,
 ) {
-	return {
-		status,
-		question,
-		context,
-		mode,
-		answers,
-		message,
-	} as AskUserQuestionResultDetails;
+    return {
+        status,
+        question,
+        context,
+        mode,
+        answers,
+        message,
+    } as AskUserQuestionResultDetails;
 }
 
 export function cancelledResult(question: string, mode: AskUserQuestionMode, context?: string) {
-	const message = "User cancelled the question";
-	return {
-		content: [{ type: "text" as const, text: message }],
-		details: buildStructuredResult("cancelled", question, mode, [], context, message),
-	};
+    const message = "User cancelled the question";
+    return {
+        content: [{ type: "text" as const, text: message }],
+        details: buildStructuredResult("cancelled", question, mode, [], context, message),
+    };
 }
 
-export function unavailableResult(question: string, mode: AskUserQuestionMode, message: string, context?: string) {
-	return {
-		content: [{ type: "text" as const, text: message }],
-		details: buildStructuredResult("unavailable", question, mode, [], context, message),
-	};
+export function unavailableResult(
+    question: string,
+    mode: AskUserQuestionMode,
+    message: string,
+    context?: string,
+) {
+    return {
+        content: [{ type: "text" as const, text: message }],
+        details: buildStructuredResult("unavailable", question, mode, [], context, message),
+    };
 }
 
-export function buildResult(question: string, context: string | undefined, mode: AskUserQuestionMode, answers: AskAnswer[]) {
-	let text: string;
-	if (mode === "text") {
-		const answer = answers[0];
-		text = answer.label.trim().length > 0 ? `User answered: ${answer.label}` : "User submitted an empty response";
-	} else if (mode === "single-select") {
-		text = `User selected: ${formatAnswerForModel(answers[0])}`;
-	} else {
-		text = `User selected:\n${answers.map((answer) => `- ${formatAnswerForModel(answer)}`).join("\n")}`;
-	}
+export function buildResult(
+    question: string,
+    context: string | undefined,
+    mode: AskUserQuestionMode,
+    answers: AskAnswer[],
+) {
+    let text: string;
+    if (mode === "text") {
+        const answer = answers[0];
+        text =
+            answer.label.trim().length > 0
+                ? `User answered: ${answer.label}`
+                : "User submitted an empty response";
+    } else if (mode === "single-select") {
+        text = `User selected: ${formatAnswerForModel(answers[0])}`;
+    } else {
+        text = `User selected:\n${answers.map((answer) => `- ${formatAnswerForModel(answer)}`).join("\n")}`;
+    }
 
-	return {
-		content: [{ type: "text" as const, text }],
-		details: buildStructuredResult("answered", question, mode, answers, context),
-	};
+    return {
+        content: [{ type: "text" as const, text }],
+        details: buildStructuredResult("answered", question, mode, answers, context),
+    };
 }
 
 /**
@@ -224,400 +239,433 @@ export function buildResult(question: string, context: string | undefined, mode:
  * then poll a temp answer file until the parent writes back.
  */
 async function relayToParent(
-  ctx: any,
-  question: string,
-  context: string | undefined,
-  mode: string,
-  options?: any[],
-  timeoutMs = 120000,
+    _ctx: any,
+    question: string,
+    context: string | undefined,
+    mode: string,
+    options?: any[],
+    timeoutMs = 120000,
 ): Promise<any> {
-  const answerDir = process.env.PI_SUBAGENT_ANSWER_DIR;
-  if (!answerDir) {
-    throw new Error("PI_SUBAGENT_ANSWER_DIR not set — cannot relay ask_user_question");
-  }
-
-  const id = randomUUID();
-  const answerFile = path.join(answerDir, `ans-${id}.json`);
-
-  // Write the question event to stdout as a JSON line the parent can parse
-  const event = JSON.stringify({
-    type: "ask_user_question_pending",
-    id,
-    question,
-    context,
-    mode,
-    options: options || [],
-    answerFile,
-  });
-  // Write to stderr because pi in JSON mode redirects stdout to stderr.
-  // The parent's runSubagent parses stderr lines for our relay events.
-  process.stderr.write(event + "\n");
-
-  // Wait for the answer file via watch, with timeout
-  const answer = await new Promise<any>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      unwatch();
-      reject(new Error("User did not respond in time"));
-    }, timeoutMs);
-
-    const unwatch = () => {
-      clearTimeout(timeout);
-      fs.unwatchFile(answerFile, listener);
-    };
-
-    const listener = (curr: fs.Stats, prev: fs.Stats) => {
-      if (curr.mtimeMs === prev.mtimeMs) return; // no change (stat noise)
-      try {
-        const content = fs.readFileSync(answerFile, "utf-8");
-        const data = JSON.parse(content);
-        unwatch();
-        resolve(data);
-      } catch {
-        // File exists but not fully written yet, or invalid JSON — wait for next stat
-      }
-    };
-
-    // Also check if file already exists (race: parent wrote before watch started)
-    try {
-      const content = fs.readFileSync(answerFile, "utf-8");
-      const data = JSON.parse(content);
-      unwatch();
-      resolve(data);
-      return;
-    } catch {
-      // File doesn't exist yet — start watching
+    const answerDir = process.env.PI_SUBAGENT_ANSWER_DIR;
+    if (!answerDir) {
+        throw new Error("PI_SUBAGENT_ANSWER_DIR not set — cannot relay ask_user_question");
     }
 
-    fs.watchFile(answerFile, { interval: 200 }, listener);
-  });
+    const id = randomUUID();
+    const answerFile = path.join(answerDir, `ans-${id}.json`);
 
-  return answer;
+    // Write the question event to stdout as a JSON line the parent can parse
+    const event = JSON.stringify({
+        type: "ask_user_question_pending",
+        id,
+        question,
+        context,
+        mode,
+        options: options || [],
+        answerFile,
+    });
+    // Write to stderr because pi in JSON mode redirects stdout to stderr.
+    // The parent's runSubagent parses stderr lines for our relay events.
+    process.stderr.write(event + "\n");
+
+    // Wait for the answer file via watch, with timeout
+    const answer = await new Promise<any>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            unwatch();
+            reject(new Error("User did not respond in time"));
+        }, timeoutMs);
+
+        const unwatch = () => {
+            clearTimeout(timeout);
+            fs.unwatchFile(answerFile, listener);
+        };
+
+        const listener = (curr: fs.Stats, prev: fs.Stats) => {
+            if (curr.mtimeMs === prev.mtimeMs) return; // no change (stat noise)
+            try {
+                const content = fs.readFileSync(answerFile, "utf-8");
+                const data = JSON.parse(content);
+                unwatch();
+                resolve(data);
+            } catch {
+                // File exists but not fully written yet, or invalid JSON — wait for next stat
+            }
+        };
+
+        // Start watching FIRST so no write between initial read and watch start is missed
+        fs.watchFile(answerFile, { interval: 200 }, listener);
+
+        // Then check if file already exists (parent may have written it)
+        try {
+            const content = fs.readFileSync(answerFile, "utf-8");
+            const data = JSON.parse(content);
+            unwatch();
+            resolve(data);
+            return;
+        } catch {
+            // File doesn't exist yet — watch is already active, will pick up future writes
+        }
+    });
+
+    return answer;
 }
 
 async function askSingleChoice(
-	ctx: any,
-	question: string,
-	context: string | undefined,
-	options: AskOption[],
+    ctx: any,
+    question: string,
+    context: string | undefined,
+    options: AskOption[],
 ): Promise<AskAnswer | null> {
-	const otherLabel = getOtherLabel(options);
-	const allOptions: DisplayOption[] = [
-		...options.map((option, index) => ({ ...option, id: `option:${index}`, index: index + 1 })),
-		{ id: "other", label: otherLabel, value: "__other__", isOther: true },
-	];
+    const otherLabel = getOtherLabel(options);
+    const allOptions: DisplayOption[] = [
+        ...options.map((option, index) => ({ ...option, id: `option:${index}`, index: index + 1 })),
+        { id: "other", label: otherLabel, value: "__other__", isOther: true },
+    ];
 
-	return (ctx.ui.custom as any)((tui: any, theme: any, _kb: any, done: (result: AskAnswer | null) => void) => {
-		let optionIndex = 0;
-		let editMode = false;
-		let cachedLines: string[] | undefined;
-		const editor = new Editor(tui, createEditorTheme(theme));
+    return (ctx.ui.custom as any)(
+        (tui: any, theme: any, _kb: any, done: (result: AskAnswer | null) => void) => {
+            let optionIndex = 0;
+            let editMode = false;
+            let cachedLines: string[] | undefined;
+            const editor = new Editor(tui, createEditorTheme(theme));
 
-		editor.onSubmit = (value) => {
-			const trimmed = value.trim();
-			if (!trimmed) return;
-			done({ type: "other", label: trimmed, value: trimmed });
-		};
+            editor.onSubmit = (value) => {
+                const trimmed = value.trim();
+                if (!trimmed) return;
+                done({ type: "other", label: trimmed, value: trimmed });
+            };
 
-		function refresh() {
-			cachedLines = undefined;
-			tui.requestRender();
-		}
+            function refresh() {
+                cachedLines = undefined;
+                tui.requestRender();
+            }
 
-		function handleInput(data: string) {
-			if (editMode) {
-				if (matchesKey(data, Key.escape)) {
-					editMode = false;
-					editor.setText("");
-					refresh();
-					return;
-				}
-				editor.handleInput(data);
-				refresh();
-				return;
-			}
+            function handleInput(data: string) {
+                if (editMode) {
+                    if (matchesKey(data, Key.escape)) {
+                        editMode = false;
+                        editor.setText("");
+                        refresh();
+                        return;
+                    }
+                    editor.handleInput(data);
+                    refresh();
+                    return;
+                }
 
-			if (matchesKey(data, Key.up)) {
-				optionIndex = Math.max(0, optionIndex - 1);
-				refresh();
-				return;
-			}
-			if (matchesKey(data, Key.down)) {
-				optionIndex = Math.min(allOptions.length - 1, optionIndex + 1);
-				refresh();
-				return;
-			}
-			if (matchesKey(data, Key.enter)) {
-				const selected = allOptions[optionIndex];
-				if (selected.isOther) {
-					editMode = true;
-					editor.setText("");
-					refresh();
-					return;
-				}
-				done({
-					type: "option",
-					label: selected.label,
-					value: selected.value,
-					index: selected.index!,
-				});
-				return;
-			}
-			if (matchesKey(data, Key.escape)) {
-				done(null);
-			}
-		}
+                if (matchesKey(data, Key.up)) {
+                    optionIndex = Math.max(0, optionIndex - 1);
+                    refresh();
+                    return;
+                }
+                if (matchesKey(data, Key.down)) {
+                    optionIndex = Math.min(allOptions.length - 1, optionIndex + 1);
+                    refresh();
+                    return;
+                }
+                if (matchesKey(data, Key.enter)) {
+                    const selected = allOptions[optionIndex];
+                    if (selected.isOther) {
+                        editMode = true;
+                        editor.setText("");
+                        refresh();
+                        return;
+                    }
+                    done({
+                        type: "option",
+                        label: selected.label,
+                        value: selected.value,
+                        index: selected.index!,
+                    });
+                    return;
+                }
+                if (matchesKey(data, Key.escape)) {
+                    done(null);
+                }
+            }
 
-		function render(width: number): string[] {
-			if (cachedLines) return cachedLines;
+            function render(width: number): string[] {
+                if (cachedLines) return cachedLines;
 
-			const lines: string[] = [];
-			const add = (text: string) => lines.push(text);
+                const lines: string[] = [];
+                const add = (text: string) => lines.push(text);
 
-			add(theme.fg("accent", "─".repeat(width)));
-			addWrappedWithPrefix(" ", theme.fg("text", question), lines, width);
-			if (context) {
-				lines.push("");
-				addWrappedWithPrefix(" ", theme.fg("muted", context), lines, width);
-			}
-			lines.push("");
+                add(theme.fg("accent", "─".repeat(width)));
+                addWrappedWithPrefix(" ", theme.fg("text", question), lines, width);
+                if (context) {
+                    lines.push("");
+                    addWrappedWithPrefix(" ", theme.fg("muted", context), lines, width);
+                }
+                lines.push("");
 
-			for (let i = 0; i < allOptions.length; i++) {
-				const option = allOptions[i];
-				const selected = i === optionIndex;
-				const prefix = selected ? theme.fg("accent", "> ") : "  ";
-				const label = option.isOther ? option.label : `${option.index}. ${option.label}`;
-				const styled = selected ? theme.fg("accent", label) : theme.fg("text", label);
-				add(`${prefix}${styled}`);
-				if (option.description) {
-					addWrappedWithPrefix("     ", theme.fg("muted", option.description), lines, width);
-				}
-			}
+                for (let i = 0; i < allOptions.length; i++) {
+                    const option = allOptions[i];
+                    const selected = i === optionIndex;
+                    const prefix = selected ? theme.fg("accent", "> ") : "  ";
+                    const label = option.isOther
+                        ? option.label
+                        : `${option.index}. ${option.label}`;
+                    const styled = selected ? theme.fg("accent", label) : theme.fg("text", label);
+                    add(`${prefix}${styled}`);
+                    if (option.description) {
+                        addWrappedWithPrefix(
+                            "     ",
+                            theme.fg("muted", option.description),
+                            lines,
+                            width,
+                        );
+                    }
+                }
 
-			if (editMode) {
-				lines.push("");
-				add(theme.fg("muted", " Write your custom answer:"));
-				for (const line of editor.render(Math.max(1, width - 2))) {
-					add(` ${line}`);
-				}
-				lines.push("");
-				add(theme.fg("dim", " Enter to submit • Esc to go back"));
-			} else {
-				lines.push("");
-				add(theme.fg("dim", " ↑↓ navigate • Enter select • Esc cancel"));
-			}
+                if (editMode) {
+                    lines.push("");
+                    add(theme.fg("muted", " Write your custom answer:"));
+                    for (const line of editor.render(Math.max(1, width - 2))) {
+                        add(` ${line}`);
+                    }
+                    lines.push("");
+                    add(theme.fg("dim", " Enter to submit • Esc to go back"));
+                } else {
+                    lines.push("");
+                    add(theme.fg("dim", " ↑↓ navigate • Enter select • Esc cancel"));
+                }
 
-			add(theme.fg("accent", "─".repeat(width)));
-			cachedLines = lines;
-			return lines;
-		}
+                add(theme.fg("accent", "─".repeat(width)));
+                cachedLines = lines;
+                return lines;
+            }
 
-		return {
-			render,
-			invalidate: () => {
-				cachedLines = undefined;
-			},
-			handleInput,
-		};
-	});
+            return {
+                render,
+                invalidate: () => {
+                    cachedLines = undefined;
+                },
+                handleInput,
+            };
+        },
+    );
 }
 
 async function askMultiChoice(
-	ctx: any,
-	question: string,
-	context: string | undefined,
-	options: AskOption[],
+    ctx: any,
+    question: string,
+    context: string | undefined,
+    options: AskOption[],
 ): Promise<AskAnswer[] | null> {
-	const otherLabel = getOtherLabel(options);
-	const choiceItems: DisplayOption[] = options.map((option, index) => ({
-		...option,
-		id: `option:${index}`,
-		index: index + 1,
-	}));
-	const submitItem: DisplayOption = { id: "submit", label: "Submit", value: "__submit__", isSubmit: true };
-	const allItems: DisplayOption[] = [
-		...choiceItems,
-		{ id: "other", label: otherLabel, value: "__other__", isOther: true },
-		submitItem,
-	];
+    const otherLabel = getOtherLabel(options);
+    const choiceItems: DisplayOption[] = options.map((option, index) => ({
+        ...option,
+        id: `option:${index}`,
+        index: index + 1,
+    }));
+    const submitItem: DisplayOption = {
+        id: "submit",
+        label: "Submit",
+        value: "__submit__",
+        isSubmit: true,
+    };
+    const allItems: DisplayOption[] = [
+        ...choiceItems,
+        { id: "other", label: otherLabel, value: "__other__", isOther: true },
+        submitItem,
+    ];
 
-	return (ctx.ui.custom as any)((tui: any, theme: any, _kb: any, done: (result: AskAnswer[] | null) => void) => {
-		let optionIndex = 0;
-		let editMode = false;
-		let cachedLines: string[] | undefined;
-		const selected = new Map<string, AskAnswer>();
-		const editor = new Editor(tui, createEditorTheme(theme));
+    return (ctx.ui.custom as any)(
+        (tui: any, theme: any, _kb: any, done: (result: AskAnswer[] | null) => void) => {
+            let optionIndex = 0;
+            let editMode = false;
+            let cachedLines: string[] | undefined;
+            const selected = new Map<string, AskAnswer>();
+            const editor = new Editor(tui, createEditorTheme(theme));
 
-		editor.onSubmit = (value) => {
-			const trimmed = value.trim();
-			if (!trimmed) return;
-			selected.set("other", { type: "other", label: trimmed, value: trimmed });
-			editMode = false;
-			refresh();
-		};
+            editor.onSubmit = (value) => {
+                const trimmed = value.trim();
+                if (!trimmed) return;
+                selected.set("other", { type: "other", label: trimmed, value: trimmed });
+                editMode = false;
+                refresh();
+            };
 
-		function refresh() {
-			cachedLines = undefined;
-			tui.requestRender();
-		}
+            function refresh() {
+                cachedLines = undefined;
+                tui.requestRender();
+            }
 
-		function toggleOption(item: DisplayOption) {
-			if (selected.has(item.id)) {
-				selected.delete(item.id);
-			} else {
-				selected.set(item.id, {
-					type: "option",
-					label: item.label,
-					value: item.value,
-					index: item.index!,
-				});
-			}
-			refresh();
-		}
+            function toggleOption(item: DisplayOption) {
+                if (selected.has(item.id)) {
+                    selected.delete(item.id);
+                } else {
+                    selected.set(item.id, {
+                        type: "option",
+                        label: item.label,
+                        value: item.value,
+                        index: item.index!,
+                    });
+                }
+                refresh();
+            }
 
-		function handleInput(data: string) {
-			if (editMode) {
-				if (matchesKey(data, Key.escape)) {
-					editMode = false;
-					editor.setText(selected.get("other")?.label || "");
-					refresh();
-					return;
-				}
-				editor.handleInput(data);
-				refresh();
-				return;
-			}
+            function handleInput(data: string) {
+                if (editMode) {
+                    if (matchesKey(data, Key.escape)) {
+                        editMode = false;
+                        editor.setText(selected.get("other")?.label || "");
+                        refresh();
+                        return;
+                    }
+                    editor.handleInput(data);
+                    refresh();
+                    return;
+                }
 
-			if (matchesKey(data, Key.up)) {
-				optionIndex = Math.max(0, optionIndex - 1);
-				refresh();
-				return;
-			}
-			if (matchesKey(data, Key.down)) {
-				optionIndex = Math.min(allItems.length - 1, optionIndex + 1);
-				refresh();
-				return;
-			}
+                if (matchesKey(data, Key.up)) {
+                    optionIndex = Math.max(0, optionIndex - 1);
+                    refresh();
+                    return;
+                }
+                if (matchesKey(data, Key.down)) {
+                    optionIndex = Math.min(allItems.length - 1, optionIndex + 1);
+                    refresh();
+                    return;
+                }
 
-			const current = allItems[optionIndex];
-			if (matchesKey(data, Key.space)) {
-				if (current.isSubmit) return;
-				if (current.isOther) {
-					if (selected.has("other")) {
-						selected.delete("other");
-						refresh();
-					} else {
-						editMode = true;
-						editor.setText("");
-						refresh();
-					}
-					return;
-				}
-				toggleOption(current);
-				return;
-			}
+                const current = allItems[optionIndex];
+                if (matchesKey(data, Key.space)) {
+                    if (current.isSubmit) return;
+                    if (current.isOther) {
+                        if (selected.has("other")) {
+                            selected.delete("other");
+                            refresh();
+                        } else {
+                            editMode = true;
+                            editor.setText("");
+                            refresh();
+                        }
+                        return;
+                    }
+                    toggleOption(current);
+                    return;
+                }
 
-			if (matchesKey(data, Key.enter)) {
-				if (current.isSubmit) {
-					if (selected.size > 0) {
-						done(sortAnswers(Array.from(selected.values())));
-					}
-					return;
-				}
-				if (current.isOther) {
-					editMode = true;
-					editor.setText(selected.get("other")?.label || "");
-					refresh();
-					return;
-				}
-				toggleOption(current);
-				return;
-			}
+                if (matchesKey(data, Key.enter)) {
+                    if (current.isSubmit) {
+                        if (selected.size > 0) {
+                            done(sortAnswers(Array.from(selected.values())));
+                        }
+                        return;
+                    }
+                    if (current.isOther) {
+                        editMode = true;
+                        editor.setText(selected.get("other")?.label || "");
+                        refresh();
+                        return;
+                    }
+                    toggleOption(current);
+                    return;
+                }
 
-			if (matchesKey(data, Key.escape)) {
-				done(null);
-			}
-		}
+                if (matchesKey(data, Key.escape)) {
+                    done(null);
+                }
+            }
 
-		function render(width: number): string[] {
-			if (cachedLines) return cachedLines;
+            function render(width: number): string[] {
+                if (cachedLines) return cachedLines;
 
-			const lines: string[] = [];
-			const add = (text: string) => lines.push(text);
+                const lines: string[] = [];
+                const add = (text: string) => lines.push(text);
 
-			add(theme.fg("accent", "─".repeat(width)));
-			addWrappedWithPrefix(" ", theme.fg("text", question), lines, width);
-			if (context) {
-				lines.push("");
-				addWrappedWithPrefix(" ", theme.fg("muted", context), lines, width);
-			}
-			lines.push("");
+                add(theme.fg("accent", "─".repeat(width)));
+                addWrappedWithPrefix(" ", theme.fg("text", question), lines, width);
+                if (context) {
+                    lines.push("");
+                    addWrappedWithPrefix(" ", theme.fg("muted", context), lines, width);
+                }
+                lines.push("");
 
-			for (let i = 0; i < allItems.length; i++) {
-				const item = allItems[i];
-				const isFocused = i === optionIndex;
-				const prefix = isFocused ? theme.fg("accent", "> ") : "  ";
+                for (let i = 0; i < allItems.length; i++) {
+                    const item = allItems[i];
+                    const isFocused = i === optionIndex;
+                    const prefix = isFocused ? theme.fg("accent", "> ") : "  ";
 
-				if (item.isSubmit) {
-					const label = selected.size > 0 ? `✓ ${item.label} (${selected.size} selected)` : `○ ${item.label}`;
-					const styled = isFocused
-						? theme.fg("accent", label)
-						: theme.fg(selected.size > 0 ? "success" : "dim", label);
-					add(`${prefix}${styled}`);
-					continue;
-				}
+                    if (item.isSubmit) {
+                        const label =
+                            selected.size > 0
+                                ? `✓ ${item.label} (${selected.size} selected)`
+                                : `○ ${item.label}`;
+                        const styled = isFocused
+                            ? theme.fg("accent", label)
+                            : theme.fg(selected.size > 0 ? "success" : "dim", label);
+                        add(`${prefix}${styled}`);
+                        continue;
+                    }
 
-				if (item.isOther) {
-					const other = selected.get("other");
-					const marker = other ? "[x]" : "[ ]";
-					const suffix = other ? ` — ${other.label}` : "";
-					const styled = isFocused
-						? theme.fg("accent", `${marker} ${item.label}${suffix}`)
-						: theme.fg(other ? "success" : "text", `${marker} ${item.label}${suffix}`);
-					add(`${prefix}${styled}`);
-					continue;
-				}
+                    if (item.isOther) {
+                        const other = selected.get("other");
+                        const marker = other ? "[x]" : "[ ]";
+                        const suffix = other ? ` — ${other.label}` : "";
+                        const styled = isFocused
+                            ? theme.fg("accent", `${marker} ${item.label}${suffix}`)
+                            : theme.fg(
+                                  other ? "success" : "text",
+                                  `${marker} ${item.label}${suffix}`,
+                              );
+                        add(`${prefix}${styled}`);
+                        continue;
+                    }
 
-				const checked = selected.has(item.id);
-				const marker = checked ? "[x]" : "[ ]";
-				const label = `${marker} ${item.index}. ${item.label}`;
-				const styled = isFocused
-					? theme.fg("accent", label)
-					: theme.fg(checked ? "success" : "text", label);
-				add(`${prefix}${styled}`);
-				if (item.description) {
-					addWrappedWithPrefix("     ", theme.fg("muted", item.description), lines, width);
-				}
-			}
+                    const checked = selected.has(item.id);
+                    const marker = checked ? "[x]" : "[ ]";
+                    const label = `${marker} ${item.index}. ${item.label}`;
+                    const styled = isFocused
+                        ? theme.fg("accent", label)
+                        : theme.fg(checked ? "success" : "text", label);
+                    add(`${prefix}${styled}`);
+                    if (item.description) {
+                        addWrappedWithPrefix(
+                            "     ",
+                            theme.fg("muted", item.description),
+                            lines,
+                            width,
+                        );
+                    }
+                }
 
-			if (editMode) {
-				lines.push("");
-				add(theme.fg("muted", " Write your custom answer:"));
-				for (const line of editor.render(Math.max(1, width - 2))) {
-					add(` ${line}`);
-				}
-				lines.push("");
-				add(theme.fg("dim", " Enter to save • Esc to go back"));
-			} else {
-				lines.push("");
-				if (selected.size === 0) {
-					add(theme.fg("warning", " Select at least one answer before submitting."));
-				}
-				add(theme.fg("dim", " ↑↓ navigate • Space toggle • Enter edit/submit • Esc cancel"));
-			}
+                if (editMode) {
+                    lines.push("");
+                    add(theme.fg("muted", " Write your custom answer:"));
+                    for (const line of editor.render(Math.max(1, width - 2))) {
+                        add(` ${line}`);
+                    }
+                    lines.push("");
+                    add(theme.fg("dim", " Enter to save • Esc to go back"));
+                } else {
+                    lines.push("");
+                    if (selected.size === 0) {
+                        add(theme.fg("warning", " Select at least one answer before submitting."));
+                    }
+                    add(
+                        theme.fg(
+                            "dim",
+                            " ↑↓ navigate • Space toggle • Enter edit/submit • Esc cancel",
+                        ),
+                    );
+                }
 
-			add(theme.fg("accent", "─".repeat(width)));
-			cachedLines = lines;
-			return lines;
-		}
+                add(theme.fg("accent", "─".repeat(width)));
+                cachedLines = lines;
+                return lines;
+            }
 
-		return {
-			render,
-			invalidate: () => {
-				cachedLines = undefined;
-			},
-			handleInput,
-		};
-	});
+            return {
+                render,
+                invalidate: () => {
+                    cachedLines = undefined;
+                },
+                handleInput,
+            };
+        },
+    );
 }
 
 // Mutex to serialize concurrent UI interactions.
@@ -625,120 +673,151 @@ async function askMultiChoice(
 let uiLock: Promise<void> = Promise.resolve();
 
 function withUILock<T>(fn: () => Promise<T>): Promise<T> {
-	const prev = uiLock;
-	let release: () => void;
-	uiLock = new Promise<void>((r) => { release = r; });
-	return prev.then(fn).finally(() => release!());
+    const prev = uiLock;
+    let release: () => void;
+    uiLock = new Promise<void>((r) => {
+        release = r;
+    });
+    return prev.then(fn).finally(() => release!());
 }
 
 export default function askUserQuestion(pi: ExtensionAPI) {
-	pi.registerTool({
-		name: "ask_user_question",
-		label: "ask_user_question",
-		description:
-			"Ask the user a single question and pause execution until they answer. Use this when requirements are ambiguous, user preferences are needed, a decision would materially affect implementation, or you need confirmation before proceeding. Ask exactly one question per tool call, and prefer multiple separate tool calls over bundling unrelated questions together.",
-		promptSnippet:
-			"Use this tool to ask exactly one clarifying question, missing-requirement question, preference question, or decision question before continuing.",
-		promptGuidelines: [
-			"Ask exactly one question per tool call.",
-			"If you need answers to multiple questions, make multiple separate ask_user_question tool calls instead of combining them into one prompt.",
-			'Users will always be able to select "Other" to provide custom text input when options are provided.',
-			"Use multiSelect: true only when you need multiple answers to the same question.",
-			'If you recommend a specific option, make it the first option in the list and add "(Recommended)" at the end of the label.',
-			"Prefer this tool over guessing when requirements, preferences, or implementation choices are unclear.",
-			"Use this tool when multiple valid implementation paths exist and the preferred path depends on user choice.",
-		],
-		parameters: AskUserQuestionParams,
+    pi.registerTool({
+        name: "ask_user_question",
+        label: "ask_user_question",
+        description:
+            "Ask the user a single question and pause execution until they answer. Use this when requirements are ambiguous, user preferences are needed, a decision would materially affect implementation, or you need confirmation before proceeding. Ask exactly one question per tool call, and prefer multiple separate tool calls over bundling unrelated questions together.",
+        promptSnippet:
+            "Use this tool to ask exactly one clarifying question, missing-requirement question, preference question, or decision question before continuing.",
+        promptGuidelines: [
+            "Ask exactly one question per tool call.",
+            "If you need answers to multiple questions, make multiple separate ask_user_question tool calls instead of combining them into one prompt.",
+            'Users will always be able to select "Other" to provide custom text input when options are provided.',
+            "Use multiSelect: true only when you need multiple answers to the same question.",
+            'If you recommend a specific option, make it the first option in the list and add "(Recommended)" at the end of the label.',
+            "Prefer this tool over guessing when requirements, preferences, or implementation choices are unclear.",
+            "Use this tool when multiple valid implementation paths exist and the preferred path depends on user choice.",
+            "Keep options[].label under 50 characters — long labels overflow because they don't wrap in the interactive UI.",
+        ],
+        parameters: AskUserQuestionParams,
 
-		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-			const options = normalizeOptions(params.options);
-			const context = params.details?.trim() || undefined;
-			const mode: AskUserQuestionMode = options.length === 0 ? "text" : params.multiSelect ? "multi-select" : "single-select";
+        async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+            const options = normalizeOptions(params.options);
+            const context = params.details?.trim() || undefined;
+            const mode: AskUserQuestionMode =
+                options.length === 0
+                    ? "text"
+                    : params.multiSelect
+                      ? "multi-select"
+                      : "single-select";
 
-			if (signal?.aborted) {
-				return cancelledResult(params.question, mode, context);
-			}
+            if (signal?.aborted) {
+                return cancelledResult(params.question, mode, context);
+            }
 
-			if (!ctx.hasUI) {
-				try {
-					const answerData = await relayToParent(ctx, params.question, context, mode,
-						params.options as any[] | undefined);
-					// Convert relay answer back to AskAnswer[]
-					const answers: AskAnswer[] = answerData.answers || [];
-					return buildResult(params.question, context, mode, answers);
-				} catch (err: any) {
-					return unavailableResult(params.question, mode,
-						`ask_user_question relay failed: ${err.message}`, context);
-				}
-			}
+            if (!ctx.hasUI) {
+                try {
+                    const answerData = await relayToParent(
+                        ctx,
+                        params.question,
+                        context,
+                        mode,
+                        params.options as any[] | undefined,
+                    );
+                    // Convert relay answer back to AskAnswer[]
+                    const answers: AskAnswer[] = answerData.answers || [];
+                    return buildResult(params.question, context, mode, answers);
+                } catch (err: any) {
+                    return unavailableResult(
+                        params.question,
+                        mode,
+                        `ask_user_question relay failed: ${err.message}`,
+                        context,
+                    );
+                }
+            }
 
-			return withUILock(async () => {
-				if (mode === "text") {
-					const editorTitle = context ? `${params.question}\n\n${context}` : params.question;
-					const answer = await ctx.ui.editor(editorTitle);
-					if (answer === undefined) {
-						return cancelledResult(params.question, mode, context);
-					}
-					return buildResult(params.question, context, mode, [
-						{ type: "text", label: answer.trim(), value: answer.trim() },
-					]);
-				}
+            return withUILock(async () => {
+                if (mode === "text") {
+                    const editorTitle = context
+                        ? `${params.question}\n\n${context}`
+                        : params.question;
+                    const answer = await ctx.ui.editor(editorTitle);
+                    if (answer === undefined) {
+                        return cancelledResult(params.question, mode, context);
+                    }
+                    return buildResult(params.question, context, mode, [
+                        { type: "text", label: answer.trim(), value: answer.trim() },
+                    ]);
+                }
 
-				if (mode === "single-select") {
-					const answer = await askSingleChoice(ctx, params.question, context, options);
-					if (!answer) {
-						return cancelledResult(params.question, mode, context);
-					}
-					return buildResult(params.question, context, mode, [answer]);
-				}
+                if (mode === "single-select") {
+                    const answer = await askSingleChoice(ctx, params.question, context, options);
+                    if (!answer) {
+                        return cancelledResult(params.question, mode, context);
+                    }
+                    return buildResult(params.question, context, mode, [answer]);
+                }
 
-				const answers = await askMultiChoice(ctx, params.question, context, options);
-				if (!answers) {
-					return cancelledResult(params.question, mode, context);
-				}
-				return buildResult(params.question, context, mode, answers);
-			});
-		},
+                const answers = await askMultiChoice(ctx, params.question, context, options);
+                if (!answers) {
+                    return cancelledResult(params.question, mode, context);
+                }
+                return buildResult(params.question, context, mode, answers);
+            });
+        },
 
-		renderCall(args, theme) {
-			const options = normalizeOptions(args.options as Array<{ label: string; value?: string; description?: string }> | undefined);
-			let text = theme.fg("toolTitle", theme.bold("ask_user_question ")) + theme.fg("muted", args.question);
-			if (args.multiSelect) {
-				text += theme.fg("dim", " [multi-select]");
-			}
-			if (options.length > 0) {
-				const labels = [...options.map((option) => option.label), getOtherLabel(options)].join(", ");
-				text += `\n${theme.fg("dim", `  Options: ${labels}`)}`;
-			}
-			return new Text(text, 0, 0);
-		},
+        renderCall(args, theme) {
+            const options = normalizeOptions(
+                args.options as
+                    Array<{ label: string; value?: string; description?: string }> | undefined,
+            );
+            let text =
+                theme.fg("toolTitle", theme.bold("ask_user_question ")) +
+                theme.fg("muted", args.question);
+            if (args.multiSelect) {
+                text += theme.fg("dim", " [multi-select]");
+            }
+            if (options.length > 0) {
+                const labels = [
+                    ...options.map((option) => option.label),
+                    getOtherLabel(options),
+                ].join(", ");
+                text += `\n${theme.fg("dim", `  Options: ${labels}`)}`;
+            }
+            return new Text(text, 0, 0);
+        },
 
-		renderResult(result, _options, theme) {
-			const details = result.details as AskUserQuestionResultDetails | undefined;
-			if (!details) {
-				const first = result.content[0];
-				return new Text(first?.type === "text" ? first.text : "", 0, 0);
-			}
+        renderResult(result, _options, theme) {
+            const details = result.details as AskUserQuestionResultDetails | undefined;
+            if (!details) {
+                const first = result.content[0];
+                return new Text(first?.type === "text" ? first.text : "", 0, 0);
+            }
 
-			if (details.status === "cancelled") {
-				return new Text(theme.fg("warning", details.message || "Cancelled"), 0, 0);
-			}
+            if (details.status === "cancelled") {
+                return new Text(theme.fg("warning", details.message || "Cancelled"), 0, 0);
+            }
 
-			if (details.status === "unavailable") {
-				return new Text(theme.fg("warning", details.message || "ask_user_question unavailable"), 0, 0);
-			}
+            if (details.status === "unavailable") {
+                return new Text(
+                    theme.fg("warning", details.message || "ask_user_question unavailable"),
+                    0,
+                    0,
+                );
+            }
 
-			const lines = details.answers.map((answer) => {
-				switch (answer.type) {
-					case "text":
-						return `${theme.fg("success", "✓ ")}${theme.fg("accent", answer.label || "(empty response)")}`;
-					case "other":
-						return `${theme.fg("success", "✓ ")}${theme.fg("muted", "Other: ")}${theme.fg("accent", answer.label)}`;
-					case "option":
-						return `${theme.fg("success", "✓ ")}${theme.fg("accent", `${answer.index}. ${answer.label}`)}`;
-				}
-			});
-			return new Text(lines.join("\n"), 0, 0);
-		},
-	});
+            const lines = details.answers.map((answer) => {
+                switch (answer.type) {
+                    case "text":
+                        return `${theme.fg("success", "✓ ")}${theme.fg("accent", answer.label || "(empty response)")}`;
+                    case "other":
+                        return `${theme.fg("success", "✓ ")}${theme.fg("muted", "Other: ")}${theme.fg("accent", answer.label)}`;
+                    case "option":
+                        return `${theme.fg("success", "✓ ")}${theme.fg("accent", `${answer.index}. ${answer.label}`)}`;
+                }
+            });
+            return new Text(lines.join("\n"), 0, 0);
+        },
+    });
 }

@@ -1,7 +1,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { AuthStorage, CONFIG_DIR_NAME, getAgentDir, ModelRegistry, parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import {
+    AuthStorage,
+    CONFIG_DIR_NAME,
+    getAgentDir,
+    ModelRegistry,
+    parseFrontmatter,
+} from "@earendil-works/pi-coding-agent";
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentConfig, AgentScope, AgentSource } from "./types.js";
 
@@ -14,36 +20,37 @@ export const AGENTS_DIR = path.join(EXT_DIR, "..", "agents");
 export const TOOLS_DIR = path.join(EXT_DIR, "..", "tools");
 export { DEFAULT_MAX_CONCURRENCY } from "./settings.js";
 
-const EXT_BASE = path.join(EXT_DIR, "..", "..");
-
-export function loadEnv(): void {
-	if (envLoaded) return;
-	envLoaded = true;
-	const envPath = path.join(EXT_BASE, "..", ".env");
-	if (!fs.existsSync(envPath)) return;
-	try {
-		const content = fs.readFileSync(envPath, "utf-8");
-		for (const line of content.split(/\r?\n/)) {
-			const trimmed = line.trim();
-			if (!trimmed || trimmed.startsWith("#")) continue;
-			const index = trimmed.indexOf("=");
-			if (index === -1) continue;
-			const key = trimmed.slice(0, index).trim();
-			let val = trimmed.slice(index + 1).trim();
-			if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-				val = val.slice(1, -1);
-			}
-			process.env[key] = val;
-		}
-	} catch {}
+export function loadEnv(force = false): void {
+    if (envLoaded && !force) return;
+    envLoaded = true;
+    const envPath = path.join(getAgentDir(), "..", ".env");
+    if (!fs.existsSync(envPath)) return;
+    try {
+        const content = fs.readFileSync(envPath, "utf-8");
+        for (const line of content.split(/\r?\n/)) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith("#")) continue;
+            const index = trimmed.indexOf("=");
+            if (index === -1) continue;
+            const key = trimmed.slice(0, index).trim();
+            let val = trimmed.slice(index + 1).trim();
+            if (
+                (val.startsWith('"') && val.endsWith('"')) ||
+                (val.startsWith("'") && val.endsWith("'"))
+            ) {
+                val = val.slice(1, -1);
+            }
+            process.env[key] = val;
+        }
+    } catch {}
 }
 
 function isDirectory(p: string): boolean {
-	try {
-		return fs.statSync(p).isDirectory();
-	} catch {
-		return false;
-	}
+    try {
+        return fs.statSync(p).isDirectory();
+    } catch {
+        return false;
+    }
 }
 
 /**
@@ -51,79 +58,83 @@ function isDirectory(p: string): boolean {
  * Returns an empty array if the directory does not exist.
  */
 export function loadAgentsFromDir(dir: string, source: AgentSource): AgentConfig[] {
-	const agents: AgentConfig[] = [];
-	if (!fs.existsSync(dir)) return agents;
-	let entries: fs.Dirent[];
-	try {
-		entries = fs.readdirSync(dir, { withFileTypes: true });
-	} catch {
-		return agents;
-	}
-	for (const entry of entries) {
-		if (!entry.name.endsWith(".md")) continue;
-		if (!entry.isFile() && !entry.isSymbolicLink()) continue;
-		const filePath = path.join(dir, entry.name);
-		let content: string;
-		try {
-			content = fs.readFileSync(filePath, "utf-8");
-		} catch {
-			continue;
-		}
-		const { frontmatter, body } = parseFrontmatter<Record<string, string>>(content);
-		if (!frontmatter.name) continue;
+    const agents: AgentConfig[] = [];
+    if (!fs.existsSync(dir)) return agents;
+    let entries: fs.Dirent[];
+    try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+        return agents;
+    }
+    for (const entry of entries) {
+        if (!entry.name.endsWith(".md")) continue;
+        if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+        const filePath = path.join(dir, entry.name);
+        let content: string;
+        try {
+            content = fs.readFileSync(filePath, "utf-8");
+        } catch {
+            continue;
+        }
+        const { frontmatter, body } = parseFrontmatter<Record<string, string>>(content);
+        if (!frontmatter.name) continue;
 
-		const tools = (frontmatter.tools || "")
-			.split(",")
-			.map((t) => t.trim())
-			.filter(Boolean);
+        const tools = (frontmatter.tools || "")
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean);
 
-		let model = frontmatter.model || "anthropic/claude-sonnet-4-6";
-		model = model.replace(/\${([^}]+)}/g, (_, name) => {
-			const val = process.env[name];
-			return val !== undefined ? val : `\${${name}}`;
-		});
-		model = model.replace(/\$([A-Z_a-z0-9]+)/g, (_, name) => {
-			const val = process.env[name];
-			return val !== undefined ? val : `$${name}`;
-		});
+        let model = frontmatter.model || "anthropic/claude-sonnet-4-6";
+        model = model.replace(/\${([^}]+)}/g, (_, name) => {
+            const val = process.env[name];
+            return val !== undefined ? val : `\${${name}}`;
+        });
+        model = model.replace(/\$([A-Z_a-z0-9]+)/g, (_, name) => {
+            const val = process.env[name];
+            return val !== undefined ? val : `$${name}`;
+        });
 
-		agents.push({
-			name: frontmatter.name,
-			description: frontmatter.description || "",
-			tools,
-			model,
-			systemPrompt: body,
-			filePath,
-			source,
-		});
-	}
-	return agents;
+        agents.push({
+            name: frontmatter.name,
+            description: frontmatter.description || "",
+            tools,
+            model,
+            systemPrompt: body,
+            filePath,
+            source,
+        });
+    }
+    return agents;
 }
 
 /**
  * Walk up from `cwd` looking for a `.pi/agents/` directory (project-local agents).
  */
 export function findNearestProjectAgentsDir(cwd: string): string | null {
-	let currentDir = cwd;
-	while (true) {
-		const candidate = path.join(currentDir, CONFIG_DIR_NAME, "agents");
-		if (isDirectory(candidate)) return candidate;
-		const parentDir = path.dirname(currentDir);
-		if (parentDir === currentDir) return null;
-		currentDir = parentDir;
-	}
+    let currentDir = cwd;
+    while (true) {
+        const candidate = path.join(currentDir, CONFIG_DIR_NAME, "agents");
+        if (isDirectory(candidate)) return candidate;
+        const parentDir = path.dirname(currentDir);
+        if (parentDir === currentDir) return null;
+        currentDir = parentDir;
+    }
 }
 
 /**
  * Result of discoverAgents().
  */
 export interface AgentDiscoveryResult {
-	agents: AgentConfig[];
-	projectAgentsDir: string | null;
+    agents: AgentConfig[];
+    projectAgentsDir: string | null;
 }
 
 // Module-level cache for discoverAgents() — agent files don't change mid-session
 const agentDiscoveryCache = new Map<string, AgentDiscoveryResult>();
+
+export function clearAgentCache(): void {
+    agentDiscoveryCache.clear();
+}
 
 /**
  * Discover agents from the standard user directory (~/.pi/agent/agents/)
@@ -133,53 +144,63 @@ const agentDiscoveryCache = new Map<string, AgentDiscoveryResult>();
  * for built-in agents shipped with the subagents extension.
  */
 export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryResult {
-	const cacheKey = `${cwd}:${scope}`;
-	const cached = agentDiscoveryCache.get(cacheKey);
-	if (cached) return cached;
+    const cacheKey = `${cwd}:${scope}`;
+    const cached = agentDiscoveryCache.get(cacheKey);
+    if (cached) return cached;
 
-	const userDir = path.join(getAgentDir(), "agents");
-	const projectAgentsDir = findNearestProjectAgentsDir(cwd);
+    const userDir = path.join(getAgentDir(), "agents");
+    const projectAgentsDir = findNearestProjectAgentsDir(cwd);
 
-	const userAgents = scope === "project" ? [] : loadAgentsFromDir(userDir, "user");
+    const userAgents = scope === "project" ? [] : loadAgentsFromDir(userDir, "user");
 
-	// Fallback: also check the extension's own agents/ dir for built-in agents
-	if (scope !== "project" && userDir !== AGENTS_DIR) {
-		const extAgents = loadAgentsFromDir(AGENTS_DIR, "user");
-		// Merge: standard location takes priority over extension fallback
-		const agentMap = new Map<string, AgentConfig>();
-		for (const a of extAgents) agentMap.set(a.name, a);
-		for (const a of userAgents) agentMap.set(a.name, a);
-		const merged = Array.from(agentMap.values());
+    // Fallback: also check the extension's own agents/ dir for built-in agents
+    if (scope !== "project" && userDir !== AGENTS_DIR) {
+        const extAgents = loadAgentsFromDir(AGENTS_DIR, "user");
+        // Merge: standard location takes priority over extension fallback
+        const agentMap = new Map<string, AgentConfig>();
+        for (const a of extAgents) agentMap.set(a.name, a);
+        for (const a of userAgents) agentMap.set(a.name, a);
+        const merged = Array.from(agentMap.values());
 
-		const projectAgents = scope === "user" || !projectAgentsDir ? [] : loadAgentsFromDir(projectAgentsDir, "project");
+        const projectAgents =
+            scope === "user" || !projectAgentsDir
+                ? []
+                : loadAgentsFromDir(projectAgentsDir, "project");
 
-		if (scope === "both") {
-			for (const a of merged) agentMap.set(a.name, a);
-			for (const a of projectAgents) agentMap.set(a.name, a);
-			const result: AgentDiscoveryResult = { agents: Array.from(agentMap.values()), projectAgentsDir };
-			agentDiscoveryCache.set(cacheKey, result);
-			return result;
-		}
-		const result2: AgentDiscoveryResult = { agents: merged, projectAgentsDir };
-		agentDiscoveryCache.set(cacheKey, result2);
-		return result2;
-	}
+        if (scope === "both") {
+            for (const a of merged) agentMap.set(a.name, a);
+            for (const a of projectAgents) agentMap.set(a.name, a);
+            const result: AgentDiscoveryResult = {
+                agents: Array.from(agentMap.values()),
+                projectAgentsDir,
+            };
+            agentDiscoveryCache.set(cacheKey, result);
+            return result;
+        }
+        const result2: AgentDiscoveryResult = { agents: merged, projectAgentsDir };
+        agentDiscoveryCache.set(cacheKey, result2);
+        return result2;
+    }
 
-	const projectAgents = scope === "user" || !projectAgentsDir ? [] : loadAgentsFromDir(projectAgentsDir, "project");
+    const projectAgents =
+        scope === "user" || !projectAgentsDir ? [] : loadAgentsFromDir(projectAgentsDir, "project");
 
-	const agentMap = new Map<string, AgentConfig>();
-	if (scope === "both") {
-		for (const a of userAgents) agentMap.set(a.name, a);
-		for (const a of projectAgents) agentMap.set(a.name, a);
-	} else if (scope === "user") {
-		for (const a of userAgents) agentMap.set(a.name, a);
-	} else {
-		for (const a of projectAgents) agentMap.set(a.name, a);
-	}
+    const agentMap = new Map<string, AgentConfig>();
+    if (scope === "both") {
+        for (const a of userAgents) agentMap.set(a.name, a);
+        for (const a of projectAgents) agentMap.set(a.name, a);
+    } else if (scope === "user") {
+        for (const a of userAgents) agentMap.set(a.name, a);
+    } else {
+        for (const a of projectAgents) agentMap.set(a.name, a);
+    }
 
-	const result: AgentDiscoveryResult = { agents: Array.from(agentMap.values()), projectAgentsDir };
-	agentDiscoveryCache.set(cacheKey, result);
-	return result;
+    const result: AgentDiscoveryResult = {
+        agents: Array.from(agentMap.values()),
+        projectAgentsDir,
+    };
+    agentDiscoveryCache.set(cacheKey, result);
+    return result;
 }
 
 /**
@@ -187,8 +208,8 @@ export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryRe
  * via discoverAgents(), falling back to the extension's own agents/ directory.
  */
 export function loadAgents(): AgentConfig[] {
-	loadEnv();
-	return discoverAgents(process.cwd(), "user").agents;
+    loadEnv();
+    return discoverAgents(process.cwd(), "user").agents;
 }
 
 /**
@@ -196,20 +217,20 @@ export function loadAgents(): AgentConfig[] {
  * Returns undefined if the model cannot be resolved.
  */
 export async function resolveModel(
-	modelId: string,
-	agentDir: string,
+    modelId: string,
+    agentDir: string,
 ): Promise<Model<any> | undefined> {
-	const slashIdx = modelId.lastIndexOf("/");
-	if (slashIdx === -1) return undefined;
-	const provider = modelId.slice(0, slashIdx);
-	const name = modelId.slice(slashIdx + 1);
-	try {
-		const authStorage = AuthStorage.create(path.join(agentDir, "auth.json"));
-		const registry = ModelRegistry.create(authStorage, path.join(agentDir, "models.json"));
-		registry.refresh();
-		const model = registry.find(provider, name);
-		return model ?? undefined;
-	} catch {
-		return undefined;
-	}
+    const slashIdx = modelId.lastIndexOf("/");
+    if (slashIdx === -1) return undefined;
+    const provider = modelId.slice(0, slashIdx);
+    const name = modelId.slice(slashIdx + 1);
+    try {
+        const authStorage = AuthStorage.create(path.join(agentDir, "auth.json"));
+        const registry = ModelRegistry.create(authStorage, path.join(agentDir, "models.json"));
+        registry.refresh();
+        const model = registry.find(provider, name);
+        return model ?? undefined;
+    } catch {
+        return undefined;
+    }
 }

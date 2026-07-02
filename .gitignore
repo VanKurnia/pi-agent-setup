@@ -58,3 +58,7 @@ agent/pi-speeed.json
 agent/pi-speeed-stats.json
 pi-session-*.html
 
+# Agent trust & Obsidian config
+agent/trust.json
+obsidian-config.json
+

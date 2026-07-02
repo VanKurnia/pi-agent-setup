@@ -2,7 +2,7 @@ import {
     createAgentSession,
     DEFAULT_MAX_BYTES,
     DEFAULT_MAX_LINES,
-    truncateHead,
+    truncateTail,
     getAgentDir,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
@@ -38,7 +38,7 @@ export async function runSubagent(
     cwd: string,
     signal: AbortSignal | undefined,
     onUpdate?: (progress: AgentProgress) => void,
-    ctx?: any,
+    _ctx?: any,
 ): Promise<AgentResult> {
     const agentDir = getAgentDir();
 
@@ -205,13 +205,13 @@ export async function runSubagent(
 
     // Truncate output if very large
     if (result.output.length > DEFAULT_MAX_BYTES) {
-        const trunc = truncateHead(result.output, {
+        const trunc = truncateTail(result.output, {
             maxLines: DEFAULT_MAX_LINES,
             maxBytes: DEFAULT_MAX_BYTES,
         });
         result.output = trunc.content;
         if (trunc.truncated) {
-            result.output += "\n\n[Output truncated]";
+            result.output = "[Output truncated \u2014 beginning omitted]\n\n" + result.output;
         }
     }
 

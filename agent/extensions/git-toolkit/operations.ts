@@ -16,7 +16,7 @@ export function registerOperations(pi: ExtensionAPI) {
         parameters: Type.Object({
             repo_path: Type.String({ description: "Path to Git repository" }),
         }),
-        async execute(toolCallId, params) {
+        async execute(_toolCallId, params) {
             try {
                 const output = await runGit(params.repo_path, ["status"]);
                 return ok(output ? `\`\`\`text\n${output}\n\`\`\`` : "Working tree clean");
@@ -41,7 +41,7 @@ export function registerOperations(pi: ExtensionAPI) {
                 Type.Number({ description: "Number of context lines to show (default: 3)" }),
             ),
         }),
-        async execute(toolCallId, params) {
+        async execute(_toolCallId, params) {
             try {
                 const context = params.context_lines !== undefined ? params.context_lines : 3;
                 const output = await runGit(params.repo_path, ["diff", `-U${context}`]);
@@ -65,7 +65,7 @@ export function registerOperations(pi: ExtensionAPI) {
                 Type.Number({ description: "Number of context lines to show (default: 3)" }),
             ),
         }),
-        async execute(toolCallId, params) {
+        async execute(_toolCallId, params) {
             try {
                 const context = params.context_lines !== undefined ? params.context_lines : 3;
                 const output = await runGit(params.repo_path, ["diff", "--cached", `-U${context}`]);
@@ -90,7 +90,7 @@ export function registerOperations(pi: ExtensionAPI) {
                 Type.Number({ description: "Number of context lines to show (default: 3)" }),
             ),
         }),
-        async execute(toolCallId, params) {
+        async execute(_toolCallId, params) {
             try {
                 const context = params.context_lines !== undefined ? params.context_lines : 3;
                 const output = await runGit(params.repo_path, [
@@ -116,7 +116,7 @@ export function registerOperations(pi: ExtensionAPI) {
             repo_path: Type.String({ description: "Path to Git repository" }),
             files: Type.Array(Type.String(), { description: "Array of file paths to stage" }),
         }),
-        async execute(toolCallId, params) {
+        async execute(_toolCallId, params) {
             try {
                 // Defense-in-depth: resolve and verify the staging paths are inside repo_path boundaries
                 const resolvedRepo = path.resolve(params.repo_path);
@@ -160,7 +160,7 @@ export function registerOperations(pi: ExtensionAPI) {
             repo_path: Type.String({ description: "Path to Git repository" }),
             message: Type.String({ description: "Commit message" }),
         }),
-        async execute(toolCallId, params) {
+        async execute(_toolCallId, params) {
             try {
                 const output = await runGit(params.repo_path, ["commit", "-m", params.message]);
                 return ok(`\`\`\`text\n${output}\n\`\`\``);
@@ -182,7 +182,7 @@ export function registerOperations(pi: ExtensionAPI) {
         parameters: Type.Object({
             repo_path: Type.String({ description: "Path to Git repository" }),
         }),
-        async execute(toolCallId, params) {
+        async execute(_toolCallId, params) {
             try {
                 await runGit(params.repo_path, ["reset"]);
                 return ok("Successfully unstaged all changes.");
@@ -213,7 +213,7 @@ export function registerOperations(pi: ExtensionAPI) {
                 Type.String({ description: "ISO 8601, relative, or absolute date" }),
             ),
         }),
-        async execute(toolCallId, params) {
+        async execute(_toolCallId, params) {
             try {
                 const args = ["log", `--max-count=${params.max_count || 10}`, "--oneline"];
                 if (params.start_timestamp) {
@@ -242,7 +242,7 @@ export function registerOperations(pi: ExtensionAPI) {
             branch_name: Type.String({ description: "Name of the new branch" }),
             base_branch: Type.Optional(Type.String({ description: "Base branch to create from" })),
         }),
-        async execute(toolCallId, params) {
+        async execute(_toolCallId, params) {
             try {
                 const args = ["checkout", "-b", params.branch_name];
                 if (params.base_branch) {
@@ -271,7 +271,7 @@ export function registerOperations(pi: ExtensionAPI) {
             repo_path: Type.String({ description: "Path to Git repository" }),
             branch_name: Type.String({ description: "Name of branch to checkout" }),
         }),
-        async execute(toolCallId, params) {
+        async execute(_toolCallId, params) {
             try {
                 const output = await runGit(params.repo_path, ["checkout", params.branch_name]);
                 return ok(
@@ -298,7 +298,7 @@ export function registerOperations(pi: ExtensionAPI) {
                 description: "The revision (commit hash, branch name, tag) to show",
             }),
         }),
-        async execute(toolCallId, params) {
+        async execute(_toolCallId, params) {
             try {
                 const output = await runGit(params.repo_path, ["show", params.revision]);
                 return ok(`\`\`\`diff\n${output}\n\`\`\``);
@@ -325,7 +325,7 @@ export function registerOperations(pi: ExtensionAPI) {
                 Type.String({ description: "The commit SHA that branch should NOT contain" }),
             ),
         }),
-        async execute(toolCallId, params) {
+        async execute(_toolCallId, params) {
             try {
                 const args = ["branch"];
                 if (params.branch_type === "all") {
