@@ -1,6 +1,6 @@
 ---
 name: obsidian-writer
-description: Guides the agent in writing and updating Obsidian notes following vault conventions — Title Case with spaces, no frontmatter, wikilinks-only cross-references, bilingual ID/EN, folder-based organization. Use when the agent needs to create or edit a note in the vault.
+description: Guides the agent in writing and updating Obsidian notes following vault conventions — Title Case with spaces, optional frontmatter, wikilinks-only cross-references, bilingual ID/EN, folder-based organization. Use when the agent needs to create or edit a note in the vault.
 ---
 
 # Obsidian Writer
@@ -11,7 +11,7 @@ Creating or updating notes in this vault.
 ## Setup — Before Writing
 
 ### 1. Check Vault Path
-Same as Navigator: check `.pi/obsidian-config.json` or `=== Obsidian Vault Context ===` in system prompt.
+Same as Navigator: check `.pi/agent/obsidian-config.json` or `=== Obsidian Vault Context ===` in system prompt.
 
 ### 2. Shell Environment
 This bash is **MinGW/Git Bash** (Unix-style):
@@ -31,7 +31,14 @@ This bash is **MinGW/Git Bash** (Unix-style):
 
 ### Format
 - **Title Case with spaces** for file names
-- **No frontmatter** — content starts from line 1
+- **Frontmatter**: optional for project notes. Format:
+  ```
+  ---
+  created: YYYY-MM-DD
+  modified: YYYY-MM-DD
+  ---
+  ```
+  Scratchpad/Ideas skip frontmatter.
 - **Headings**: `##` and `###` for structure
 - **Tables** for structured data
 - **Bullet lists** for points
@@ -52,7 +59,12 @@ This bash is **MinGW/Git Bash** (Unix-style):
 - **Archive** → don't delete. Leave as-is.
 
 ### Don't
-- Add frontmatter (this vault doesn't use it)
 - Change file naming format (Title Case with spaces)
 - Bulk-write to folders without context
 - Write outside designated folders
+
+## Voice
+- Indonesian: workflows, business rules, user instructions
+- English: code concepts, tech terms, design patterns
+- No greetings/sign-offs. Bullets > paragraphs. Tables > prose.
+- Block refs (^id) when citing specific claims from other notes

@@ -5,7 +5,11 @@
     "userMessages": "theme"
   },
   "footerSegments": {
-    "cost": false
+    "cost": false,
+    "context": true,
+    "cwd": true,
+    "runtime": true,
+    "tokens": true
   },
   "features": {
     "copyFriendly": true

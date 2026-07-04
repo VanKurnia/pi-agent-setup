@@ -47,17 +47,15 @@ mv ~/.pi ~/.pi.backup
 git clone https://github.com/VanKurnia/pi-agent-setup.git ~/.pi
 cd ~/.pi
 
-# Restore custom settings (models, auth, .env)
+# Restore custom settings (models, auth)
 cp ~/.pi.backup/agent/models.json ~/.pi/agent/ 2>/dev/null || true
 cp ~/.pi.backup/agent/auth.json ~/.pi/agent/    2>/dev/null || true
-cp ~/.pi.backup/.env ~/.pi/                      2>/dev/null || true
 
 bash update.sh
 ```
 
 ### Post-install
 
-- **`.env`** — `cp .env.example .env` then edit to configure subagent models
 - **`/login`** — authenticate with your provider (API key or subscription)
 - **Nerd Font** — required for icons in the TUI. Without one, you'll see garbled characters in menus and dialogs. [Download here](https://www.nerdfonts.com/font-downloads).
 
@@ -71,6 +69,25 @@ bash update.sh
 | Extension not loading | Run `bash update.sh` to reinstall deps. Check `agent/auth.json` exists. |
 | Icons look broken | Install a Nerd Font and set it as your terminal font. |
 | `update.sh` fails | Run in Git Bash, not cmd/PowerShell. The `~` path doesn't expand in Windows shells. |
+
+## External Integrations
+
+Pi connects to these external tools and services (not counting Pi packages):
+
+| Tool / Service | Integration | Status |
+|----------------|-------------|--------|
+| [[Obsidian]] | Termy plugin sends vault path + active note via `TERMY_CONTEXT_PATH`. Obsidian Suite injects vault Index + project context once per session. | Active |
+| [[9router]] | Local LLM routing proxy at `localhost:20128`. Sole provider (`defaultProvider: "9router"`) — all model requests go through it. Reasoning enabled. | Active |
+| [[VS Code]] / Zed / Neovim | `pi-x-ide` polls active file path and selection. Reconnects on session start, injects context per user message. | Active |
+| [[MySQL]] | `db-viewer` extension provides `query_mysql` tool — read-only queries via connection URI. | Active |
+| [[SQLite]] | `db-viewer` extension provides `query_sqlite` tool — read-only queries against local `.db` files. | Active |
+| [[Git]] | `git-toolkit` extension wraps 12 Git operations. Shell: Git Bash at `C:\Program Files\Git\bin\bash.exe`. | Active |
+| [[Chrome]] / Puppeteer | `browser-tools` extension provides browser automation. | Active |
+| [[Node.js]] | Runtime for all extensions (loaded via jiti). Version managed by nvm. | Active |
+
+**Single point of failure:** 9router is the only provider. If it goes down, Pi has no models to call. Consider a local fallback (Ollama) or direct API key.
+
+---
 
 ## What's Included
 
@@ -147,20 +164,22 @@ Pi auto-detects Git Bash. Only set a custom path for non-standard installations:
 }
 ```
 
-### Subagent Models (`.env`)
+### Subagent Models
 
-Configure which models subagents use:
+Configure per-agent models via `/subagents:settings` inside pi. Settings are stored in `agent/subagents.json`:
 
-```env
-RESEARCHER_MODEL=reason
-SCOUT_MODEL=assistant
-WORKER_MODEL=coder
-
-SUBAGENTS_MAX_CONCURRENCY=8
-PI_FFF_MODE=override
+```json
+{
+  "maxConcurrent": 8,
+  "agentModels": {
+    "researcher": "9router/reason",
+    "scout": "9router/assistant",
+    "worker": "9router/coder"
+  }
+}
 ```
 
-Copy `.env.example` to `.env` and edit.
+Models override the env-var references in the built-in agent files (`$SCOUT_MODEL` etc.). `.env` is not used — settings are the single source of truth.
 
 ### Custom Models
 

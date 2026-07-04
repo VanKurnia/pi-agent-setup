@@ -1,0 +1,30 @@
+{
+  "$schema": "pi-extension-deps-v1",
+  "description": "Extension dependency manifest — documents event ordering and cross-extension contracts.",
+
+  "optional": [
+    "obsidian-suite",
+    "pi-x-ide"
+  ],
+
+  "order": {
+    "session_start": [
+      "custom-header",
+      "obsidian-suite",
+      "md-link",
+      "filechanges",
+      "plan-mode",
+      "pi-speeed",
+      "pi-zentui"
+    ],
+    "before_agent_start": [
+      "obsidian-suite",
+      "pi-x-ide",
+      "plan-mode"
+    ],
+    "tool_call": [
+      "plan-mode",
+      "filechanges"
+    ]
+  }
+}
