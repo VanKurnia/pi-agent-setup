@@ -15,7 +15,7 @@ Vault context may already be injected in system prompt (look for `=== Obsidian V
 If present: use it as your map — `read` the files mentioned. Don't search externally.
 
 ### 1. Detect Vault Path
-- Check `.pi/obsidian-config.json` — read `vaultPath`
+- Check `.pi/agent/obsidian-config.json` — read `vaultPath`
 - If missing: search `~/Documents/Obsidian Vault/` or ask user via `/obsidian-path`
 
 ### 2. Shell Environment
@@ -24,6 +24,18 @@ This bash is **MinGW/Git Bash** (Unix-style):
 - ❌ Don't use `dir`, `type`, `findstr` (CMD syntax)
 
 ## Protocol: Progressive Disclosure
+### Level 0: Check memory first
+1. `ffgrep` vault for key terms from the question (smart-case, ranked by frecency)
+2. If ffgrep returns <3 results or the top result is weak, `ffind` the same terms (fuzzy path search catches differently-named files)
+3. If still nothing, try `ffgrep` with Indonesian/English synonyms of key terms (e.g., "data model" → "skema", "schema", "model data")
+4. If context exists → read top 1-2 matches, answer from vault
+5. If none: "No prior context" → answer fresh
+
+### Query tips
+- Strip stop words: "What is the MHI data model" → "MHI data model"
+- Try folder path as query: "HRIS MHI schema" hits more than "MHI data model"
+- For proper nouns, try the Indonesian term if English yields nothing
+
 1. **Level 1**: Read relevant folder's Index file (get the map)
 2. **Level 2**: From Index, pick 1-2 notes to read (get content)
 3. **Level 3**: Follow `[[wikilinks]]` in read notes (get graph context)
@@ -31,19 +43,15 @@ This bash is **MinGW/Git Bash** (Unix-style):
 Don't skip Level 1-2. Don't bulk read.
 
 ## Search Strategy
-- **Priority 1**: `ffgrep` for keyword search (fast, no full file reads)
-- **Priority 2**: If `ffgrep` returns thin results, fallback to `bash find <vaultPath> -name "*.md" | xargs grep -l <pattern>`
-- If `ffind` errors / not found — don't loop, fallback to priority 1 or 2
-- For full context, `read` matched files
-- Prioritize Index files as entry point — not direct search
+- **Level 0 handles retrieval** — see protocol above for the ffgrep → fffind → synonym chain
+- For full context after finding matches, `read` the files
+- Prioritize Index files as entry point over direct file search
 
 ## Token Budget
 - Inject max ~500 tokens from vault context into system prompt
-- Priority order: active project → recent log entries → relevant Index
-- `.log/log.md` — read only last 5 entries for session context
+- Priority order: active project → relevant Index
 
 ## Memory Facts Location
-- `.log/log.md` → session history, decisions, open items
 - `Projects/{name}/` → per-project context (architecture, tech stack, decisions)
 - `Ideas/` → brainstorming ideas (read-only, don't write here)
 - `Scratchpad/` → working notes (agent may write here)
