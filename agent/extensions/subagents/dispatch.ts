@@ -1,6 +1,6 @@
 import { discoverAgents } from "./src/config.js";
 import { getAgents } from "./src/registry.js";
-import { executeChain, executeParallel, executeSingle } from "./src/execute.js";
+import { executeChain, executeHybrid, executeParallel, executeSingle } from "./src/execute.js";
 import type { AgentScope } from "./src/types.js";
 import type { SettingsManager } from "./src/settings.js";
 
@@ -50,6 +50,17 @@ export function buildSubagentExecute(maxConcurrency: number, settings?: Settings
             if (params.chain) for (const s of params.chain) requestedAgentNames.add(s.agent);
             if (params.tasks) for (const t of params.tasks) requestedAgentNames.add(t.agent);
             if (params.agent) requestedAgentNames.add(params.agent);
+            if (params.hybrid) {
+                for (const phase of params.hybrid) {
+                    if (phase.mode === "single") {
+                        requestedAgentNames.add(phase.agent);
+                    } else {
+                        for (const t of phase.tasks) {
+                            requestedAgentNames.add(t.agent);
+                        }
+                    }
+                }
+            }
 
             if (requestedAgentNames.size > 0) {
                 const projectAgentsRequested = Array.from(requestedAgentNames)
@@ -77,8 +88,19 @@ export function buildSubagentExecute(maxConcurrency: number, settings?: Settings
             }
         }
 
-        // Dispatch: chain, parallel, single
-        if (params.chain && params.chain.length > 0) {
+        // Dispatch: hybrid, chain, parallel, single
+        if (params.hybrid && params.hybrid.length > 0) {
+            return executeHybrid(
+                params.hybrid,
+                maxConcurrency,
+                cwd,
+                signal,
+                ctx,
+                onUpdate,
+                agentScope,
+                agents,
+            );
+        } else if (params.chain && params.chain.length > 0) {
             return executeChain(
                 params.chain,
                 maxConcurrency,
@@ -114,7 +136,7 @@ export function buildSubagentExecute(maxConcurrency: number, settings?: Settings
         } else {
             const available = agents.map((a) => a.name).join(", ") || "none";
             throw new Error(
-                `Provide chain[], agent+task (single), or tasks[] (parallel). Available agents: ${available}`,
+                `Provide hybrid[], chain[], agent+task (single), or tasks[] (parallel). Available agents: ${available}`,
             );
         }
     };

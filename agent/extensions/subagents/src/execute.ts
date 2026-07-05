@@ -1,4 +1,4 @@
-import type { AgentConfig, AgentResult, Details, AgentScope } from "./types.js";
+import type { AgentConfig, AgentResult, Details, AgentScope, HybridPhase } from "./types.js";
 import { runSubagent } from "./process.js";
 import { computeWorkerDiffs } from "./diff.js";
 import { mapConcurrent, throttle } from "./utils.js";
@@ -241,5 +241,204 @@ export async function executeChain(
     return {
         content: [{ type: "text", text: last?.output || "(no output)" }],
         details: { mode: "chain" as const, results: allResults, agentScope },
+    };
+}
+
+/**
+ * Merge parallel phase outputs into a structured string for {previous} context.
+ * Each agent's output gets a heading; failed agents are marked.
+ */
+function mergeParallelOutputs(results: AgentResult[]): string {
+    return results
+        .map((r) => {
+            const failMark = r.exitCode !== 0 ? " (FAILED)" : "";
+            return `## ${r.agent}${failMark}
+
+${r.output || "(no output)"}`;
+        })
+        .join("\n\n---\n\n");
+}
+
+/**
+ * Execute a hybrid sequence of phases — an ordered mix of single, parallel, and chain modes.
+ * Phases execute sequentially; each phase's output feeds the next via {previous} placeholder.
+ * Parallel phase outputs are merged into a structured string; chain/single pass raw output.
+ * Partial failures in parallel phases are tolerated; chain failures stop the hybrid.
+ */
+export async function executeHybrid(
+    phases: HybridPhase[],
+    maxConcurrency: number,
+    cwd: string,
+    signal: AbortSignal | undefined,
+    ctx: any,
+    onUpdate: any,
+    agentScope: AgentScope = "user",
+    agents?: AgentConfig[],
+): Promise<{ content: any[]; details: Details; isError?: boolean }> {
+    const allResults: AgentResult[] = [];
+    let previousOutput = "";
+    const totalPhases = phases.length;
+
+    const fireHybridUpdate = (phaseIdx: number, phaseLabel: string, results: AgentResult[]) => {
+        onUpdate?.({
+            content: [
+                {
+                    type: "text",
+                    text: `Hybrid phase ${phaseIdx + 1}/${totalPhases}: ${phaseLabel}...`,
+                },
+            ],
+            details: {
+                mode: "hybrid" as const,
+                results: [...allResults, ...results],
+                agentScope,
+            },
+        });
+    };
+
+    for (let i = 0; i < phases.length; i++) {
+        const phase = phases[i];
+
+        // Resolve {previous} in task strings
+        const resolvePrevious = (task: string) => task.replace(/\{previous\}/g, previousOutput);
+
+        if (phase.mode === "single") {
+            const task = resolvePrevious(phase.task);
+            fireHybridUpdate(i, `single: ${phase.agent}`, []);
+
+            const result = await executeSingle(
+                phase.agent,
+                task,
+                phase.cwd ?? cwd,
+                signal,
+                ctx,
+                (upd: any) => {
+                    // Re-broadcast phase updates with hybrid context
+                    if (upd?.details?.results) {
+                        fireHybridUpdate(i, `single: ${phase.agent}`, upd.details.results);
+                    }
+                },
+                agentScope,
+                agents,
+            );
+
+            const phaseResult = result.details.results[0];
+            allResults.push(phaseResult);
+            previousOutput = phaseResult.output || previousOutput;
+
+            if (result.isError) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Hybrid stopped at phase ${i + 1} (single: ${phase.agent}): ${phaseResult.output || phaseResult.progress.error || "(no output)"}`,
+                        },
+                    ],
+                    details: { mode: "hybrid" as const, results: allResults, agentScope },
+                    isError: true,
+                };
+            }
+        } else if (phase.mode === "parallel") {
+            const tasksWithContext = phase.tasks.map((t) => ({
+                agent: t.agent,
+                task: resolvePrevious(t.task),
+                cwd: t.cwd,
+            }));
+
+            fireHybridUpdate(i, `parallel (${tasksWithContext.length} tasks)`, []);
+
+            const result = await executeParallel(
+                tasksWithContext,
+                maxConcurrency,
+                cwd,
+                signal,
+                ctx,
+                (upd: any) => {
+                    if (upd?.details?.results) {
+                        fireHybridUpdate(
+                            i,
+                            `parallel (${tasksWithContext.length} tasks)`,
+                            upd.details.results,
+                        );
+                    }
+                },
+                agentScope,
+                agents,
+            );
+
+            for (const r of result.details.results) {
+                allResults.push(r);
+            }
+
+            // Merge all parallel outputs for context passing
+            previousOutput = mergeParallelOutputs(result.details.results);
+
+            // Check collect mode: "first" means we already got one result, so proceed
+            // For "all", check if all failed
+            const collect = phase.collect ?? "all";
+            const completedOk = result.details.results.filter((r) => r.exitCode === 0).length;
+
+            if (collect === "first" && completedOk === 0) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Hybrid stopped at phase ${i + 1} (parallel): all tasks failed with collect:"first"`,
+                        },
+                    ],
+                    details: { mode: "hybrid" as const, results: allResults, agentScope },
+                    isError: true,
+                };
+            }
+            // "all" mode tolerates partial failures — other tasks' partial output still flows
+        } else if (phase.mode === "chain") {
+            const stepsWithContext = phase.tasks.map((s) => ({
+                agent: s.agent,
+                task: resolvePrevious(s.task),
+                cwd: s.cwd,
+            }));
+
+            fireHybridUpdate(i, `chain (${stepsWithContext.length} steps)`, []);
+
+            const result = await executeChain(
+                stepsWithContext,
+                maxConcurrency,
+                cwd,
+                signal,
+                ctx,
+                (upd: any) => {
+                    if (upd?.details?.results) {
+                        fireHybridUpdate(
+                            i,
+                            `chain (${stepsWithContext.length} steps)`,
+                            upd.details.results,
+                        );
+                    }
+                },
+                agentScope,
+                agents,
+            );
+
+            for (const r of result.details.results) {
+                allResults.push(r);
+            }
+
+            const lastResult = result.details.results[result.details.results.length - 1];
+            previousOutput = lastResult?.output || previousOutput;
+
+            if (result.isError) {
+                return {
+                    content: result.content,
+                    details: { mode: "hybrid" as const, results: allResults, agentScope },
+                    isError: true,
+                };
+            }
+        }
+    }
+
+    // Return the last phase's output as final content
+    const last = allResults[allResults.length - 1];
+    return {
+        content: [{ type: "text", text: last?.output || "(no output)" }],
+        details: { mode: "hybrid" as const, results: allResults, agentScope },
     };
 }

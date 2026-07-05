@@ -25,6 +25,40 @@ export const ChainItem = Type.Object({
     cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
 });
 
+const CollectSchema = StringEnum(["all", "first"] as const, {
+    description:
+        'Parallel collect mode: "all" waits for all tasks, "first" returns on first completion',
+    default: "all",
+});
+
+const TaskItem = Type.Object({
+    agent: Type.String({ description: "Name of the agent to invoke" }),
+    task: Type.String({ description: "Task description" }),
+    cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
+});
+
+const HybridSinglePhase = Type.Object({
+    mode: Type.Literal("single", { description: "Single-agent phase" }),
+    agent: Type.String({ description: "Name of the agent to invoke" }),
+    task: Type.String({ description: "Task with optional {previous} placeholder" }),
+    cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
+});
+
+const HybridParallelPhase = Type.Object({
+    mode: Type.Literal("parallel", { description: "Parallel fan-out phase" }),
+    tasks: Type.Array(TaskItem, { description: "Tasks to run in parallel" }),
+    collect: Type.Optional(CollectSchema),
+});
+
+const HybridChainPhase = Type.Object({
+    mode: Type.Literal("chain", { description: "Sequential chain phase" }),
+    tasks: Type.Array(ChainItem, { description: "Steps to run sequentially" }),
+});
+
+const HybridPhase = Type.Union([HybridSinglePhase, HybridParallelPhase, HybridChainPhase], {
+    description: "A single phase in a hybrid execution",
+});
+
 export const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
     description:
         'Which agent directories to use. Default: "user". Use "both" to include project-local agents.',
@@ -50,6 +84,12 @@ export const SubagentParams = Type.Object({
         Type.Array(ChainItem, {
             description:
                 "CHAIN mode: sequential {agent, task} steps with {previous} placeholder support",
+        }),
+    ),
+    hybrid: Type.Optional(
+        Type.Array(HybridPhase, {
+            description:
+                "HYBRID mode: ordered array of mixed-mode phases (single/parallel/chain). Phases execute sequentially; each phase's output feeds the next via {previous}.",
         }),
     ),
     agentScope: Type.Optional(AgentScopeSchema),
@@ -87,9 +127,10 @@ export default function registerSubagent(pi: ExtensionAPI) {
             while (true) {
                 const agents = discoverAgents(ctx.cwd, "user").agents;
 
-                // Step 1: pick agent or concurrency — show current model info
+                // Step 1: pick agent or concurrency/depth — show current model info
                 const agentOptions = [
                     "[max concurrency]",
+                    "[bash depth]",
                     ...agents.map((a) => {
                         const m = settings.getAgentModel(a.name);
                         return m ? `${a.name} — ${m}` : a.name;
@@ -105,6 +146,34 @@ export default function registerSubagent(pi: ExtensionAPI) {
                 const agentName = selectedAgent.startsWith("[")
                     ? selectedAgent
                     : selectedAgent.split(" — ")[0];
+
+                if (agentName === "[bash depth]") {
+                    const current = settings.depth;
+                    const answer = await ctx.ui.input(
+                        `Current bash-guard depth: ${current}`,
+                        "Enter 0 (main session) or >= 1 (subagent), or leave empty",
+                    );
+                    if (answer) {
+                        const trimmed = answer.trim();
+                        const n = parseInt(trimmed, 10);
+                        if (!isNaN(n) && n >= 0) {
+                            // Directly set depth field in settings file for bash-guard to read
+                            settings.depth = n;
+                            const ok = settings.save();
+                            // Reload to sync in-memory state for next loop iteration
+                            settings.load();
+                            ctx.ui.notify?.(
+                                ok
+                                    ? `Bash depth set to ${n}`
+                                    : `Set to ${n} (session only; failed to persist)`,
+                                ok ? "info" : "warning",
+                            );
+                        } else {
+                            ctx.ui.notify?.("Must be 0 or a positive integer.", "warning");
+                        }
+                    }
+                    continue;
+                }
 
                 if (agentName === "[max concurrency]") {
                     const current = settings.maxConcurrent;
@@ -215,10 +284,51 @@ export default function registerSubagent(pi: ExtensionAPI) {
         onUpdate: any,
         ctx: any,
     ) => {
-        const mode = params.chain ? "chain" : params.tasks ? "parallel" : "single";
+        const mode = params.hybrid
+            ? "hybrid"
+            : params.chain
+              ? "chain"
+              : params.tasks
+                ? "parallel"
+                : "single";
 
         // Emit CREATED event for each agent in this invocation
-        if (params.agent) {
+        if (params.hybrid) {
+            for (const phase of params.hybrid) {
+                if (phase.mode === "single") {
+                    pi.events.emit(SUBAGENT_EVENTS.CREATED, {
+                        agentId: `${toolCallId}-${phase.agent}`,
+                        agentName: phase.agent,
+                        task: phase.task || "",
+                        mode: "hybrid",
+                        agentScope: params.agentScope ?? "user",
+                        timestamp: Date.now(),
+                    } satisfies SubagentCreatedEvent);
+                } else if (phase.mode === "parallel") {
+                    for (const t of phase.tasks) {
+                        pi.events.emit(SUBAGENT_EVENTS.CREATED, {
+                            agentId: `${toolCallId}-${t.agent}`,
+                            agentName: t.agent,
+                            task: t.task || "",
+                            mode: "hybrid",
+                            agentScope: params.agentScope ?? "user",
+                            timestamp: Date.now(),
+                        } satisfies SubagentCreatedEvent);
+                    }
+                } else if (phase.mode === "chain") {
+                    for (const s of phase.tasks) {
+                        pi.events.emit(SUBAGENT_EVENTS.CREATED, {
+                            agentId: `${toolCallId}-${s.agent}`,
+                            agentName: s.agent,
+                            task: s.task || "",
+                            mode: "hybrid",
+                            agentScope: params.agentScope ?? "user",
+                            timestamp: Date.now(),
+                        } satisfies SubagentCreatedEvent);
+                    }
+                }
+            }
+        } else if (params.agent) {
             pi.events.emit(SUBAGENT_EVENTS.CREATED, {
                 agentId: toolCallId,
                 agentName: params.agent,
@@ -293,6 +403,7 @@ export default function registerSubagent(pi: ExtensionAPI) {
             "Use subagent to delegate *reasoning and decisions*: codebase exploration (scout), web research (researcher — use for multi-step research, not single lookups), or isolated code changes (worker)",
             "Single fact lookup on the web? Call ninerouter_web_search directly. Need 3+ searches, source comparison, or synthesis? Delegate to researcher.",
             "For multiple independent subagent tasks, use parallel mode with tasks[] array",
+            "For multi-phase workflows (scout → implement → verify), use hybrid mode with hybrid[] array — phases execute sequentially, each phase feeds the next via {previous}.",
             "Subagents have NO context from the current conversation — include ALL necessary context in the task description",
         ],
         parameters: SubagentParams,

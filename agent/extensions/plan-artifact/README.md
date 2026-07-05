@@ -6,9 +6,12 @@ Renders `.plans/` markdown as a browser UI with inline commenting, syntax highli
 
 - Browser-based markdown renderer (marked.js + highlight.js + mermaid.js)
 - GFM compliance: strikethrough, autolinks, task lists, tables
+- Obsidian-style single-card layout with section separators (`---`)
 - Inline section commenting with edit/delete support
 - Accept/reject workflow with batched comment delivery to assistant
+- Skeleton loading state, error differentiation (plan accepted/changes requested/disconnected), focus trap on modals, ARIA labels
 - TUI widget showing plan status (`plan_artifact` tool, `/plan-artifact` command)
+- Idempotent re-rendering (skips hljs/mermaid on already-processed elements)
 
 ## Usage
 

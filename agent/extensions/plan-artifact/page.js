@@ -2,7 +2,6 @@
 var token = new URLSearchParams(window.location.search).get("token") || "";
 var pendingCommentSection = -1;
 var currentPlan = null;
-
 function esc(s) {
   var d = document.createElement("div");
   d.textContent = s;
@@ -23,6 +22,7 @@ function copyCode(btn) {
 }
 
 var pollingActive = true;
+var disconnectReason = "";
 
 var ICON_ACCEPT =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
@@ -33,11 +33,53 @@ var ICON_COMMENT =
 var ICON_COPY =
   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 var ICON_REJECT =
-  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
 var ICON_EDIT =
   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
 var ICON_DELETE =
   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+
+function showSkeleton() {
+  document.getElementById("content").innerHTML =
+    '<div class="skeleton" aria-label="Loading plan…">' +
+    '<div class="skeleton-line" style="width:60%"></div>' +
+    '<div class="skeleton-line" style="width:90%"></div>' +
+    '<div class="skeleton-line" style="width:75%"></div>' +
+    '<div class="skeleton-line" style="width:40%"></div>' +
+    '</div>';
+}
+
+function highlightCodeBlocks(root) {
+  if (!window.hljs) return;
+  root.querySelectorAll('.code-block code').forEach(function (codeEl) {
+    if (codeEl.dataset.highlighted) return;
+    var langClass = Array.from(codeEl.classList).find(function (c) { return c.startsWith('language-'); });
+    var lang = langClass ? langClass.replace('language-', '') : null;
+    var raw = codeEl.textContent;
+    var tmp = document.createElement('code');
+    if (lang) tmp.className = 'language-' + lang;
+    tmp.textContent = raw;
+    hljs.highlightElement(tmp);
+    codeEl.innerHTML = tmp.innerHTML.split('\n').map(function (l) {
+      return '<span class="line">' + (l || ' ') + '</span>';
+    }).join('\n');
+    codeEl.dataset.highlighted = '1';
+  });
+  // legacy <pre><code> not inside .code-block
+  root.querySelectorAll('pre:not(.mermaid):not(.code-block pre)').forEach(function (el) {
+    if (el.dataset.highlighted) return;
+    hljs.highlightElement(el);
+    el.dataset.highlighted = '1';
+  });
+}
+
+function runMermaid(root) {
+  if (!window.mermaid) return;
+  var diagrams = root.querySelectorAll('pre.mermaid:not([data-rendered])');
+  if (diagrams.length === 0) return;
+  diagrams.forEach(function (el) { el.dataset.rendered = '1'; });
+  window.mermaid.run({ querySelector: 'pre.mermaid[data-rendered="1"]' }).catch(function () {});
+}
 
 function loadPlan() {
   if (!pollingActive) return;
@@ -48,78 +90,73 @@ function loadPlan() {
     })
     .then(function (p) {
       if (!p) {
-        document.getElementById("sections").innerHTML = "<p>No plan.</p>";
+        document.getElementById("content").innerHTML = "<p class='muted'>No plan.</p>";
         return;
       }
       currentPlan = p;
       document.getElementById("summary").textContent = p.summary;
-      document.getElementById("statusBadge").textContent =
-        p.status.charAt(0).toUpperCase() + p.status.slice(1);
+      var badge = document.getElementById("statusBadge");
+      badge.textContent = p.status.charAt(0).toUpperCase() + p.status.slice(1);
+      badge.className = "status-badge " + p.status;
       document.getElementById("acceptBtn").disabled = p.status === "accepted";
       document.getElementById("rejectBtn").disabled = p.status !== "pending";
+      disconnectReason = "";
 
-      var html = "";
-      for (var i = 0; i < p.sections.length; i++) {
-        var s = p.sections[i];
-        var tag = "h" + Math.min(s.level, 6);
-        html += '<div class="section">';
-        html += '<div class="section-header">';
-        html += "<" + tag + ">" + esc(s.title) + "</" + tag + ">";
-        html +=
-          '<button class="comment-btn" data-section-index="' +
-          i +
-          '" title="Add comment">' +
-          ICON_COMMENT +
-          "</button>";
-        html += "</div>";
-        html += "<div>" + s.content + "</div>";
-        if (p.comments) {
-          html += '<div class="comments">';
-          for (var j = 0; j < p.comments.length; j++) {
-            if (p.comments[j].sectionIndex === i) {
-              var cid = p.comments[j].id;
-              html += '<div class="comment" data-comment-id="' + esc(cid) + '" data-section-index="' + i + '">';
-              html += '<span class="comment-text">' + esc(p.comments[j].text) + '</span>';
-              html += '<span class="comment-actions">';
-              html += '<button class="comment-action-btn edit-btn" data-comment-id="' + esc(cid) + '" title="Edit comment">' + ICON_EDIT + '</button>';
-              html += '<button class="comment-action-btn delete-btn" data-comment-id="' + esc(cid) + '" title="Delete comment">' + ICON_DELETE + '</button>';
-              html += '</span>';
-              html += '</div>';
-            }
-          }
-          html += "</div>";
-        }
-        html += "</div>";
-      }
-      document.getElementById("sections").innerHTML = html;
-      // Re-run syntax highlighting and mermaid rendering
-      if (window.hljs) {
-        // Highlight non-.code-block pre elements directly
-        document.querySelectorAll('pre:not(.mermaid)').forEach(function(el) {
-          if (!el.closest('.code-block')) hljs.highlightElement(el);
-        });
-        // For .code-block: highlight raw text, then wrap lines
-        document.querySelectorAll('.code-block code').forEach(function(codeEl) {
-          var langClass = Array.from(codeEl.classList).find(function(c) { return c.startsWith('language-'); });
-          var lang = langClass ? langClass.replace('language-', '') : null;
-          var raw = codeEl.textContent;
-          var tmp = document.createElement('code');
-          if (lang) tmp.className = 'language-' + lang;
-          tmp.textContent = raw;
-          hljs.highlightElement(tmp);
-          var highlighted = tmp.innerHTML;
-          codeEl.innerHTML = highlighted.split('\n').map(function(l) {
-            return '<span class="line">' + (l || ' ') + '</span>';
-          }).join('\n');
-        });
-      }
-      if (window.mermaid) window.mermaid.run({ querySelector: "pre.mermaid" }).catch(function(){});
+      var html = renderSections(p);
+      var contentEl = document.getElementById("content");
+      contentEl.innerHTML = html;
+      highlightCodeBlocks(contentEl);
+      runMermaid(contentEl);
     })
     .catch(function () {
       pollingActive = false;
-      document.getElementById("sections").innerHTML =
-        "<p>Disconnected — server stopped.</p>";
+      // preserve last rendered plan but show disconnect banner
+      var banner = document.getElementById("disconnect");
+      if (!banner) {
+        var msg = disconnectReason ? "Plan " + disconnectReason : "Disconnected — server stopped.";
+        document.getElementById("content").insertAdjacentHTML("afterbegin",
+          '<div class="disconnect-banner" id="disconnect">' + msg + '</div>'
+        );
+      }
     });
+}
+
+function renderSections(p) {
+  var html = "";
+  for (var i = 0; i < p.sections.length; i++) {
+    var s = p.sections[i];
+    var tag = "h" + Math.min(s.level, 6);
+    if (i > 0) html += '<hr class="section-sep" role="separator">';
+    html += '<div class="section">';
+    html += '<div class="section-header">';
+    html += "<" + tag + ">" + esc(s.title) + "</" + tag + ">";
+    html +=
+      '<button class="comment-btn" data-section-index="' +
+      i +
+      '" title="Add comment" aria-label="Add comment on ' + esc(s.title) + '">' +
+      ICON_COMMENT +
+      "</button>";
+    html += "</div>";
+    html += "<div>" + s.content + "</div>";
+    if (p.comments) {
+      html += '<div class="comments">';
+      for (var j = 0; j < p.comments.length; j++) {
+        if (p.comments[j].sectionIndex === i) {
+          var cid = p.comments[j].id;
+          html += '<div class="comment" data-comment-id="' + esc(cid) + '" data-section-index="' + i + '">';
+          html += '<span class="comment-text">' + esc(p.comments[j].text) + '</span>';
+          html += '<span class="comment-actions">';
+          html += '<button class="comment-action-btn edit-btn" data-comment-id="' + esc(cid) + '" title="Edit comment" aria-label="Edit comment">' + ICON_EDIT + '</button>';
+          html += '<button class="comment-action-btn delete-btn" data-comment-id="' + esc(cid) + '" title="Delete comment" aria-label="Delete comment">' + ICON_DELETE + '</button>';
+          html += '</span>';
+          html += '</div>';
+        }
+      }
+      html += "</div>";
+    }
+    html += "</div>";
+  }
+  return html;
 }
 
 setInterval(loadPlan, 3000);
@@ -129,7 +166,9 @@ document.getElementById("acceptBtn").addEventListener("click", acceptPlan);
 document.getElementById("rejectBtn").addEventListener("click", requestChanges);
 document.getElementById("cancelBtn").addEventListener("click", closeCommentModal);
 document.getElementById("submitBtn").addEventListener("click", submitCommentModal);
-document.getElementById("sections").addEventListener("click", function (e) {
+
+// ── event delegation on content (handles dynamic sections) ──
+document.getElementById("content").addEventListener("click", function (e) {
   var editBtn = e.target.closest(".edit-btn");
   if (editBtn && editBtn.dataset.commentId !== undefined) {
     editComment(editBtn.dataset.commentId, parseInt(editBtn.closest(".comment").dataset.sectionIndex));
@@ -149,7 +188,7 @@ document.getElementById("sections").addEventListener("click", function (e) {
 function acceptPlan() {
   fetch("/api/proposal/accept?token=" + token, { method: "POST" }).then(
     function (r) {
-      if (r.ok) showToast("Plan accepted");
+      if (r.ok) { showToast("Plan accepted"); disconnectReason = "accepted"; }
       else showToast("Failed to accept", true);
     }
   );
@@ -162,7 +201,7 @@ function requestChanges() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feedback: text }),
     }).then(function (r) {
-      if (r.ok) showToast("Feedback sent");
+      if (r.ok) { showToast("Feedback sent"); disconnectReason = "changes requested"; }
       else showToast("Failed to send", true);
     });
   });
@@ -217,16 +256,47 @@ function deleteComment(commentId) {
   });
 }
 
+// ── modal + focus trap ──
+
+var focusTrapElements = [];
 function openCommentModal(title, sectionIndex, onSubmit, initialText) {
   document.getElementById("modalTitle").textContent = title;
   document.getElementById("modalText").value = initialText || "";
   pendingCommentSection = sectionIndex;
   window._commentOnSubmit = onSubmit;
   document.getElementById("commentModal").classList.add("show");
+  document.getElementById("modalText").focus();
+
+  // focus trap
+  focusTrapElements = [
+    document.getElementById("modalText"),
+    document.getElementById("submitBtn"),
+    document.getElementById("cancelBtn"),
+  ];
+  document.addEventListener("keydown", focusTrapHandler);
 }
 
 function closeCommentModal() {
   document.getElementById("commentModal").classList.remove("show");
+  document.removeEventListener("keydown", focusTrapHandler);
+  focusTrapElements = [];
+}
+
+function focusTrapHandler(e) {
+  if (e.key !== "Tab" || focusTrapElements.length === 0) return;
+  var first = focusTrapElements[0];
+  var last = focusTrapElements[focusTrapElements.length - 1];
+  if (e.shiftKey) {
+    if (document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    }
+  } else {
+    if (document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 }
 
 function submitCommentModal() {

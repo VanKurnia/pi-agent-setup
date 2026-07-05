@@ -24,16 +24,9 @@
  * - State persisted via pi.appendEntry()
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { PlanArtifactApi } from "../subagents/src/types.js";
 import { getExtensionApi } from "../shared/cross-extension-api.js";
 import { isSafeCommand, extractTodoItems, markCompletedSteps, type TodoItem } from "./utils.js";
-
-interface PlanArtifactApi {
-    isRunning: () => boolean;
-    getUrl: () => string | null;
-    getSummary: () => string | null;
-    getStatus: () => string | null;
-    getPlanContent: () => string | null;
-}
 
 const COMMAND_NAME = "read-only";
 const PLAN_COMMAND_NAME = "plan";
