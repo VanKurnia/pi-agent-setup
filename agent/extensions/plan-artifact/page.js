@@ -2,6 +2,8 @@
 var token = new URLSearchParams(window.location.search).get("token") || "";
 var pendingCommentSection = -1;
 var currentPlan = null;
+var renderedSections = new Set();
+
 function esc(s) {
   var d = document.createElement("div");
   d.textContent = s;
