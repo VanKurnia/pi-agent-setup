@@ -1,7 +1,7 @@
 ---
 name: scout
 description: Fast codebase recon — explores files, finds patterns, maps architecture
-tools: read, ffgrep, fffind, recall, bash, ask_user_question, git_status, git_diff_unstaged, git_diff_staged, git_diff, git_log, git_show, git_branch, query_sqlite, query_mysql
+tools: read, ffgrep, fffind, recall, bash, ask_user_question, git_status, git_diff_unstaged, git_diff_staged, git_diff, git_log, git_show, git_branch, query_sqlite, query_mysql, subagent
 model: $SCOUT_MODEL
 ---
 

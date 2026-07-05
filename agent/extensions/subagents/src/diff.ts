@@ -1,6 +1,9 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import * as path from "node:path";
+import { resolve } from "node:path";
+import { getExtensionApi } from "../../shared/cross-extension-api.js";
+import type { FilechangesApi } from "../src/types.js";
 
 const execAsync = promisify(exec);
 
@@ -84,14 +87,39 @@ async function getFileDiff(filePath: string, cwd: string): Promise<string> {
     return (raw || "").trim();
 }
 
-export async function computeWorkerDiffs(output: string, cwd: string, _ctx?: any): Promise<string> {
+export async function computeWorkerDiffs(output: string, cwd: string, ctx?: any): Promise<string> {
     const filePaths = extractFilePaths(output);
     const parts: string[] = [];
 
+    const filechanges = getExtensionApi<FilechangesApi>("filechanges");
+
     for (const filePath of filePaths) {
         try {
-            // ponytail: makeRelPath(filePath, cwd) available for future tracked-state detection
-            // showResult was removed as unused when Plan 020 cleaned dead variables
+            const relPath = makeRelPath(filePath, cwd);
+            const absPath = resolve(cwd, relPath);
+
+            // Register with filechanges so users can accept/decline the
+            // worker's modifications. We read the pre-worker baseline from git
+            // because computeWorkerDiffs runs *after* the worker finished.
+            if (filechanges) {
+                try {
+                    const isTracked = await execAsync(`git cat-file -e HEAD:${relPath}`, { cwd })
+                        .then(() => true)
+                        .catch(() => false);
+                    // originalContent for tracked files = git HEAD;
+                    // for new files = null (didn't exist before)
+                    const orig = isTracked
+                        ? (
+                              await execAsync(`git show HEAD:"${relPath}"`, { cwd }).then(
+                                  (r) => r.stdout,
+                              )
+                          ).trimEnd()
+                        : null;
+                    await filechanges.trackFile(ctx, relPath, absPath, orig);
+                } catch {
+                    /* non-fatal */
+                }
+            }
 
             const diff = await getFileDiff(filePath, cwd);
             if (diff) {

@@ -52,8 +52,20 @@ export interface AgentResult {
     _renderedOutput?: any; // Markdown instance, cached to avoid re-parse per frame
 }
 
+export type HybridCollect = "all" | "first";
+
+/** A single phase in a hybrid execution — can be single, parallel, or chain */
+export type HybridPhase =
+    | { mode: "single"; agent: string; task: string; cwd?: string }
+    | {
+          mode: "parallel";
+          tasks: Array<{ agent: string; task: string; cwd?: string }>;
+          collect?: HybridCollect;
+      }
+    | { mode: "chain"; tasks: Array<{ agent: string; task: string; cwd?: string }> };
+
 export interface Details {
-    mode: "single" | "parallel" | "chain";
+    mode: "single" | "parallel" | "chain" | "hybrid";
     results: AgentResult[];
     agentScope?: AgentScope;
     projectAgentsDir?: string | null;
@@ -92,6 +104,10 @@ export interface PlanArtifactApi {
     getUrl: () => string | null;
     /** The plan summary, or null if no proposal. */
     getSummary: () => string | null;
+    /** The plan status: "pending" | "accepted" | "revising", or null if no proposal. */
+    getStatus: () => string | null;
+    /** The raw plan markdown content, or null if no proposal. */
+    getPlanContent: () => string | null;
 }
 
 /**
@@ -124,7 +140,7 @@ export interface SubagentCreatedEvent {
     agentId: string;
     agentName: string;
     task: string;
-    mode: "single" | "parallel" | "chain";
+    mode: "single" | "parallel" | "chain" | "hybrid";
     agentScope: string;
     timestamp: number;
 }
