@@ -1,13 +1,3 @@
----
-name: obsidian-styles
-description: >
-  Complete Obsidian-Flavored Markdown reference for writing and editing notes in
-  an Obsidian vault. USE FOR: writing new vault notes, editing existing .md files,
-  producing correct wikilinks / callouts / embeds / properties / block references /
-  task lists / Mermaid / math, understanding Obsidian-specific syntax that differs
-  from standard CommonMark / GFM, following this vault's note conventions.
----
-
 # Obsidian Notes — Syntax Reference
 
 Obsidian uses **Obsidian-Flavored Markdown** (OFM) — a superset of CommonMark and
@@ -369,15 +359,6 @@ console.log(greeting);
 Syntax highlighting uses **Prism** in Reading view; CodeMirror in Live Preview.
 Supported language identifiers: `typescript`, `javascript`, `python`, `css`,
 `html`, `json`, `yaml`, `bash`, `sh`, `sql`, `rust`, `go`, `java`, `cpp`, etc.
-
-**Custom code block processors** (registered by plugins):
-```
-```rnd-progress
-label: My Section
-prefix: Task
-```
-```
-`=progress` placed after a heading (inline) is also processed by the RnD-Env plugin.
 
 ---
 
