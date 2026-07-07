@@ -1,8 +1,3 @@
----
-name: obsidian-navigator
-description: Provides a progressive-disclosure protocol for reading vault context — start with Index files, drill via wikilinks, use ffgrep for search. Enforces token budget (~500 token injection ceiling). Use when the agent needs to find references, project info, or prior session memory.
----
-
 # Obsidian Navigator
 
 ## When to Use

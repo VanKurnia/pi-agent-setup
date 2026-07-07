@@ -1,8 +1,3 @@
----
-name: obsidian-writer
-description: Guides the agent in writing and updating Obsidian notes following vault conventions — Title Case with spaces, optional frontmatter, wikilinks-only cross-references, bilingual ID/EN, folder-based organization. Use when the agent needs to create or edit a note in the vault.
----
-
 # Obsidian Writer
 
 ## When to Use
@@ -24,8 +19,8 @@ This bash is **MinGW/Git Bash** (Unix-style):
 - If exploration needed, follow Obsidian Navigator protocol first (Level 1→2→3)
 
 ### 4. Read Syntax Reference
-- Read [obsidian-styles/SKILL.md](../obsidian-styles/SKILL.md) first for complete OFM syntax (wikilinks, callouts, embeds, tables, task lists, block refs, etc.)
-- This skill only covers conventions; refer to styles for exact syntax
+- Read `reference/styles.md` first for complete OFM syntax (wikilinks, callouts, embeds, tables, task lists, block refs, etc.)
+- This doc only covers conventions; refer to styles for exact syntax
 
 ## Rules
 
@@ -43,7 +38,7 @@ This bash is **MinGW/Git Bash** (Unix-style):
 - **Tables** for structured data
 - **Bullet lists** for points
 - **Code blocks** for code/config
-- For exact syntax of all OFM elements, see [obsidian-styles/SKILL.md](../obsidian-styles/SKILL.md)
+- For exact syntax of all OFM elements, see `reference/styles.md`
 
 ### Language
 - Indonesian → descriptions, audience, purpose, workflows
@@ -52,6 +47,7 @@ This bash is **MinGW/Git Bash** (Unix-style):
 ### Cross-References
 - Use `[[wikilinks]]` — don't use markdown links to local files
 - Bottom of page: `## Related\n- [[Note Name]]`
+- **Link qualification**: If >1 file matches `[[Name]]`, use full vault-root path. See `reference/link-rules.md`
 
 ### Create vs Update
 - **New** → write in appropriate folder (Scratchpad/, Projects/{name}/, Ideas/)
