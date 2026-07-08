@@ -26,6 +26,17 @@ This bash is **MinGW/Git Bash** (Unix-style):
 4. If context exists → read top 1-2 matches, answer from vault
 5. If none: "No prior context" → answer fresh
 
+### Quick Access: pi://vault
+For known note paths, use `resolve_pi_url` tool:
+- `pi://vault/Projects/HRIS/Index HRIS` — reads note + resolves [[wikilinks]]
+- Faster than ffgrep when you know the exact path
+
+| Method | When |
+|--------|------|
+| `ffgrep` | Searching by keyword, don't know exact path |
+| `pi://vault/<path>` | You know the note name, want wikilinks resolved |
+| `read` | Quick peek, don't need wikilink resolution |
+
 ### Query tips
 - Strip stop words: "What is the MHI data model" → "MHI data model"
 - Try folder path as query: "HRIS MHI schema" hits more than "MHI data model"
