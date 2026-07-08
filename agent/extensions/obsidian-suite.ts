@@ -66,21 +66,11 @@ export default function (pi: ExtensionAPI) {
     pi.on("before_agent_start", async (event, ctx) => {
         if (hasInjectedVault) return;
 
-        // 1. Detect vault path: persisted config > ask user
+        // 1. Detect vault path from config (no auto-prompt)
         if (!vaultPath) {
             const config = loadConfig();
             if (config?.vaultPath) {
                 vaultPath = config.vaultPath;
-            } else if (ctx.hasUI) {
-                const answer = await ctx.ui.input(
-                    "Set Obsidian vault path?",
-                    join(homedir(), "Documents", "Obsidian Vault"),
-                );
-                if (answer && existsSync(answer)) {
-                    vaultPath = answer;
-                    saveConfig({ vaultPath });
-                    ctx.ui.notify(`Vault set to: ${vaultPath}`, "info");
-                }
             }
         }
 

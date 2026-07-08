@@ -10,6 +10,7 @@
   "order": {
     "session_start": [
       "custom-header",
+      "internal-url-resolver",
       "obsidian-suite",
       "md-link",
       "filechanges",
