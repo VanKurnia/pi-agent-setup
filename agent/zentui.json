@@ -10,18 +10,19 @@
     "cwd": true,
     "runtime": false,
     "tokens": true,
-    "gitStatus": false,
-    "sessionDuration": false
+    "gitStatus": false
   },
   "features": {
     "copyFriendly": true
   },
   "extensionStatuses": {
     "placements": {
-      "pi-speeed": "right"
+      "pi-speeed": "right",
+      "hindsight": "right"
     },
     "colorModes": {
-      "pi-speeed": "original"
+      "pi-speeed": "original",
+      "hindsight": "zentui"
     }
   }
 }
