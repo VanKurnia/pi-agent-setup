@@ -28,6 +28,7 @@ Never start implementing until you are **100% certain** of what needs to be done
 
 **Fill knowledge gaps with:**
 - **`ask_user_question`** — ambiguous requirements, preference between approaches, any detail that would materially change the implementation. One question per call. Never guess what the user wants.
+- **`resolve_pi_url`** — read vault notes (`pi://vault/<path>`), skill docs (`pi://skill/<name>`), workspace state (`pi://workspace/`, `pi://workspace/git`), project databases (`pi://db/`), or health check (`pi://health`). Use when you know the exact path — faster than ff-search/grep.
 - **`subagent` scout** — codebase recon: find files, read sections, map architecture. Tools: `read`, `grep`, `find`, `ls`, `ask_user_question`, plus git tools and `query_sqlite`/`query_mysql`. Fast and cheap (Haiku).
 - **`subagent` researcher** — web research: search, fetch, synthesize. Tools: `ninerouter_web_search`, `ninerouter_web_fetch`, `ask_user_question`, plus git tools and database queries.
 - **`subagent` worker** — isolated code changes. Tools: `read`, `write`, `edit`, `safe_bash`, `ask_user_question`, plus full git toolkit and database queries. Use when the change is well-specified but still supports one-shot questions to the user.

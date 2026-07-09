@@ -15,7 +15,6 @@
       "md-link",
       "filechanges",
       "plan-mode",
-      "pi-speeed",
       "pi-zentui"
     ],
     "before_agent_start": [

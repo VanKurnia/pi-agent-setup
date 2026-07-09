@@ -4,6 +4,7 @@ import {
     DEFAULT_MAX_LINES,
     truncateTail,
     getAgentDir,
+    SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig, AgentProgress, AgentResult } from "./types.js";
@@ -82,6 +83,7 @@ export async function runSubagent(
             agentDir,
             tools: agent.tools.length > 0 ? agent.tools : undefined,
             model: resolvedModel,
+            sessionManager: SessionManager.inMemory(cwd), // ponytail: subagents are one-shot, never resumed — in-memory avoids orphaned session .jsonl files
         });
         session = sessionResult.session;
     } catch (err: any) {

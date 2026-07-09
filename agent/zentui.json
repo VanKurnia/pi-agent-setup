@@ -17,11 +17,9 @@
   },
   "extensionStatuses": {
     "placements": {
-      "pi-speeed": "right",
       "hindsight": "right"
     },
     "colorModes": {
-      "pi-speeed": "original",
       "hindsight": "zentui"
     }
   }

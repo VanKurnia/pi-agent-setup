@@ -3,8 +3,8 @@
     {
       "name": "hris",
       "driver": "mysql",
-      "directory": "C:/Users/Ivan/Documents/HRIS",
-      "connection": "mysql://root:pass@localhost:3306/hris_db",
+      "directory": "C:/laragon/www/hrisv2/mhi",
+      "connection": "mysql://root:@localhost:3306/db95518_hris",
       "default": true
     },
     {

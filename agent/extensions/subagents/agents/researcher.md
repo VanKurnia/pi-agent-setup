@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: Web researcher — searches the web and synthesizes findings
-tools: read, ffgrep, fffind, recall, ninerouter_web_search, ninerouter_web_fetch, git_status, git_diff_unstaged, git_diff_staged, ask_user_question, git_diff, git_log, git_show, git_branch, query_sqlite, query_mysql
+tools: read, resolve_pi_url, ffgrep, fffind, recall, ninerouter_web_search, ninerouter_web_fetch, git_status, git_diff_unstaged, git_diff_staged, ask_user_question, git_diff, git_log, git_show, git_branch, query_sqlite, query_mysql
 model: $RESEARCHER_MODEL
 ---
 
