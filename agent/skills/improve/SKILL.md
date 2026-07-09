@@ -32,7 +32,7 @@ Map the territory before judging it:
 - Read `README`, `CLAUDE.md`/`AGENTS.md`, `CONTRIBUTING`, root config files (`package.json`, `pyproject.toml`, `go.mod`, etc.), CI config, and the directory structure.
 - Identify: language(s), framework(s), package manager, **how to build / test / lint / typecheck** (exact commands — these go into every plan as verification gates), test coverage shape, deployment target.
 - Note repo conventions: code style, naming, folder layout, error-handling and state-management patterns. Plans must tell the executor to *match* these, with examples.
-- **Ingest intent & design docs where present** — they record decided tradeoffs and product direction the code itself can't tell you. Glob for ADRs (`docs/adr/`, `docs/adrs/`, `docs/decisions/`), PRDs / specs, `CONTEXT.md` (shared domain vocabulary), `DESIGN.md` (design-system spec), and `PRODUCT.md` (product brief). Strictly additive: read what exists, no-op when absent. Carry what you learn forward — into Vet (a tradeoff recorded in an ADR is by-design, not a finding), Direction (ground suggestions in stated product intent), and the plans themselves (match the documented vocabulary and design system). Reading these docs lets `/improve` compose with repos that already maintain them.
+- **Ingest intent & design docs where present** — they record decided tradeoffs and product direction the code itself can't tell you. Glob for ADRs (`docs/adr/`, `docs/adrs/`, `docs/decisions/`), PRDs / specs, `CONTEXT.md` (shared domain vocabulary), `DESIGN.md` (design-system spec), and `PRODUCT.md` (product brief). Strictly additive: read what exists, no-op when absent. Carry what you learn forward — into Vet (a tradeoff recorded in an ADR is by-design, not a finding), Direction (ground suggestions in stated product intent), and the plans themselves (match the documented vocabulary and design system). Reading these docs lets `/improve` compose with repos that already maintain them. Also use `resolve_pi_url` (`pi://vault/<path>`, `pi://skill/<name>`) to read project docs and skill definitions indexed in the vault — faster than filesystem searches when you know the path.
 - Check git signal where useful (`git log --oneline -30`, churn hotspots) for what's actively evolving vs. frozen.
 
 If the repo has no working verification command (no tests, broken build), record that — "establish a verification baseline" is often finding #1, and it must precede risky plans in the dependency order.
@@ -48,7 +48,6 @@ For repos of any real size, fan out with parallel read-only subagents (`scout` f
 **Set `agentScope`** to control where agents are discovered: use `"user"` for the user's `~/.pi/agent/agents/`, `"project"` for repo-local `agent/agents/`. Subagents don't inherit scoping context, so when dispatching project-specific audit tasks, include `agentScope: "project"` or `"both"` explicitly.
 
 **Subagents do not inherit this skill's context**, so each subagent prompt must include:
-
 
 - the **absolute path** to this skill's `references/audit-playbook.md` plus the exact section headings to read — **always including "## Finding format"** (subagents can read files — this is far cheaper than pasting; paste the sections only if the path may not resolve in the subagent's environment),
 - the recon facts that scope the search (languages, frameworks, key directories, what to skip),

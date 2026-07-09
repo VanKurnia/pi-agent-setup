@@ -26,10 +26,23 @@ This bash is **MinGW/Git Bash** (Unix-style):
 4. If context exists → read top 1-2 matches, answer from vault
 5. If none: "No prior context" → answer fresh
 
-### Quick Access: pi://vault
-For known note paths, use `resolve_pi_url` tool:
-- `pi://vault/Projects/HRIS/Index HRIS` — reads note + resolves [[wikilinks]]
-- Faster than ffgrep when you know the exact path
+### Quick Access: pi:// URLs
+For known paths, use `resolve_pi_url` tool:
+
+| Protocol | Example | Use case |
+|----------|---------|----------|
+| `pi://vault/<path>` | `pi://vault/Projects/HRIS/Index HRIS` | Read vault note with [[wikilinks]] resolved |
+| `pi://skill/<name>` | `pi://skill/orchestrator` | Read a skill's complete SKILL.md |
+| `pi://skill/<name>/reference/<doc>` | `pi://skill/obsidian/reference/navigator` | Read a skill reference doc |
+| `pi://workspace/` | `pi://workspace/` | Workspace info (git status, files, branch) |
+| `pi://workspace/git` | `pi://workspace/git` | Detailed git status |
+| `pi://workspace/files` | `pi://workspace/files` | File listing (depth ≤ 2) |
+| `pi://health` | `pi://health` | Health check (vault, workspace, branch) |
+| `pi://db/` | `pi://db/` | List database tables |
+| `pi://db/<table>` | `pi://db/users` | Query table (first 20 rows) |
+| `pi://db/<table>/schema` | `pi://db/users/schema` | Describe table schema |
+
+**Use `pi://vault/` when you know the exact note path** — faster than ffgrep and resolves [[wikilinks]] automatically. Use `pi://skill/` to read any skill's full content without navigating the filesystem.
 
 | Method | When |
 |--------|------|
