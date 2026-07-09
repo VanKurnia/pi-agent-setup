@@ -1,0 +1,23 @@
+{
+  "connections": [
+    {
+      "name": "hris",
+      "driver": "mysql",
+      "directory": "C:/Users/Ivan/Documents/HRIS",
+      "connection": "mysql://root:pass@localhost:3306/hris_db",
+      "default": true
+    },
+    {
+      "name": "recruitment",
+      "driver": "mysql",
+      "directory": "C:/Users/Ivan/Documents/Recruitment",
+      "connection": "mysql://root:pass@localhost:3306/recruitment_db"
+    },
+    {
+      "name": "hris-test",
+      "driver": "sqlite",
+      "directory": "C:/Users/Ivan/Documents/HRIS",
+      "connection": "C:/Users/Ivan/Documents/HRIS/test.db"
+    }
+  ]
+}

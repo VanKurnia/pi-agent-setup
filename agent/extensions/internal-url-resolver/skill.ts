@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { SKILLS_DIR, formatError, PiUrlResult } from "./types.js";
+import { SKILLS_DIR, formatError, PiUrlResult } from "./types.ts";
 
 function safeRead(path: string): string | null {
     try {

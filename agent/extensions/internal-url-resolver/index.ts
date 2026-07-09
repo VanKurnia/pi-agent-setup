@@ -1,9 +1,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { registerExtensionApi } from "../shared/cross-extension-api.ts";
-import { resolveSkillUrl } from "./skill.js";
-import { resolveVaultUrl } from "./vault.js";
-import { formatError, PiUrlResult } from "./types.js";
+import { resolveSkillUrl } from "./skill.ts";
+import { resolveVaultUrl } from "./vault.ts";
+import { resolveWorkspaceUrl } from "./workspace.ts";
+import { resolveHealthUrl } from "./health.ts";
+import { formatError, PiUrlResult } from "./types.ts";
+import { resolveDbUrl } from "./db.ts";
 
 function parsePiUrl(url: string): { protocol: string; path: string } | null {
     const match = url.match(/^pi:\/\/(\w+)(?:\/(.*))?$/);
@@ -29,6 +32,17 @@ export function resolvePiUrl(url: string): PiUrlResult {
             return resolveSkillUrl(path, url);
         case "vault":
             return resolveVaultUrl(path, url);
+        case "workspace":
+            return resolveWorkspaceUrl(path, url);
+        case "health":
+            return resolveHealthUrl(path, url);
+        case "db":
+            return {
+                content: "Use pi://db/ via the execute handler (async)",
+                mime: "text/markdown",
+                protocol: "db",
+                path,
+            };
         default:
             return {
                 content: formatError(`Unknown protocol: pi://${protocol}`, url),
@@ -53,13 +67,30 @@ export default function (pi: ExtensionAPI) {
             "**Supported URLs**:",
             "- `pi://skill/<name>` — read a Pi Agent skill",
             "- `pi://skill/<name>/reference/<doc>` — read a skill reference doc",
-            "- `pi://vault/<path>` — read and render a vault note with resolved wikilinks",
+            "- `pi://vault/<path>` — read and render a vault note with resolved wikilinks, or list a directory",
+            "- `pi://workspace/` — workspace info (git status, files, branch)",
+            "- `pi://workspace/git` — detailed git status",
+            "- `pi://workspace/files` — list workspace files (depth ≤ 2)",
+            "- `pi://health` — health check (vault, workspace, branch)",
+            "- `pi://db/` — list database tables for the current project",
+            "- `pi://db/<table>` — query table (first 20 rows)",
+            "- `pi://db/<table>/schema` — describe table schema",
+            "- `pi://db/connections` — list all configured connections",
         ].join("\n"),
         parameters: Type.Object({
             url: Type.String({ description: 'A pi:// URL, e.g. "pi://skill/orchestrator"' }),
         }),
         async execute(_id, params, _signal, _onUpdate) {
-            const result = resolvePiUrl(params.url);
+            const url = params.url;
+            const parsed = parsePiUrl(url);
+            if (parsed && parsed.protocol === "db") {
+                const result = await resolveDbUrl(parsed.path, url);
+                return {
+                    content: [{ type: "text", text: result.content }],
+                    details: { protocol: result.protocol, path: result.path, mime: result.mime },
+                };
+            }
+            const result = resolvePiUrl(url);
             return {
                 content: [{ type: "text", text: result.content }],
                 details: { protocol: result.protocol, path: result.path, mime: result.mime },
