@@ -8,8 +8,10 @@
     "cost": false,
     "context": true,
     "cwd": true,
-    "runtime": true,
-    "tokens": true
+    "runtime": false,
+    "tokens": true,
+    "gitStatus": false,
+    "sessionDuration": false
   },
   "features": {
     "copyFriendly": true
