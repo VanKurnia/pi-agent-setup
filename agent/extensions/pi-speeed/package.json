@@ -1,10 +1,5 @@
 {
   "name": "pi-speeed",
   "private": true,
-  "type": "module",
-  "pi": {
-    "extensions": [
-      "./src/index.ts"
-    ]
-  }
+  "type": "module"
 }

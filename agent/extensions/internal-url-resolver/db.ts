@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PiUrlResult, PI_AGENT_DIR, formatError } from "./types.ts";
 
+type DbRow = Record<string, unknown>;
+
 interface DbConnection {
     name: string;
     driver: "sqlite" | "mysql";
@@ -14,12 +16,20 @@ interface DbConfig {
     connections: DbConnection[];
 }
 
+let _cachedConfig: DbConfig | null = null;
+
 function readConfig(): DbConfig | null {
+    if (_cachedConfig) return _cachedConfig;
     const configPath = join(PI_AGENT_DIR, "db-config.json");
-    if (!existsSync(configPath)) return null;
+    if (!existsSync(configPath)) {
+        _cachedConfig = null;
+        return null;
+    }
     try {
-        return JSON.parse(readFileSync(configPath, "utf-8")) as DbConfig;
+        _cachedConfig = JSON.parse(readFileSync(configPath, "utf-8")) as DbConfig;
+        return _cachedConfig;
     } catch {
+        _cachedConfig = null;
         return null;
     }
 }
@@ -39,13 +49,13 @@ function safeTableName(name: string): boolean {
     return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
 }
 
-function formatRowsToMarkdown(rows: any[]): string {
+function formatRowsToMarkdown(rows: DbRow[]): string {
     if (!rows || rows.length === 0) return "_Empty (0 rows)_";
     const columns = Object.keys(rows[0]);
     const header = `| ${columns.join(" | ")} |`;
     const sep = `| ${columns.map(() => "---").join(" | ")} |`;
     const data = rows.map(
-        (row: any) =>
+        (row: DbRow) =>
             `| ${columns
                 .map((col) => {
                     const v = row[col];
@@ -79,22 +89,24 @@ async function listTables(conn: DbConnection): Promise<string> {
             db.close();
             if (rows.length === 0) return "No tables found.";
             return rows.map((r) => `- \`${r.name}\``).join("\n");
-        } catch (e: any) {
-            return `Error listing tables: ${e.message}`;
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            return `Error listing tables: ${message}`;
         }
     }
     if (conn.driver === "mysql") {
         try {
-            const mysql: any = await import("mysql2/promise");
+            const mysql = await import("mysql2/promise");
             const db = await mysql.createConnection(conn.connection);
             const [rows] = await db.execute("SHOW TABLES");
             await db.end();
-            const arr = rows as any[];
+            const arr = rows as DbRow[];
             if (arr.length === 0) return "No tables found.";
             const key = Object.keys(arr[0])[0];
-            return arr.map((r: any) => `- \`${r[key]}\``).join("\n");
-        } catch (e: any) {
-            return `Error listing tables: ${e.message}`;
+            return arr.map((r: DbRow) => `- \`${r[key]}\``).join("\n");
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            return `Error listing tables: ${message}`;
         }
     }
     return `Unknown driver "${conn.driver}".`;
@@ -110,27 +122,29 @@ async function queryTable(conn: DbConnection, table: string, _limit: number = 20
             if (!existsSync(conn.connection))
                 return `Error: SQLite database not found at \`${conn.connection}\`.`;
             const db = new DatabaseSync(conn.connection);
-            const rows = db.prepare(`SELECT * FROM "${table}" LIMIT ${_limit}`).all() as any[];
+            const rows = db.prepare(`SELECT * FROM "${table}" LIMIT ${_limit}`).all() as DbRow[];
             db.close();
             const formatted = formatRowsToMarkdown(rows);
             if (rows.length === 0) return `Table \`${table}\` is empty (0 rows).`;
             return `**${table}** (${rows.length} rows):\n\n${formatted}`;
-        } catch (e: any) {
-            return `Error querying table "${table}": ${e.message}`;
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            return `Error querying table "${table}": ${message}`;
         }
     }
     if (conn.driver === "mysql") {
         try {
-            const mysql: any = await import("mysql2/promise");
+            const mysql = await import("mysql2/promise");
             const db = await mysql.createConnection(conn.connection);
             const [rows] = await db.execute(`SELECT * FROM \`${table}\` LIMIT ${_limit}`);
             await db.end();
-            const arr = rows as any[];
+            const arr = rows as DbRow[];
             const formatted = formatRowsToMarkdown(arr);
             if (arr.length === 0) return `Table \`${table}\` is empty (0 rows).`;
             return `**${table}** (${arr.length} rows):\n\n${formatted}`;
-        } catch (e: any) {
-            return `Error querying table "${table}": ${e.message}`;
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            return `Error querying table "${table}": ${message}`;
         }
     }
     return `Error: Unknown driver "${conn.driver}".`;
@@ -146,35 +160,37 @@ async function tableSchema(conn: DbConnection, table: string): Promise<string> {
             if (!existsSync(conn.connection))
                 return `Error: SQLite database not found at \`${conn.connection}\`.`;
             const db = new DatabaseSync(conn.connection);
-            const rows = db.prepare(`PRAGMA table_info("${table}")`).all() as any[];
+            const rows = db.prepare(`PRAGMA table_info("${table}")`).all() as DbRow[];
             db.close();
             const header = "| # | Column | Type | Not Null | Default | PK |";
             const sep_ = "|---|--------|------|----------|---------|----|";
             const data = rows.map(
-                (r: any) =>
+                (r: DbRow) =>
                     `| ${r.cid} | ${r.name} | ${r.type} | ${r.notnull ? "YES" : ""} | ${r.dflt_value ?? ""} | ${r.pk ? "PK" : ""} |`,
             );
             return [`**${table} schema:**`, "", header, sep_, ...data].join("\n");
-        } catch (e: any) {
-            return `Error describing table "${table}": ${e.message}`;
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            return `Error describing table "${table}": ${message}`;
         }
     }
     if (conn.driver === "mysql") {
         try {
-            const mysql: any = await import("mysql2/promise");
+            const mysql = await import("mysql2/promise");
             const db = await mysql.createConnection(conn.connection);
             const [rows] = await db.execute(`DESCRIBE \`${table}\``);
             await db.end();
-            const arr = rows as any[];
+            const arr = rows as DbRow[];
             const header = "| Field | Type | Null | Key | Default | Extra |";
             const sep_ = "|-------|------|------|-----|---------|-------|";
             const data = arr.map(
-                (r: any) =>
+                (r: DbRow) =>
                     `| ${r.Field} | ${r.Type} | ${r.Null || "NO"} | ${r.Key || ""} | ${r.Default ?? ""} | ${r.Extra || ""} |`,
             );
             return [`**${table} schema:**`, "", header, sep_, ...data].join("\n");
-        } catch (e: any) {
-            return `Error describing table "${table}": ${e.message}`;
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            return `Error describing table "${table}": ${message}`;
         }
     }
     return `Error: Unknown driver "${conn.driver}".`;

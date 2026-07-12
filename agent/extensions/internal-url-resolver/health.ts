@@ -14,8 +14,8 @@ export function resolveHealthUrl(_path: string, _url: string): PiUrlResult {
             timeout: 3000,
         }).trim();
         workspace = process.cwd();
-    } catch {
-        /* not a git repo or git unavailable */
+    } catch (e: any) {
+        branch = `unavailable (${e.message?.split("\n")[0] || "unknown error"})`;
     }
     return {
         content: [

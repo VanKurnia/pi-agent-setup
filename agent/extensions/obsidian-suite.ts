@@ -50,8 +50,10 @@ export default function (pi: ExtensionAPI) {
             parts.push(`=== Active Projects ===\n${content.slice(0, 2000)}`);
         }
 
-        // 3. Memory reminder + token hint
-        parts.push("Memory: before answering technical questions, ffgrep vault first.");
+        // 3. Resolution order for context tools
+        parts.push(
+            "## Resolution Order\n1. `memory_recall` — check prior agent-stored context\n2. `resolve_pi_url` — follow any `pi://` URL in context (vault, workspace, health, skill, db). Don't re-resolve content already in context.\n3. `ffgrep` — fallback search across vault files",
+        );
         parts.push("Vault context: ~500 tokens, injected once per session.");
 
         return parts.join("\n\n");

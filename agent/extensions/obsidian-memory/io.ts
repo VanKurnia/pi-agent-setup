@@ -8,6 +8,12 @@ export function agentMemoryRoot(): string | null {
     return join(vaultRoot, "_agent", "memory");
 }
 
+export function memoryUrl(scope: string, project?: string): string {
+    if (scope === "global") return "pi://vault/_agent/memory/global";
+    if (scope === "project" && project) return `pi://vault/_agent/memory/${project}`;
+    return "pi://vault/_agent/memory";
+}
+
 export function scopeToFilePath(scope: "global" | "project", project?: string): string | null {
     const root = agentMemoryRoot();
     if (!root) return null;
@@ -30,8 +36,7 @@ export function findCliBinary(): string | null {
     const pathEnv = process.env.PATH || "";
     for (const dir of pathEnv.split(";").filter(Boolean)) {
         for (const name of ["obsidian.com", "Obsidian.com", "obsidian", "Obsidian.exe"]) {
-            const full = join(dir, name);
-            if (existsSync(full)) {
+            if (existsSync(join(dir, name))) {
                 if (name === "Obsidian.exe") {
                     const c = join(dir, "Obsidian.com");
                     if (existsSync(c)) {
@@ -39,8 +44,8 @@ export function findCliBinary(): string | null {
                         return c;
                     }
                 }
-                cliBinary = full;
-                return full;
+                cliBinary = join(dir, name);
+                return cliBinary;
             }
         }
     }

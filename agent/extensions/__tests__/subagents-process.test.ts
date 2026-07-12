@@ -1,14 +1,16 @@
 import { describe, it, expect } from "vitest";
 
 describe("subagents process", () => {
-  it("should load the process module", async () => {
-    try {
-      const mod = await import("../subagents/src/process.js");
-      expect(mod.runSubagent).toBeDefined();
-    } catch (e: any) {
-      // If imports fail due to missing pi runtime dependencies or .js extension
-      // resolution, at least verify the error is a runtime import error
-      expect(e.message).toBeDefined();
-    }
-  });
+    it("should export runSubagent function", async () => {
+        const mod = await import("../subagents/src/process.js");
+        expect(mod.runSubagent).toBeDefined();
+        expect(typeof mod.runSubagent).toBe("function");
+    });
+
+    it("should export AgentResult type shape", async () => {
+        // Validate the module exports expected type constants/utilities
+        const mod = await import("../subagents/src/process.js");
+        // runSubagent is async — verify function length (parameter count)
+        expect(mod.runSubagent.length).toBeGreaterThanOrEqual(4);
+    });
 });

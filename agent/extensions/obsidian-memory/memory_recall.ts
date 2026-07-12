@@ -130,7 +130,16 @@ export function registerMemoryRecall(pi: ExtensionAPI): void {
                         details: {},
                     };
                 return {
-                    content: [{ type: "text", text: entries.slice(0, limit).join("\n\n---\n\n") }],
+                    content: [
+                        {
+                            type: "text",
+                            text:
+                                entries.slice(0, limit).join("\n\n---\n\n") +
+                                (paths.length === 1
+                                    ? `\n\n---\n📁 Source: \`resolve_pi_url("pi://vault/_agent/memory/${paths[0].split(/[/\\]/).pop()?.replace(/\.md$/, "")}")\`\``
+                                    : `\n\n---\n📁 Searched ${paths.length} memory files. Use \`resolve_pi_url("pi://vault/_agent/memory")\` to list all.`),
+                        },
+                    ],
                     details: {},
                 };
             }
@@ -157,7 +166,16 @@ export function registerMemoryRecall(pi: ExtensionAPI): void {
                     details: {},
                 };
             return {
-                content: [{ type: "text", text: results.slice(0, limit).join("\n\n---\n\n") }],
+                content: [
+                    {
+                        type: "text",
+                        text:
+                            results.slice(0, limit).join("\n\n---\n\n") +
+                            (paths.length === 1
+                                ? `\n\n📁 Source: \`resolve_pi_url("pi://vault/_agent/memory/${paths[0].split(/[/\\]/).pop()?.replace(/\.md$/, "")}")\`\``
+                                : `\n\n📁 Searched ${paths.length} memory files.`),
+                    },
+                ],
                 details: {},
             };
         },

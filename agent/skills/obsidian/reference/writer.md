@@ -14,7 +14,8 @@ This bash is **MinGW/Git Bash** (Unix-style):
 - ❌ Don't use `dir`, `type`, `findstr` (CMD syntax)
 
 ### 3. Check Index & Context
-- `ffgrep` first — check if note already exists
+- If you know the exact note path, `resolve_pi_url("pi://vault/<path>")` first — fastest check
+- Otherwise `ffgrep` — check if note already exists, or find relevant terms
 - Read destination folder's Index file — understand context
 - If exploration needed, follow Obsidian Navigator protocol first (Level 1→2→3)
 

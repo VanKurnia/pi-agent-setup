@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { appendMemoryEntry, scopeToFilePath, agentMemoryRoot } from "./io.ts";
+import { appendMemoryEntry, scopeToFilePath, agentMemoryRoot, memoryUrl } from "./io.ts";
 
 export function registerMemoryWrite(pi: ExtensionAPI): void {
     pi.registerTool({
@@ -103,11 +103,12 @@ export function registerMemoryWrite(pi: ExtensionAPI): void {
                     ],
                     details: {},
                 };
+            const mUrl = memoryUrl(scope, project);
             return {
                 content: [
                     {
                         type: "text",
-                        text: `Memory written to \\\`_agent/memory/${scope === "project" ? `${project}.md` : "global.md"}\\\`. Ready for recall.`,
+                        text: `Memory written to \`_agent/memory/${scope === "project" ? `${project}.md` : "global.md"}\`. Ready for recall.\n\n📍 See full file: \`resolve_pi_url("${mUrl}")\``,
                     },
                 ],
                 details: {},

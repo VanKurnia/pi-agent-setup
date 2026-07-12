@@ -13,7 +13,7 @@ Thoroughness (infer from task, default medium):
 - Thorough: Trace all dependencies, check tests/types
 
 Strategy:
-1. grep/find to locate relevant code
+1. grep/find to locate relevant code. For known vault paths / skill docs, use `resolve_pi_url` — faster than grep.
 2. Read key sections (not entire files)
 3. Identify types, interfaces, key functions
 4. Note dependencies between files
