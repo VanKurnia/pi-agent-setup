@@ -3,6 +3,10 @@ import { Type } from "typebox";
 import * as path from "node:path";
 import { runGit, ok, fail } from "./helpers.js";
 
+const WORKSPACE_FOOTER =
+    "\n\n> Context: [`pi://workspace/`](pi://workspace/) · [`pi://health`](pi://health/)";
+const GIT_FOOTER = "\n\n> 💡 [`pi://workspace/git`](pi://workspace/git) — full working tree status";
+
 export function registerOperations(pi: ExtensionAPI) {
     // 1. git_status
     pi.registerTool({
@@ -19,7 +23,8 @@ export function registerOperations(pi: ExtensionAPI) {
         async execute(_toolCallId, params) {
             try {
                 const output = await runGit(params.repo_path, ["status"]);
-                return ok(output ? `\`\`\`text\n${output}\n\`\`\`` : "Working tree clean");
+                const body = output ? `\`\`\`text\n${output}\n\`\`\`` : "Working tree clean";
+                return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
                 return fail(e.message);
             }
@@ -45,7 +50,8 @@ export function registerOperations(pi: ExtensionAPI) {
             try {
                 const context = params.context_lines !== undefined ? params.context_lines : 3;
                 const output = await runGit(params.repo_path, ["diff", `-U${context}`]);
-                return ok(output ? `\`\`\`diff\n${output}\n\`\`\`` : "No unstaged changes");
+                const body = output ? `\`\`\`diff\n${output}\n\`\`\`` : "No unstaged changes";
+                return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
                 return fail(e.message);
             }
@@ -69,7 +75,8 @@ export function registerOperations(pi: ExtensionAPI) {
             try {
                 const context = params.context_lines !== undefined ? params.context_lines : 3;
                 const output = await runGit(params.repo_path, ["diff", "--cached", `-U${context}`]);
-                return ok(output ? `\`\`\`diff\n${output}\n\`\`\`` : "No staged changes");
+                const body = output ? `\`\`\`diff\n${output}\n\`\`\`` : "No staged changes";
+                return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
                 return fail(e.message);
             }
@@ -98,7 +105,8 @@ export function registerOperations(pi: ExtensionAPI) {
                     params.target,
                     `-U${context}`,
                 ]);
-                return ok(output ? `\`\`\`diff\n${output}\n\`\`\`` : "No differences");
+                const body = output ? `\`\`\`diff\n${output}\n\`\`\`` : "No differences";
+                return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
                 return fail(e.message);
             }
@@ -137,9 +145,8 @@ export function registerOperations(pi: ExtensionAPI) {
                 }
 
                 await runGit(params.repo_path, ["add", ...params.files]);
-                return ok(
-                    `**Successfully staged:** ${params.files.map((f) => `\`${f}\``).join(", ")}`,
-                );
+                const body = `**Successfully staged:** ${params.files.map((f) => `\`${f}\``).join(", ")}`;
+                return ok(body + GIT_FOOTER);
             } catch (e: any) {
                 return fail(e.message);
             }
@@ -163,7 +170,8 @@ export function registerOperations(pi: ExtensionAPI) {
         async execute(_toolCallId, params) {
             try {
                 const output = await runGit(params.repo_path, ["commit", "-m", params.message]);
-                return ok(`\`\`\`text\n${output}\n\`\`\``);
+                const body = `\`\`\`text\n${output || "Committed."}\n\`\`\``;
+                return ok(body + GIT_FOOTER);
             } catch (e: any) {
                 return fail(e.message);
             }
@@ -185,7 +193,8 @@ export function registerOperations(pi: ExtensionAPI) {
         async execute(_toolCallId, params) {
             try {
                 await runGit(params.repo_path, ["reset"]);
-                return ok("Successfully unstaged all changes.");
+                const body = "Successfully unstaged all changes.";
+                return ok(body + GIT_FOOTER);
             } catch (e: any) {
                 return fail(e.message);
             }
@@ -223,7 +232,8 @@ export function registerOperations(pi: ExtensionAPI) {
                     args.push(`--until=${params.end_timestamp}`);
                 }
                 const output = await runGit(params.repo_path, args);
-                return ok(output ? `\`\`\`text\n${output}\n\`\`\`` : "No commits match criteria");
+                const body = output ? `\`\`\`text\n${output}\n\`\`\`` : "No commits match criteria";
+                return ok(body + GIT_FOOTER);
             } catch (e: any) {
                 return fail(e.message);
             }
@@ -249,11 +259,10 @@ export function registerOperations(pi: ExtensionAPI) {
                     args.push(params.base_branch);
                 }
                 const output = await runGit(params.repo_path, args);
-                return ok(
-                    output
-                        ? `\`\`\`text\n${output}\n\`\`\``
-                        : `Created and checked out branch \`${params.branch_name}\``,
-                );
+                const body = output
+                    ? `\`\`\`text\n${output}\n\`\`\``
+                    : `Created and checked out branch \`${params.branch_name}\``;
+                return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
                 return fail(e.message);
             }
@@ -274,11 +283,10 @@ export function registerOperations(pi: ExtensionAPI) {
         async execute(_toolCallId, params) {
             try {
                 const output = await runGit(params.repo_path, ["checkout", params.branch_name]);
-                return ok(
-                    output
-                        ? `\`\`\`text\n${output}\n\`\`\``
-                        : `Switched to branch \`${params.branch_name}\``,
-                );
+                const body = output
+                    ? `\`\`\`text\n${output}\n\`\`\``
+                    : `Switched to branch \`${params.branch_name}\``;
+                return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
                 return fail(e.message);
             }
@@ -301,7 +309,7 @@ export function registerOperations(pi: ExtensionAPI) {
         async execute(_toolCallId, params) {
             try {
                 const output = await runGit(params.repo_path, ["show", params.revision]);
-                return ok(`\`\`\`diff\n${output}\n\`\`\``);
+                return ok(`\`\`\`diff\n${output}\n\`\`\`` + GIT_FOOTER);
             } catch (e: any) {
                 return fail(e.message);
             }
@@ -340,7 +348,8 @@ export function registerOperations(pi: ExtensionAPI) {
                     args.push(`--no-contains=${params.not_contains}`);
                 }
                 const output = await runGit(params.repo_path, args);
-                return ok(output ? `\`\`\`text\n${output}\n\`\`\`` : "No branches found");
+                const body = output ? `\`\`\`text\n${output}\n\`\`\`` : "No branches found";
+                return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
                 return fail(e.message);
             }

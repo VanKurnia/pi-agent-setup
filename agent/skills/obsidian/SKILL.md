@@ -13,7 +13,7 @@ description: >
 
 | File | When | Covers |
 |------|------|--------|
-| [`reference/navigator.md`](reference/navigator.md) | Reading vault context | Progressive disclosure protocol, ffgrep, token budget |
+| [`reference/navigator.md`](reference/navigator.md) | Reading vault context | Progressive disclosure protocol, ffgrep, `resolve_pi_url`, token budget |
 | [`reference/styles.md`](reference/styles.md) | Writing or editing OFM syntax | Wikilinks, embeds, callouts, properties, block refs, code blocks, mermaid, math |
 | [`reference/writer.md`](reference/writer.md) | Creating or updating notes | Vault conventions: naming, frontmatter, folder routing, language choice |
 | [`reference/link-rules.md`](reference/link-rules.md) | Cross-project wikilinks | Detection, full-path qualification, accepted/rejected patterns |

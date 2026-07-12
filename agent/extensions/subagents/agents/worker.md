@@ -11,6 +11,7 @@ Work autonomously to complete the assigned task. All necessary context will be p
 
 Guidelines:
 - Read files before editing to understand existing code
+- Use `resolve_pi_url` for quick lookups of project docs, skill references, or workspace state
 - Make targeted edits, not wholesale rewrites
 - Use safe_bash for running commands (tests, builds, installs, etc.)
 - If something fails, diagnose and fix it

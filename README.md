@@ -70,13 +70,47 @@ bash update.sh
 | Icons look broken | Install a Nerd Font and set it as your terminal font. |
 | `update.sh` fails | Run in Git Bash, not cmd/PowerShell. The `~` path doesn't expand in Windows shells. |
 
+## Pi URL Ecosystem (`pi://`)
+
+The `resolve_pi_url` tool resolves 5 internal protocols that interconnect all extensions:
+
+| Protocol | Description | Example |
+|----------|-------------|--------|
+| `pi://vault/` | Read Obsidian notes with wikilink resolution — wikilinks emit `pi://vault/` URLs, not dead ends | `pi://vault/Projects/Pi Agent/Index Pi Agent` |
+| `pi://skill/` | Read agent skill docs | `pi://skill/orchestrator` |
+| `pi://workspace/` | Git workspace snapshot (status, files, branch) | `pi://workspace/` |
+| `pi://health/` | Validation check across vault, workspace, branch | `pi://health/` |
+| `pi://db/` | Schema and query results for configured databases | `pi://db/hris/schema` |
+
+### Self-Referencing Loop
+
+Every extension's output now produces `pi://` URLs that feed back into the resolver:
+
+```
+memory_recall  → pi://vault/_agent/memory/  → resolve_pi_url reads full file
+memory_write   → pi://vault/_agent/memory/  → resolve_pi_url reads recent entries
+git_status     → pi://workspace/ + health/  → resolve_pi_url shows workspace snapshot
+db queries     → pi://db/<name>/schema      → resolve_pi_url explores schema
+vault notes    → wikilinks → pi://vault/    → resolve_pi_url reads linked notes
+```
+
+### Cross-Extension API
+
+The `internal-url-resolver` exposes `"pi-url"` with `{ resolvePiUrl, registerProtocol, listProtocols }`. Any extension can register a new protocol — it auto-appears in the tool description and error messages.
+
+### Context Injection
+
+Vault context is injected once per session (not per turn) with a nudge: `memory_recall → resolve_pi_url → ffgrep`. This trains the agent to use `pi://` URLs before falling back to grep.
+
+---
+
 ## External Integrations
 
 Pi connects to these external tools and services (not counting Pi packages):
 
 | Tool / Service | Integration | Status |
 |----------------|-------------|--------|
-| [[Obsidian]] | Termy plugin sends vault path + active note via `TERMY_CONTEXT_PATH`. Obsidian Suite injects vault Index + project context once per session. | Active |
+| [[Obsidian]] | Obsidian Suite auto-detects vault, injects Index + project context once per session. | Active |
 | [[9router]] | Local LLM routing proxy at `localhost:20128`. Sole provider (`defaultProvider: "9router"`) — all model requests go through it. Reasoning enabled. | Active |
 | [[VS Code]] / Zed / Neovim | `pi-x-ide` polls active file path and selection. Reconnects on session start, injects context per user message. | Active |
 | [[MySQL]] | `db-viewer` extension provides `query_mysql` tool — read-only queries via connection URI. | Active |
@@ -97,8 +131,12 @@ Pi connects to these external tools and services (not counting Pi packages):
 |-----------|-------------|
 | `bash-guard` | Safeguards bash commands — validates before execution |
 | `browser-tools` | Chrome DevTools automation (puppeteer, Readability, jsdom) |
-| `db-viewer` | Secure read-only SQLite/MySQL viewer |
+| `db-viewer` | Secure read-only SQLite/MySQL viewer; outputs `pi://db/` links |
 | `filechanges` | Tracks diffs across edits |
+| `git-toolkit` | Git status, diff, log, commit, branch; appends `pi://workspace/` + `pi://health/` footers |
+| `internal-url-resolver` | Resolves `pi://` URLs (vault, skill, workspace, health, db); cross-extension protocol registry |
+| `obsidian-memory` | Agent memory read/write as vault markdown; outputs `pi://vault/` links |
+| `obsidian-suite` | Vault auto-detection, context injection, `/obsidian-path` command |
 | `subagents` | Subagent orchestration for delegating tasks |
 | `plan-mode` | Step-by-step plan authoring and tracking |
 | `handoff` | Model-switch briefs for /compact |
@@ -106,7 +144,6 @@ Pi connects to these external tools and services (not counting Pi packages):
 | `ask-user-question` | Interactive Q&A dialog |
 | `context` | Token usage grid overlay (`/context`) |
 | `custom-header` | Customizable startup header |
-| `git-toolkit` | Git status, diff, log, commit, branch |
 | `md-link` | Collaborative `.md` editing (`/link-md`, `/send-diff`) |
 | `plan-artifact` | Browser UI for `.plans/` markdown with commenting and syntax highlighting |
 | `zz-read-only-mode` | Toggle read-only (`/read-only`) |
@@ -128,6 +165,7 @@ Pi connects to these external tools and services (not counting Pi packages):
 |-------|-------------|
 | `grill-me` | Stress-test plans through relentless questioning |
 | `improve` | Read-only codebase audit with prioritized implementation plans |
+| `obsidian` | Vault navigation protocol, link qualification, writing conventions |
 | `orchestrator` | Session orchestration: subagent routing, context hygiene |
 | `stop-slop` | Strips AI writing patterns from prose |
 
