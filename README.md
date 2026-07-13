@@ -35,24 +35,21 @@ Clone this repo to `~/.pi` — pi reads everything from there.
 ```bash
 git clone https://github.com/VanKurnia/pi-agent-setup.git ~/.pi
 cd ~/.pi
-bash update.sh
+bash install.sh
 ```
 
-Then create `agent/auth.json` — run `/login` inside pi to set up your provider.
+Then run `/login` inside pi to set up your provider.
 
 ### Upgrading an existing setup
 
 ```bash
-mv ~/.pi ~/.pi.backup
-git clone https://github.com/VanKurnia/pi-agent-setup.git ~/.pi
 cd ~/.pi
-
-# Restore custom settings (models, auth)
-cp ~/.pi.backup/agent/models.json ~/.pi/agent/ 2>/dev/null || true
-cp ~/.pi.backup/agent/auth.json ~/.pi/agent/    2>/dev/null || true
-
-bash update.sh
+bash install.sh
 ```
+
+`install.sh` is idempotent: it fetches the latest version, stashes any local changes, and reinstalls dependencies while preserving your existing config files.
+
+> **Note:** The older `update.sh` still exists alongside `install.sh` for backwards compatibility. `install.sh` is the recommended entry point for both fresh and upgrade scenarios.
 
 ### Post-install
 
@@ -66,9 +63,9 @@ bash update.sh
 | Problem | Fix |
 |---------|-----|
 | `bash` not found | Install [Git for Windows](https://git-scm.com/download/win). Pi auto-detects Git Bash. |
-| Extension not loading | Run `bash update.sh` to reinstall deps. Check `agent/auth.json` exists. |
+| Extension not loading | Run `bash install.sh` to reinstall deps. Check `agent/auth.json` exists. |
 | Icons look broken | Install a Nerd Font and set it as your terminal font. |
-| `update.sh` fails | Run in Git Bash, not cmd/PowerShell. The `~` path doesn't expand in Windows shells. |
+| `install.sh` / `update.sh` fails | Run in Git Bash (Windows) or bash (Linux/macOS). The `~` path doesn't expand in cmd/PowerShell. |
 
 ## Pi URL Ecosystem (`pi://`)
 
