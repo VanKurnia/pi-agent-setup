@@ -1,8 +1,8 @@
 {
   "colorSources": {
-    "starship": "terminal",
-    "editor": "terminal",
-    "userMessages": "terminal"
+    "starship": "theme",
+    "editor": "theme",
+    "userMessages": "theme"
   },
   "footerSegments": {
     "cost": false,
@@ -13,7 +13,10 @@
     "gitStatus": false,
     "username": false,
     "time": false,
-    "os": false
+    "os": false,
+    "gitMetrics": false,
+    "gitCommit": false,
+    "packageVersion": false
   },
   "features": {
     "copyFriendly": true,
@@ -22,10 +25,20 @@
   },
   "extensionStatuses": {
     "placements": {
-      "filechanges": "off"
+      "filechanges": "off",
+      "omni": "off"
     },
     "colorModes": {
-      "filechanges": "original"
+      "filechanges": "original",
+      "omni": "zentui"
     }
+  },
+  "pathDisplay": {
+    "mode": "basename",
+    "depth": 0
+  },
+  "contextStyle": "gauge",
+  "icons": {
+    "mode": "nerd"
   }
 }
