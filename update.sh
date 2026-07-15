@@ -97,7 +97,7 @@ SETTINGS="$SCRIPT_DIR/agent/settings.json"
 # npm pi packages to register (these are NOT auto-discovered)
 npm_packages=(
   "npm:@ff-labs/pi-fff"
-  "npm:pi-9router-ext"
+  "npm:omniroute-pi-ext-integration"
   "npm:pi-x-ide"
   "npm:pi-zentui"
   "npm:@nukcole-xinluo9510/pi-extension-guy"

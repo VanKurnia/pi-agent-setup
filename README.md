@@ -108,7 +108,7 @@ Pi connects to these external tools and services (not counting Pi packages):
 | Tool / Service | Integration | Status |
 |----------------|-------------|--------|
 | [[Obsidian]] | Obsidian Suite auto-detects vault, injects Index + project context once per session. | Active |
-| [[9router]] | Local LLM routing proxy at `localhost:20128`. Sole provider (`defaultProvider: "9router"`) — all model requests go through it. Reasoning enabled. | Active |
+| [[OmniRoute]] | Local AI gateway at `localhost:20128`. Default provider (`defaultProvider: "omni"`) — all model requests route through it. | Active |
 | [[VS Code]] / Zed / Neovim | `pi-x-ide` polls active file path and selection. Reconnects on session start, injects context per user message. | Active |
 | [[MySQL]] | `db-viewer` extension provides `query_mysql` tool — read-only queries via connection URI. | Active |
 | [[SQLite]] | `db-viewer` extension provides `query_sqlite` tool — read-only queries against local `.db` files. | Active |
@@ -116,7 +116,7 @@ Pi connects to these external tools and services (not counting Pi packages):
 | [[Chrome]] / Puppeteer | `browser-tools` extension provides browser automation. | Active |
 | [[Node.js]] | Runtime for all extensions (loaded via jiti). Version managed by nvm. | Active |
 
-**Single point of failure:** 9router is the only provider. If it goes down, Pi has no models to call. Consider a local fallback (Ollama) or direct API key.
+**Single point of failure:** OmniRoute is the only provider. If it goes down, Pi has no models to call. Consider a local fallback (Ollama) or direct API key.
 
 ---
 
@@ -150,7 +150,8 @@ Pi connects to these external tools and services (not counting Pi packages):
 | Package | Description |
 |---------|-------------|
 | `@ff-labs/pi-fff` | Fuzzy file finder (`fffind`) and content grep (`ffgrep`) |
-| `pi-9router-ext` | Web search and URL content extraction |
+| `route-web-tools` | Web search and URL content extraction (`route_web_search`, `route_web_fetch`) |
+| `omniroute-pi-ext-integration` | OmniRoute model sync, combo management, `/omni` commands |
 | `pi-x-ide` | VS Code / IDE integration |
 | `pi-zentui` | Extended TUI components |
 | `pi-blackhole` | Session compaction & observation engine — manages context window via truncation, reflection, and automatic archival |
@@ -183,8 +184,8 @@ Set your default provider and model in `agent/settings.json`:
 
 ```json
 {
-  "defaultProvider": "9router",
-  "defaultModel": "versatile",
+  "defaultProvider": "omni",
+  "defaultModel": "auto/best-coding",
   "defaultThinkingLevel": "medium"
 }
 ```
@@ -207,9 +208,9 @@ Configure per-agent models via `/subagents:settings` inside pi. Settings are sto
 {
   "maxConcurrent": 8,
   "agentModels": {
-    "researcher": "9router/reason",
-    "scout": "9router/assistant",
-    "worker": "9router/coder"
+    "researcher": "omni/auto/best-reasoning",
+    "scout": "omni/auto/best-fast",
+    "worker": "omni/auto/best-coding"
   }
 }
 ```
