@@ -1,0 +1,9 @@
+{
+  "name": "@pi/route-web-tools",
+  "version": "1.0.0",
+  "description": "Web search and URL fetch tools (route_web_search / route_web_fetch) for route proxy",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {}
+}

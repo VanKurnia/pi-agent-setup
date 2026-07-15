@@ -6,6 +6,7 @@ auth.json
 !.env.example
 agent/models.json
 agent/9router-config.json
+agent/route-proxy-config.json
 
 # Pi runtime state (created when this repo is used as ~/.pi/agent)
 .pi/

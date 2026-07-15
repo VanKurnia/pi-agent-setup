@@ -104,18 +104,18 @@ else
   ok "agent/models.json exists"
 fi
 
-# 9router-config.json
-if [[ ! -f "$PI_ROOT/agent/9router-config.json" ]]; then
-  cat > "$PI_ROOT/agent/9router-config.json" <<'EOF'
+# route-proxy-config.json
+if [[ ! -f "$PI_ROOT/agent/route-proxy-config.json" ]]; then
+  cat > "$PI_ROOT/agent/route-proxy-config.json" <<'EOF'
 {
   "baseUrl": "http://localhost:20128",
   "apiKey": "sk-9a0ed15031caf806-mu0zo9-aaf53a85",
   "enableReasoning": false
 }
 EOF
-  ok "Created agent/9router-config.json (edit with your 9router URL/key)"
+  ok "Created agent/route-proxy-config.json (edit with your route proxy URL/key)"
 else
-  ok "agent/9router-config.json exists"
+  ok "agent/route-proxy-config.json exists"
 fi
 
 # auth.json
@@ -134,7 +134,7 @@ if [[ ! -f "$PI_ROOT/agent/settings.json" ]]; then
   "theme": "dark",
   "packages": [
     "npm:@ff-labs/pi-fff",
-    "npm:pi-9router-ext",
+    "npm:omniroute-pi-ext-integration",
     "npm:pi-x-ide",
     "npm:pi-zentui",
     "npm:@nukcole-xinluo9510/pi-extension-guy",
@@ -203,8 +203,8 @@ say "Install complete!"
 echo
 echo "Next steps:"
 echo "  1. Edit $PI_ROOT/.env with your API keys"
-echo "  2. Edit $PI_ROOT/agent/9router-config.json if using remote 9router"
-echo "  3. Start 9router (if local): 9router"
+echo "  2. Edit $PI_ROOT/agent/route-proxy-config.json if using a remote route proxy"
+echo "  3. Start OmniRoute (if local): omniroute"
 echo "  4. Run: pi"
 echo
 echo "Note: 'pi' runs via npx or global npm install. No PATH modification needed."

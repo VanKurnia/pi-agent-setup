@@ -401,7 +401,7 @@ export default function registerSubagent(pi: ExtensionAPI) {
         promptGuidelines: [
             "Parallel tool calls are your primary parallelism mechanism — put multiple independent read/fetch/search calls in one function_calls block. Don't use subagents to parallelize simple I/O.",
             "Use subagent to delegate *reasoning and decisions*: codebase exploration (scout), web research (researcher — use for multi-step research, not single lookups), or isolated code changes (worker)",
-            "Single fact lookup on the web? Call ninerouter_web_search directly. Need 3+ searches, source comparison, or synthesis? Delegate to researcher.",
+            "Single fact lookup on the web? Call route_web_search directly. Need 3+ searches, source comparison, or synthesis? Delegate to researcher.",
             "For multiple independent subagent tasks, use parallel mode with tasks[] array",
             "For multi-phase workflows (scout → implement → verify), use hybrid mode with hybrid[] array — phases execute sequentially, each phase feeds the next via {previous}.",
             "Subagents have NO context from the current conversation — include ALL necessary context in the task description",
