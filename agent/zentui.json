@@ -40,5 +40,8 @@
   "contextStyle": "gauge",
   "icons": {
     "mode": "nerd"
+  },
+  "fixedEditor": {
+    "enabled": true
   }
 }
