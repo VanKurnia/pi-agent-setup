@@ -3,8 +3,6 @@
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
     "lint": "eslint agent/extensions/",
     "lint:fix": "eslint agent/extensions/ --fix",
     "format": "prettier --write agent/extensions/",
@@ -22,8 +20,7 @@
     "lint-staged": "^15.0.0",
     "prettier": "^3.0.0",
     "typescript": "^5.7.0",
-    "typescript-eslint": "^8.0.0",
-    "vitest": "^4.1.9"
+    "typescript-eslint": "^8.0.0"
   },
   "lint-staged": {
     "*.ts": [

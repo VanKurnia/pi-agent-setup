@@ -2,11 +2,13 @@
   "name": "pi-extensions",
   "private": true,
   "dependencies": {
-    "@ff-labs/pi-fff": "^0.9.6",
+    "@ff-labs/pi-fff": "^0.10.0",
     "@nukcole-xinluo9510/pi-extension-guy": "^0.1.0",
-    "pi-9router-ext": "^0.2.2",
+    "pi-9router-ext": "^0.2.3",
     "pi-blackhole": "^0.3.9",
+    "pi-smart-fetch": "^0.3.12",
+    "pi-smart-web-search": "^0.3.0",
     "pi-x-ide": "^1.16.3",
-    "pi-zentui": "^0.7.0"
+    "pi-zentui": "^0.11.0"
   }
 }
