@@ -94,16 +94,17 @@ fi
 # ── Clean existing packages list — rebuild from scratch ──
 SETTINGS="$SCRIPT_DIR/agent/settings.json"
 
-# npm pi packages to register (these are NOT auto-discovered)
-npm_packages=(
-  "npm:@ff-labs/pi-fff"
-  "npm:pi-9router-ext"
-  "npm:pi-x-ide"
-  "npm:pi-zentui"
-  "npm:@nukcole-xinluo9510/pi-extension-guy"
-  "npm:pi-blackhole"
-  "npm:pi-speeed"
-)
+# Read npm packages from agent/npm/package.json (single source of truth)
+NPM_PKG_JSON="$SCRIPT_DIR/agent/npm/package.json"
+npm_packages=()
+if [ -f "$NPM_PKG_JSON" ]; then
+  while IFS= read -r dep; do
+    npm_packages+=("npm:$dep")
+  done < <(node -e "
+    const pkg = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+    for (const dep of Object.keys(pkg.dependencies || {})) console.log(dep);
+  " "$NPM_PKG_JSON" 2>$NULL_DEV)
+fi
 
 if [ -f "$SETTINGS" ]; then
   node -e "
