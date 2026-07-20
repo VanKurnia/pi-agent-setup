@@ -128,22 +128,25 @@ fi
 
 # settings.json
 if [[ ! -f "$PI_ROOT/agent/settings.json" ]]; then
-  cat > "$PI_ROOT/agent/settings.json" <<'EOF'
-{
-  "lastChangelogVersion": "0.80.6",
-  "theme": "dark",
-  "packages": [
-    "npm:@ff-labs/pi-fff",
-    "npm:pi-9router-ext",
-    "npm:pi-x-ide",
-    "npm:pi-zentui",
-    "npm:@nukcole-xinluo9510/pi-extension-guy",
-    "npm:pi-blackhole",
-    "npm:pi-speeed"
-  ]
-}
-EOF
-  ok "Created agent/settings.json with default packages"
+  # Bootstrap settings.json from agent/npm/package.json (single source of truth)
+  NPM_PKG_JSON="$PI_ROOT/agent/npm/package.json"
+  if [ -f "$NPM_PKG_JSON" ]; then
+    node -e "
+      const fs = require('fs');
+      const pkg = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+      const deps = Object.keys(pkg.dependencies || {});
+      const settings = {
+        packages: deps.map(d => 'npm:' + d),
+        theme: 'dark'
+      };
+      fs.writeFileSync(process.argv[2], JSON.stringify(settings, null, 2) + '\n');
+    " "$NPM_PKG_JSON" "$PI_ROOT/agent/settings.json" 2>/dev/null || true
+  fi
+  if [ -f "$PI_ROOT/agent/settings.json" ]; then
+    ok "Created agent/settings.json from agent/npm/package.json"
+  else
+    ok "agent/settings.json bootstrapped (no npm packages found — add deps manually)"
+  fi
 else
   ok "agent/settings.json exists"
 fi
