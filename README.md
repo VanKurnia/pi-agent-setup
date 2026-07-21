@@ -66,6 +66,7 @@ bash install.sh
 | Extension not loading | Run `bash install.sh` to reinstall deps. Check `agent/auth.json` exists. |
 | Icons look broken | Install a Nerd Font and set it as your terminal font. |
 | `install.sh` / `update.sh` fails | Run in Git Bash (Windows) or bash (Linux/macOS). The `~` path doesn't expand in cmd/PowerShell. |
+| `rtk binary unavailable` warning | Install [rtk](https://github.com/rtk-ai/rtk) from [GitHub releases](https://github.com/rtk-ai/rtk/releases). |
 
 ## Pi URL Ecosystem (`pi://`)
 
@@ -115,6 +116,7 @@ Pi connects to these external tools and services (not counting Pi packages):
 | [[Git]] | `git-toolkit` extension wraps 12 Git operations. Shell: Git Bash at `C:\Program Files\Git\bin\bash.exe`. | Active |
 | [[Chrome]] / Puppeteer | `browser-tools` extension provides browser automation. | Active |
 | [[Node.js]] | Runtime for all extensions (loaded via jiti). Version managed by nvm. | Active |
+| [rtk](https://github.com/rtk-ai/rtk) | Command rewriting binary — rewrites `git`, `npm`, `cargo` etc. to optimized equivalents. Used by `pi-rtk-optimizer`. **Not an npm package** — install via [GitHub releases](https://github.com/rtk-ai/rtk/releases) or Homebrew/Cargo. | Active |
 
 **Single point of failure:** 9router is the only provider. If it goes down, Pi has no models to call. Consider a local fallback (Ollama) or direct API key.
 
@@ -143,7 +145,7 @@ Pi connects to these external tools and services (not counting Pi packages):
 | `custom-header` | Customizable startup header |
 | `md-link` | Collaborative `.md` editing (`/link-md`, `/send-diff`) |
 | `plan-artifact` | Browser UI for `.plans/` markdown with commenting and syntax highlighting |
-| `zz-read-only-mode` | Toggle read-only (`/read-only`) |
+| `pi-rtk-optimizer` | Output compaction + command rewriting via [rtk](https://github.com/rtk-ai/rtk). Compacts git, test, linter, search output. Saves context tokens. |
 
 ### External Packages
 
@@ -155,6 +157,7 @@ Pi connects to these external tools and services (not counting Pi packages):
 | `pi-zentui` | Extended TUI components |
 | `pi-blackhole` | Session compaction & observation engine — manages context window via truncation, reflection, and automatic archival |
 | `pi-speeed` | Performance monitoring for pi agent sessions |
+| `pi-tool-display` | TUI rendering — collapsed tool output, diff visualization, thinking labels. Complements rtk-optimizer. |
 
 ### Skills
 
