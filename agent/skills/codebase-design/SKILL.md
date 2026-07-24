@@ -112,3 +112,29 @@ Good interfaces make testing natural:
 
 - **Deepening a cluster given its dependencies** — see [DEEPENING.md](DEEPENING.md): dependency categories, seam discipline, and replace-don't-layer testing.
 - **Exploring alternative interfaces** — see [DESIGN-IT-TWICE.md](DESIGN-IT-TWICE.md): spin up parallel sub-agents to design the interface several radically different ways, then compare on depth, locality, and seam placement.
+
+## Measuring Depth with CBM
+
+Use codebase-memory tools to quantify depth, leverage, and complexity:
+
+- `get_architecture(aspects=["clusters"])` — check whether a module appears as
+  a separate Leiden community or merged with other modules. A module undetected
+  as a standalone cluster may be too shallow: its interface isn't large enough
+  for community detection to isolate it.
+- `query_graph` to measure interface complexity:
+  ```cypher
+  MATCH (m:Module)-[:CONTAINS]->(f:Function)
+  RETURN m.name, count(f) as functions, avg(f.param_count) as avg_params
+  ```
+  Modules with few functions but high average params (>4) suggest complex
+  interfaces — possibly shallow (behavior pushed into params).
+- `trace_path` — trace external callers to measure leverage: does the interface
+  have many callers (deep) or just 1-2 (shallow)? Use `direction="inbound"`
+  on the module's primary functions.
+- `query_graph` for cohesion analysis:
+  ```cypher
+  MATCH (a:Function)-[:CALLS]->(b:Function)
+  WHERE a.file_path CONTAINS "moduleX" AND b.file_path CONTAINS "moduleX"
+  RETURN count(*) as internal_calls
+  ```
+  Compare internal_calls to total_calls — high ratio = cohesive module.

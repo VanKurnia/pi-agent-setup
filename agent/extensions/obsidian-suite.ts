@@ -52,7 +52,7 @@ export default function (pi: ExtensionAPI) {
 
         // 3. Resolution order for context tools
         parts.push(
-            "## Resolution Order\n1. `memory_recall` — check prior agent-stored context\n2. `resolve_pi_url` — follow any `pi://` URL in context (vault, workspace, health, skill, db). Don't re-resolve content already in context.\n3. `ffgrep` — fallback search across vault files",
+            "## Resolution Order\n1. `memory_recall` — check prior agent-stored context\n2. `search_graph` / `read_symbol` — cari code symbol di codebase saat vault note merujuk ke implementation code (via `Projects/` paths). Use `search_graph` first for symbol discovery, then `read_symbol` or `get_code_snippet` to read source.\n3. `resolve_pi_url` — follow any `pi://` URL in context (vault, workspace, health, skill, db). Don't re-resolve content already in context.\n4. `ffgrep` — fallback search across vault files",
         );
         parts.push("Vault context: ~500 tokens, injected once per session.");
 

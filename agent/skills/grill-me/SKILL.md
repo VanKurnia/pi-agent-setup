@@ -7,7 +7,13 @@ Interview me relentlessly about every aspect of this plan until we reach a share
 
 **One question per turn.** Batching multiple questions hides dependencies — walk the tree one branch at a time.
 
-If a question can be answered by exploring the codebase, explore it instead.
+If a question can be answered by exploring the codebase, explore it instead —
+use CBM tools for fast, targeted answers:
+- `search_graph` / `read_symbol` — check symbol definitions under debate
+- `trace_path` — verify callers/callees claims about dependencies
+- `search_code` — verify usage patterns mentioned in discussion
+- `detect_changes` — check if a code area is actively changing (context for refactor decisions)
+- `get_architecture` — validate architecture claims with structural data
 
 ## Question delivery
 
@@ -23,7 +29,8 @@ Prefer the `ask_user_question` tool over plain text when the question has a disc
 ## Compatibility
 
 This skill works alongside the orchestrator skill. Orchestrator's context-hygiene and investigation rules apply:
-- Scout before asking when answers exist in the codebase
+- CBM tools before scout before asking — try `search_graph`/`read_symbol`/`trace_path`
+  first to answer codebase questions; send a scout only when CBM doesn't have the answer
 - One question per ask_user_question call
 - Prefer ask_user_question over plain text for discrete multiple-choice questions
 

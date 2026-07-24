@@ -2,7 +2,7 @@
   "name": "pi-extensions",
   "private": true,
   "dependencies": {
-    "@ff-labs/pi-fff": "^0.10.0",
+    "@ff-labs/pi-fff": "^0.10.1",
     "@nukcole-xinluo9510/pi-extension-guy": "^0.1.0",
     "pi-9router-ext": "^0.2.3",
     "pi-blackhole": "^0.3.9",
@@ -10,8 +10,8 @@
     "pi-rtk-optimizer": "^0.9.0",
     "pi-smart-fetch": "^0.3.12",
     "pi-smart-web-search": "^0.3.0",
-    "pi-x-ide": "^1.16.3",
     "pi-tool-display": "^0.5.0",
-    "pi-zentui": "^0.11.0"
+    "pi-x-ide": "^1.19.3",
+    "pi-zentui": "^0.12.0"
   }
 }

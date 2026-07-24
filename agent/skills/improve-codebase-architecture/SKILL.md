@@ -14,7 +14,33 @@ This command is built on a shared design vocabulary:
 
 ## Process
 
-### 1. Explore
+### 1. Explore — Use CBM tools as primary method, before scout:
+
+Before sending a scout, run CBM tools for objective data:
+
+- `get_architecture(aspects=["hotspots", "dependencies", "boundaries", "layers", "clusters"])`
+  → Leiden community detection reveals de-facto modules. Modules that appear as separate
+  communities are typically good deep modules; modules merged with others may be too shallow.
+- `query_graph` for complexity analysis:
+  ```cypher
+  MATCH (f:Function) WHERE f.transitive_loop_depth >= 3
+  RETURN f.qualified_name, f.transitive_loop_depth
+  ```
+  → Find functions with complex cyclic dependencies.
+  ```cypher
+  MATCH (f:Function) WHERE f.linear_scan_in_loop >= 1
+  RETURN f.qualified_name, f.linear_scan_in_loop
+  ```
+  → Find hidden O(n²) patterns invisible from source structure.
+- `trace_path(mode="calls", direction="both", depth=2)` — understand inter-module
+  dependency graph. Replaces manually following imports.
+- `search_graph` — discover module boundaries and symbol relationships.
+- `detect_changes(since="3 months ago")` — churn hotspots often correlate with
+  architectural friction.
+
+After collecting CBM data, use `subagent` scout for verification and specific details.
+
+---
 
 Use the Agent tool with **`subagent` scout** to walk the codebase. Don't follow rigid heuristics — explore organically and note where you experience friction:
 
@@ -46,6 +72,9 @@ The plan markdown should follow this structure:
 - **Involved Files**: `repo/rel/path.ts` — absolute: `/abs/path.ts`
 - **Strength**: Strong | Worth exploring | Speculative
 - **Category**: in-process | local-substitutable | ports & adapters | mock
+- **CBM Evidence**: Codebase-memory data supporting this finding
+  (e.g., `get_architecture(clusters)` shows module X fragmented into small
+  clusters; or `query_graph` shows `transitive_loop_depth: 5` in module Y)
 - **Problem**: One sentence referencing exact lines.
 - **Solution**: One sentence.
 
