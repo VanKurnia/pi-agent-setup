@@ -33,7 +33,13 @@ const PLAN_COMMAND_NAME = "plan";
 const STATUS_KEY = "read-only-mode";
 const WIDGET_KEY = "read-only-mode";
 const PLAN_TODOS_WIDGET_KEY = "plan-todos";
-const READ_ONLY_TOOL_NAMES = ["read", "grep", "find", "ls"] as const;
+const READ_ONLY_TOOL_NAMES = [
+    "read", "grep", "find", "ls",
+    "search_graph", "search_code", "read_symbol", "resolve_symbol",
+    "get_code_snippet", "get_code_snippets", "read_symbols",
+    "search_and_read_symbols", "trace_path", "get_architecture",
+    "get_graph_schema", "query_graph", "detect_changes",
+] as const;
 
 /** Tools available in plan mode (read-only tools + bash with allowlist) */
 const PLAN_MODE_TOOLS = [
@@ -44,6 +50,10 @@ const PLAN_MODE_TOOLS = [
     "ls",
     "questionnaire",
     "plan_artifact",
+    "search_graph", "search_code", "read_symbol", "resolve_symbol",
+    "get_code_snippet", "get_code_snippets", "read_symbols",
+    "search_and_read_symbols", "trace_path", "get_architecture",
+    "get_graph_schema", "query_graph", "detect_changes",
 ] as const;
 
 /** Tools disabled in plan mode */

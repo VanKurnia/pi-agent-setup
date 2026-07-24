@@ -31,6 +31,28 @@ Never start implementing until you are **100% certain** of what needs to be done
 - **`memory_recall`** — check prior-session agent memory for decisions, user preferences, project context, and architecture facts stored via `memory_write`. Use this before any vault or codebase search: it's the fastest path to context the agent itself has saved. Run `memory_recall` with key terms from the question; if scope matters, narrow with `scope=global` or `scope=project`.
 - **`memory_write`** — save decisions, user preferences, project-specific facts, and architecture context to agent memory. Scope with `scope=global` (user-level) or `scope=project` (per-project). Tag entries (`tags[]`) for easier recall. Write after you learn something that should persist across sessions: confirmed requirements, rejected approaches, architectural choices, user preferences.
 - **`resolve_pi_url`** — read vault notes (`pi://vault/<path>`), skill docs (`pi://skill/<name>`), workspace state (`pi://workspace/`, `pi://workspace/git`), project databases (`pi://db/`), or health check (`pi://health`). Use when you know the exact path — faster than ff-search/grep.
+- **`search_graph`** — First tool for code discovery. Use before grep or scout.
+  Query modes: BM25 natural language, name regex, and semantic (vector) search.
+- **`search_code`** — Literal text/regex search with graph enrichment (deduplicates
+  by function boundary, ranks by structural importance). Use for config keys,
+  env vars, route strings, error messages, or when search_graph returns nothing.
+- **`read_symbol` / `resolve_symbol`** — Read source from a symbol name.
+  resolve_symbol first to find the qualified_name if ambiguous (returns candidates
+  without guessing). Then read_symbol to read the source.
+- **`get_code_snippet`** — Read source from an exact qualified_name. More efficient
+  than reading the whole file. Set `include_neighbors=true` for callers/callees.
+- **`trace_path`** — Use instead of grep for callers/callees/impact analysis.
+  Supports multi-hop tracing, data-flow mode, and cross-service traces.
+- **`get_architecture`** — Structural orientation at the start of a project:
+  hotspots, entry points, packages, layers, dependencies.
+- **`detect_changes`** — Blast radius analysis before commit or before starting
+  work. Shows changed files + transitive impact set (callers of changed symbols).
+
+**CBM override rule:** For code files, use CBM tools before grep/read/scout.
+Fall back to traditional tools only when: (1) CBM returns no results (code
+not indexed yet), or (2) the target is non-code (configs, docs, manifests,
+build scripts, markdown).
+
 - **`subagent` scout** — codebase recon: find files, read sections, map architecture. Tools: `read`, `grep`, `find`, `ls`, `ask_user_question`, plus git tools and `query_sqlite`/`query_mysql`. Fast and cheap (Haiku).
 - **`subagent` researcher** — web research: search, fetch, synthesize. Tools: `web_search`, `web_fetch`, `batch_web_fetch`, `ask_user_question`, plus git tools and database queries.
 - **`subagent` worker** — isolated code changes. Tools: `read`, `write`, `edit`, `safe_bash`, `ask_user_question`, plus full git toolkit and database queries. Use when the change is well-specified but still supports one-shot questions to the user.
@@ -45,6 +67,12 @@ If any of those are fuzzy, you're not ready to implement.
 ## Context Hygiene
 
 Your context window is a finite, non-renewable resource. Every file you read directly stays in your context forever.
+
+**Default to CBM tools first, scouts second.** Before dispatching a scout for
+code exploration, try `search_graph` or `get_architecture` directly — they may
+answer the question in one call vs 3-5 scout round-trips. Use scout when the
+question involves file structure, build config, non-code content, or when CBM
+has no index for the target project.
 
 **Default to scouts for exploration.** If the task involves understanding how something works across multiple files, finding where something is defined/used, investigating a bug, or checking whether a change is safe — **send a scout.** You get a concise summary back. Your context stays clean.
 

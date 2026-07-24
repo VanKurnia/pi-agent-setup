@@ -12,6 +12,7 @@
  * The generated prompt appears as a draft in the editor for review/editing.
  */
 
+import { spawn } from "node:child_process";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { complete, type Message } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, SessionEntry } from "@earendil-works/pi-coding-agent";
@@ -122,12 +123,45 @@ export default function (pi: ExtensionAPI) {
 						throw new Error(auth.ok ? `No API key for ${ctx.model!.provider}` : auth.error);
 					}
 
+					// Best-effort codebase context via CBM CLI
+					// Calls codebase-memory-mcp directly (same approach as pi-cbm's CbmClient).
+					// Silently skips if the binary is not found or no codebase is indexed.
+					let cbmContext = "";
+					const cbmBinary = process.env.CODEBASE_MEMORY_MCP_BIN || process.env.CBM_BIN || "codebase-memory-mcp";
+					try {
+						const archOutput = await new Promise<string>((resolve, reject) => {
+							const child = spawn(cbmBinary, ["cli", "--json", "get_architecture", JSON.stringify({
+								aspects: ["hotspots", "entry_points"],
+								include_metadata: false,
+								max_symbol_lines: 20,
+							})], {
+								stdio: ["ignore", "pipe", "pipe"],
+								windowsHide: true,
+								timeout: 10_000,
+							});
+							let stdout = "";
+							let stderr = "";
+							child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+							child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+							child.on("close", (code) => {
+								if (code === 0 && stdout.trim()) resolve(stdout.trim());
+								else reject(new Error(stderr || `exit code ${code}`));
+							});
+							child.on("error", reject);
+						});
+						if (archOutput && archOutput.length > 100) {
+							cbmContext += `## Codebase Architecture\n\`\`\`\n${archOutput.slice(0, 1500)}\n\`\`\`\n\n`;
+						}
+					} catch {
+						// CBM binary not found, no codebase indexed, or error — skip silently
+					}
+
 					const userMessage: Message = {
 						role: "user",
 						content: [
 							{
 								type: "text",
-								text: `## Conversation History\n\n${conversationText}\n\n## User's Goal for New Thread\n\n${goal}`,
+								text: `${cbmContext}## Conversation History\n\n${conversationText}\n\n## User's Goal for New Thread\n\n${goal}`,
 							},
 						],
 						timestamp: Date.now(),

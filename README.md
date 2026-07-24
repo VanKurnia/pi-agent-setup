@@ -156,6 +156,7 @@ Pi connects to these external tools and services (not counting Pi packages):
 | `pi-x-ide` | VS Code / IDE integration |
 | `pi-zentui` | Extended TUI components |
 | `pi-blackhole` | Session compaction & observation engine — manages context window via truncation, reflection, and automatic archival |
+| `pi-cbm` | Codebase memory index — wraps `codebase-memory-mcp` CLI as 13 native Pi tools (`search_graph`, `search_code`, `read_symbol`, `resolve_symbol`, `get_code_snippet`, `get_code_snippets`, `read_symbols`, `search_and_read_symbols`, `trace_path`, `get_architecture`, `get_graph_schema`, `query_graph`, `detect_changes`). Auto-indexes current git repo on session start. |
 | `pi-speeed` | Performance monitoring for pi agent sessions |
 | `pi-tool-display` | TUI rendering — collapsed tool output, diff visualization, thinking labels. Complements rtk-optimizer. |
 
@@ -163,8 +164,10 @@ Pi connects to these external tools and services (not counting Pi packages):
 
 | Skill | Description |
 |-------|-------------|
+| `codebase-design` | Shared vocabulary for deep module design — module, depth, seam, adapter, leverage, locality |
 | `grill-me` | Stress-test plans through relentless questioning |
 | `improve` | Read-only codebase audit with prioritized implementation plans |
+| `improve-codebase-architecture` | Scan for deepening opportunities — surface architectural friction with visual HTML report |
 | `obsidian` | Vault navigation protocol, link qualification, writing conventions |
 | `orchestrator` | Session orchestration: subagent routing, context hygiene |
 | `stop-slop` | Strips AI writing patterns from prose |
