@@ -99,11 +99,12 @@ NPM_PKG_JSON="$SCRIPT_DIR/agent/npm/package.json"
 npm_packages=()
 if [ -f "$NPM_PKG_JSON" ]; then
   while IFS= read -r dep; do
-    npm_packages+=("npm:$dep")
+    [ -n "$dep" ] && npm_packages+=("npm:$dep")
   done < <(node -e "
-    const pkg = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+    const fs = require('fs');
+    const pkg = JSON.parse(fs.readFileSync('$NPM_PKG_JSON', 'utf8'));
     for (const dep of Object.keys(pkg.dependencies || {})) console.log(dep);
-  " "$NPM_PKG_JSON" 2>$NULL_DEV)
+  " 2>$NULL_DEV)
 fi
 
 if [ -f "$SETTINGS" ]; then

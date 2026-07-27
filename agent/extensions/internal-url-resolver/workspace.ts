@@ -1,13 +1,21 @@
 import { readdirSync, statSync } from "node:fs";
 import { join, basename, extname } from "node:path";
-import { execSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { PiUrlResult, formatError } from "./types.ts";
 import { resolveVaultRoot } from "../shared/resolve-vault.ts";
 
-function execSafe(cmd: string): string | null {
+const execFileAsync = promisify(execFile);
+
+async function execSafe(cmd: string, args: string[], cwd?: string): Promise<string | null> {
     try {
-        return execSync(cmd, { encoding: "utf-8", timeout: 3000 }).trim();
+        const { stdout } = await execFileAsync(cmd, args, {
+            encoding: "utf-8",
+            timeout: 3000,
+            cwd,
+        });
+        return stdout.trim();
     } catch {
         return null;
     }
@@ -28,20 +36,20 @@ const BINARY_EXTS = new Set([
 ]);
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "__pycache__"]);
 
-function workspaceInfo(): string {
+async function workspaceInfo(cwd?: string): Promise<string> {
     const vaultRoot = resolveVaultRoot();
-    const cwd = process.cwd();
-    const remote = execSafe("git config --get remote.origin.url");
-    const branch = execSafe("git rev-parse --abbrev-ref HEAD");
+    const dir = cwd ?? process.cwd();
+    const remote = await execSafe("git", ["config", "--get", "remote.origin.url"], dir);
+    const branch = await execSafe("git", ["rev-parse", "--abbrev-ref", "HEAD"], dir);
     const workspaceKey = createHash("sha256")
-        .update(remote || cwd)
+        .update(remote || dir)
         .digest("hex")
         .slice(0, 16);
 
     const lines: string[] = [];
     lines.push("## Workspace");
     lines.push("");
-    lines.push(`- **Directory**: \`${cwd}\``);
+    lines.push(`- **Directory**: \`${dir}\``);
     lines.push(`- **Branch**: ${branch ?? "unavailable"}`);
     lines.push(`- **Remote**: ${remote ?? "none"}`);
     lines.push(`- **Workspace ID**: \`${workspaceKey}\``);
@@ -51,9 +59,9 @@ function workspaceInfo(): string {
     return lines.join("\n");
 }
 
-function workspaceGit(): string {
-    const log = execSafe("git log -1 --oneline --decorate");
-    const status = execSafe("git status --porcelain");
+async function workspaceGit(cwd?: string): Promise<string> {
+    const log = await execSafe("git", ["log", "-1", "--oneline", "--decorate"], cwd);
+    const status = await execSafe("git", ["status", "--porcelain"], cwd);
     const lines: string[] = [];
     lines.push("## Git Status");
     lines.push("");
@@ -78,32 +86,34 @@ function workspaceGit(): string {
     return lines.join("\n");
 }
 
-function workspaceFiles(): string {
-    const cwd = process.cwd();
+function workspaceFiles(cwd?: string): string {
+    const dir = cwd ?? process.cwd();
     const maxEntries = 100;
     const results: string[] = [];
     results.push("## Workspace Files (depth ≤ 2)");
     results.push("");
 
-    function walk(dir: string, depth: number): void {
+    function walk(root: string, depth: number): void {
         if (depth > 2 || results.length - 1 >= maxEntries) return;
         let entries: string[];
         try {
-            entries = readdirSync(dir);
+            entries = readdirSync(root);
         } catch {
             return;
         }
         for (const name of entries) {
             if (name.startsWith(".")) continue;
             if (results.length - 1 >= maxEntries) break;
-            const full = join(dir, name);
+            const full = join(root, name);
             let stats: import("node:fs").Stats;
             try {
                 stats = statSync(full);
             } catch {
                 continue;
             }
-            const rel = full.startsWith(cwd) ? full.slice(cwd.length).replace(/^[/\\]/, "") : full;
+            const rel = full.startsWith(dir)
+                ? full.slice(dir.length).replace(/^[/\\]/, "")
+                : full;
             if (stats.isDirectory()) {
                 if (SKIP_DIRS.has(basename(full))) continue;
                 results.push(`📁 \`${rel}/\``);
@@ -116,22 +126,36 @@ function workspaceFiles(): string {
         }
     }
 
-    walk(cwd, 0);
+    walk(dir, 0);
     if (results.length === 1) {
         results.push("*(no files found)*");
     }
     return results.join("\n");
 }
 
-export function resolveWorkspaceUrl(path: string, url: string): PiUrlResult {
+export async function resolveWorkspaceUrl(
+    path: string,
+    url: string,
+    cwd?: string,
+): Promise<PiUrlResult> {
     switch (path) {
         case "":
-            return { content: workspaceInfo(), mime: "text/markdown", protocol: "workspace", path };
+            return {
+                content: await workspaceInfo(cwd),
+                mime: "text/markdown",
+                protocol: "workspace",
+                path,
+            };
         case "git":
-            return { content: workspaceGit(), mime: "text/markdown", protocol: "workspace", path };
+            return {
+                content: await workspaceGit(cwd),
+                mime: "text/markdown",
+                protocol: "workspace",
+                path,
+            };
         case "files":
             return {
-                content: workspaceFiles(),
+                content: workspaceFiles(cwd),
                 mime: "text/markdown",
                 protocol: "workspace",
                 path,

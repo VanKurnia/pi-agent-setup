@@ -20,12 +20,13 @@ export function registerOperations(pi: ExtensionAPI) {
         parameters: Type.Object({
             repo_path: Type.String({ description: "Path to Git repository" }),
         }),
-        async execute(_toolCallId, params) {
+        async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
             try {
-                const output = await runGit(params.repo_path, ["status"]);
+                const output = await runGit(params.repo_path, ["status"], { signal });
                 const body = output ? `\`\`\`text\n${output}\n\`\`\`` : "Working tree clean";
                 return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
+                if (e.name === "AbortError") return fail("Operation cancelled");
                 return fail(e.message);
             }
         },
@@ -46,13 +47,14 @@ export function registerOperations(pi: ExtensionAPI) {
                 Type.Number({ description: "Number of context lines to show (default: 3)" }),
             ),
         }),
-        async execute(_toolCallId, params) {
+        async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
             try {
                 const context = params.context_lines !== undefined ? params.context_lines : 3;
-                const output = await runGit(params.repo_path, ["diff", `-U${context}`]);
+                const output = await runGit(params.repo_path, ["diff", `-U${context}`], { signal });
                 const body = output ? `\`\`\`diff\n${output}\n\`\`\`` : "No unstaged changes";
                 return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
+                if (e.name === "AbortError") return fail("Operation cancelled");
                 return fail(e.message);
             }
         },
@@ -71,13 +73,14 @@ export function registerOperations(pi: ExtensionAPI) {
                 Type.Number({ description: "Number of context lines to show (default: 3)" }),
             ),
         }),
-        async execute(_toolCallId, params) {
+        async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
             try {
                 const context = params.context_lines !== undefined ? params.context_lines : 3;
-                const output = await runGit(params.repo_path, ["diff", "--cached", `-U${context}`]);
+                const output = await runGit(params.repo_path, ["diff", "--cached", `-U${context}`], { signal });
                 const body = output ? `\`\`\`diff\n${output}\n\`\`\`` : "No staged changes";
                 return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
+                if (e.name === "AbortError") return fail("Operation cancelled");
                 return fail(e.message);
             }
         },
@@ -97,17 +100,18 @@ export function registerOperations(pi: ExtensionAPI) {
                 Type.Number({ description: "Number of context lines to show (default: 3)" }),
             ),
         }),
-        async execute(_toolCallId, params) {
+        async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
             try {
                 const context = params.context_lines !== undefined ? params.context_lines : 3;
                 const output = await runGit(params.repo_path, [
                     "diff",
                     params.target,
                     `-U${context}`,
-                ]);
+                ], { signal });
                 const body = output ? `\`\`\`diff\n${output}\n\`\`\`` : "No differences";
                 return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
+                if (e.name === "AbortError") return fail("Operation cancelled");
                 return fail(e.message);
             }
         },
@@ -124,7 +128,7 @@ export function registerOperations(pi: ExtensionAPI) {
             repo_path: Type.String({ description: "Path to Git repository" }),
             files: Type.Array(Type.String(), { description: "Array of file paths to stage" }),
         }),
-        async execute(_toolCallId, params) {
+        async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
             try {
                 // Defense-in-depth: resolve and verify the staging paths are inside repo_path boundaries
                 const resolvedRepo = path.resolve(params.repo_path);
@@ -144,10 +148,11 @@ export function registerOperations(pi: ExtensionAPI) {
                     }
                 }
 
-                await runGit(params.repo_path, ["add", ...params.files]);
+                await runGit(params.repo_path, ["add", ...params.files], { signal });
                 const body = `**Successfully staged:** ${params.files.map((f) => `\`${f}\``).join(", ")}`;
                 return ok(body + GIT_FOOTER);
             } catch (e: any) {
+                if (e.name === "AbortError") return fail("Operation cancelled");
                 return fail(e.message);
             }
         },
@@ -167,12 +172,13 @@ export function registerOperations(pi: ExtensionAPI) {
             repo_path: Type.String({ description: "Path to Git repository" }),
             message: Type.String({ description: "Commit message" }),
         }),
-        async execute(_toolCallId, params) {
+        async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
             try {
-                const output = await runGit(params.repo_path, ["commit", "-m", params.message]);
+                const output = await runGit(params.repo_path, ["commit", "-m", params.message], { signal });
                 const body = `\`\`\`text\n${output || "Committed."}\n\`\`\``;
                 return ok(body + GIT_FOOTER);
             } catch (e: any) {
+                if (e.name === "AbortError") return fail("Operation cancelled");
                 return fail(e.message);
             }
         },
@@ -190,12 +196,13 @@ export function registerOperations(pi: ExtensionAPI) {
         parameters: Type.Object({
             repo_path: Type.String({ description: "Path to Git repository" }),
         }),
-        async execute(_toolCallId, params) {
+        async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
             try {
-                await runGit(params.repo_path, ["reset"]);
+                await runGit(params.repo_path, ["reset"], { signal });
                 const body = "Successfully unstaged all changes.";
                 return ok(body + GIT_FOOTER);
             } catch (e: any) {
+                if (e.name === "AbortError") return fail("Operation cancelled");
                 return fail(e.message);
             }
         },
@@ -219,10 +226,12 @@ export function registerOperations(pi: ExtensionAPI) {
                 }),
             ),
             end_timestamp: Type.Optional(
-                Type.String({ description: "ISO 8601, relative, or absolute date" }),
+                Type.String({
+                    description: "ISO 8601, relative, or absolute date",
+                }),
             ),
         }),
-        async execute(_toolCallId, params) {
+        async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
             try {
                 const args = ["log", `--max-count=${params.max_count || 10}`, "--oneline"];
                 if (params.start_timestamp) {
@@ -231,10 +240,11 @@ export function registerOperations(pi: ExtensionAPI) {
                 if (params.end_timestamp) {
                     args.push(`--until=${params.end_timestamp}`);
                 }
-                const output = await runGit(params.repo_path, args);
+                const output = await runGit(params.repo_path, args, { signal });
                 const body = output ? `\`\`\`text\n${output}\n\`\`\`` : "No commits match criteria";
                 return ok(body + GIT_FOOTER);
             } catch (e: any) {
+                if (e.name === "AbortError") return fail("Operation cancelled");
                 return fail(e.message);
             }
         },
@@ -252,18 +262,19 @@ export function registerOperations(pi: ExtensionAPI) {
             branch_name: Type.String({ description: "Name of the new branch" }),
             base_branch: Type.Optional(Type.String({ description: "Base branch to create from" })),
         }),
-        async execute(_toolCallId, params) {
+        async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
             try {
                 const args = ["checkout", "-b", params.branch_name];
                 if (params.base_branch) {
                     args.push(params.base_branch);
                 }
-                const output = await runGit(params.repo_path, args);
+                const output = await runGit(params.repo_path, args, { signal });
                 const body = output
                     ? `\`\`\`text\n${output}\n\`\`\``
                     : `Created and checked out branch \`${params.branch_name}\``;
                 return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
+                if (e.name === "AbortError") return fail("Operation cancelled");
                 return fail(e.message);
             }
         },
@@ -280,14 +291,15 @@ export function registerOperations(pi: ExtensionAPI) {
             repo_path: Type.String({ description: "Path to Git repository" }),
             branch_name: Type.String({ description: "Name of branch to checkout" }),
         }),
-        async execute(_toolCallId, params) {
+        async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
             try {
-                const output = await runGit(params.repo_path, ["checkout", params.branch_name]);
+                const output = await runGit(params.repo_path, ["checkout", params.branch_name], { signal });
                 const body = output
                     ? `\`\`\`text\n${output}\n\`\`\``
                     : `Switched to branch \`${params.branch_name}\``;
                 return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
+                if (e.name === "AbortError") return fail("Operation cancelled");
                 return fail(e.message);
             }
         },
@@ -306,11 +318,12 @@ export function registerOperations(pi: ExtensionAPI) {
                 description: "The revision (commit hash, branch name, tag) to show",
             }),
         }),
-        async execute(_toolCallId, params) {
+        async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
             try {
-                const output = await runGit(params.repo_path, ["show", params.revision]);
+                const output = await runGit(params.repo_path, ["show", params.revision], { signal });
                 return ok(`\`\`\`diff\n${output}\n\`\`\`` + GIT_FOOTER);
             } catch (e: any) {
+                if (e.name === "AbortError") return fail("Operation cancelled");
                 return fail(e.message);
             }
         },
@@ -333,7 +346,7 @@ export function registerOperations(pi: ExtensionAPI) {
                 Type.String({ description: "The commit SHA that branch should NOT contain" }),
             ),
         }),
-        async execute(_toolCallId, params) {
+        async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
             try {
                 const args = ["branch"];
                 if (params.branch_type === "all") {
@@ -347,10 +360,11 @@ export function registerOperations(pi: ExtensionAPI) {
                 if (params.not_contains) {
                     args.push(`--no-contains=${params.not_contains}`);
                 }
-                const output = await runGit(params.repo_path, args);
+                const output = await runGit(params.repo_path, args, { signal });
                 const body = output ? `\`\`\`text\n${output}\n\`\`\`` : "No branches found";
                 return ok(body + WORKSPACE_FOOTER);
             } catch (e: any) {
+                if (e.name === "AbortError") return fail("Operation cancelled");
                 return fail(e.message);
             }
         },

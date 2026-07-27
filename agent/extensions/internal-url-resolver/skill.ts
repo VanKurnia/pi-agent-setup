@@ -10,7 +10,7 @@ function safeRead(path: string): string | null {
     }
 }
 
-export function resolveSkillUrl(path: string, url: string): PiUrlResult {
+export function resolveSkillUrl(path: string, url: string, _cwd?: string): PiUrlResult {
     if (!path) {
         return { content: "", mime: "text/markdown", protocol: "skill", path };
     }

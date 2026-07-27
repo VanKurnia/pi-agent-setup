@@ -196,7 +196,7 @@ async function tableSchema(conn: DbConnection, table: string): Promise<string> {
     return `Error: Unknown driver "${conn.driver}".`;
 }
 
-export async function resolveDbUrl(path: string, url: string): Promise<PiUrlResult> {
+export async function resolveDbUrl(path: string, url: string, _cwd?: string): Promise<PiUrlResult> {
     const config = readConfig();
     if (!config || !config.connections || config.connections.length === 0) {
         return {

@@ -37,7 +37,7 @@ protocolRegistry.set("file", {
 });
 
 protocolRegistry.set("db", {
-    resolver: (_path, _url) => ({
+    resolver: async (_path, _url, _cwd) => ({
         content: "Use pi://db/ via the execute handler (async)",
         mime: "text/markdown",
         protocol: "db",
@@ -59,7 +59,7 @@ export function listProtocols(): { name: string; description: string }[] {
     }));
 }
 
-export function resolvePiUrl(url: string): PiUrlResult {
+export async function resolvePiUrl(url: string, cwd?: string): Promise<PiUrlResult> {
     const parsed = parsePiUrl(url);
     if (!parsed) {
         return {
@@ -73,7 +73,8 @@ export function resolvePiUrl(url: string): PiUrlResult {
     const { protocol, path } = parsed;
     const handler = protocolRegistry.get(protocol);
     if (handler) {
-        return handler.resolver(path, url);
+        const result = handler.resolver(path, url, cwd);
+        return result instanceof Promise ? await result : result;
     }
 
     return {
@@ -115,7 +116,7 @@ export default function (pi: ExtensionAPI) {
                     details: { protocol: result.protocol, path: result.path, mime: result.mime },
                 };
             }
-            const result = resolvePiUrl(url);
+            const result = await resolvePiUrl(url);
             return {
                 content: [{ type: "text", text: result.content }],
                 details: { protocol: result.protocol, path: result.path, mime: result.mime },
@@ -133,7 +134,7 @@ export default function (pi: ExtensionAPI) {
                 ctx.ui.notify("Usage: /pi-url <pi:// URL>", "error");
                 return;
             }
-            const result = resolvePiUrl(url);
+            const result = await resolvePiUrl(url);
             if (result.protocol === "error") {
                 ctx.ui.notify(result.content, "error");
                 return;

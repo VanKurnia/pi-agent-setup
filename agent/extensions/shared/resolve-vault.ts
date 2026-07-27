@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve as resolvePath, sep, basename } from "node:path";
-import { PI_AGENT_DIR } from "../internal-url-resolver/types.ts";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 export function resolveVaultRoot(): string | null {
-    const configPath = join(PI_AGENT_DIR, "obsidian-config.json");
+    const configPath = join(getAgentDir(), "obsidian-config.json");
     if (!existsSync(configPath)) return null;
     try {
         const config = JSON.parse(readFileSync(configPath, "utf-8"));

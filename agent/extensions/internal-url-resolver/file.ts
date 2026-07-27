@@ -8,8 +8,12 @@ function isInside(root: string, target: string): boolean {
     return t === r || t.startsWith(r + sep);
 }
 
-export function resolveFileUrl(path: string, url: string): PiUrlResult {
-    const cwd = process.cwd();
+export function resolveFileUrl(
+    path: string,
+    url: string,
+    cwd?: string,
+): PiUrlResult {
+    const dir = cwd ?? process.cwd();
     if (!path) {
         return {
             content: formatError("File path is required. Usage: pi://file/<relative-path>", url),
@@ -19,9 +23,9 @@ export function resolveFileUrl(path: string, url: string): PiUrlResult {
         };
     }
 
-    const fullPath = resolvePath(cwd, path);
+    const fullPath = resolvePath(dir, path);
 
-    if (!isInside(cwd, fullPath)) {
+    if (!isInside(dir, fullPath)) {
         return {
             content: formatError(`Path traversal rejected: ${path}`, url),
             mime: "text/markdown",
