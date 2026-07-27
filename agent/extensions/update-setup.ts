@@ -1,10 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { registerExtensionApi } from "./shared/cross-extension-api.js";
-import { spawn, spawnSync } from "child_process";
-import { existsSync } from "fs";
-import { homedir } from "os";
-import { join } from "path";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 
 // Known bash locations on Windows — Git Bash paths first to avoid WSL bash
 const BASH_CANDIDATES = [
@@ -15,6 +15,17 @@ const BASH_CANDIDATES = [
 ];
 
 function findBash(): string | null {
+    // 1. Try pi's configured shellPath from settings.json first
+    const piConfigDir = process.env.PI_CONFIG_DIR || ".pi";
+    const settingsPath = resolve(homedir(), piConfigDir, "agent", "settings.json");
+    try {
+        const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+        if (settings.shellPath && existsSync(settings.shellPath)) {
+            return settings.shellPath;
+        }
+    } catch { /* settings may not exist */ }
+
+    // 2. Fallback to hardcoded candidates
     for (const candidate of BASH_CANDIDATES) {
         try {
             const result = spawnSync(candidate, ["--version"], { stdio: "ignore" });
@@ -27,7 +38,8 @@ function findBash(): string | null {
 }
 
 async function runUpdate(): Promise<string> {
-    const piDir = join(homedir(), ".pi");
+    const piConfigDir = process.env.PI_CONFIG_DIR || ".pi";
+    const piDir = join(homedir(), piConfigDir);
     const updateScript = join(piDir, "update.sh");
     const lines: string[] = [];
     const stripAnsi = (str: string) => str.replace(/[\u001b\u009b][[()#;?]*.?[0-9]*[a-zA-Z]/g, "");
@@ -121,7 +133,8 @@ export default function (pi: ExtensionAPI) {
     pi.registerCommand("update-setup", {
         description: "Install extensions and dependencies for the .pi workspace",
         async handler(_args: string, ctx: ExtensionCommandContext) {
-            const piDir = join(homedir(), ".pi");
+            const piConfigDir = process.env.PI_CONFIG_DIR || ".pi";
+            const piDir = join(homedir(), piConfigDir);
             const updateScript = join(piDir, "update.sh");
 
             if (!existsSync(updateScript)) {

@@ -10,7 +10,8 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
 
-const envPath = join(homedir(), ".pi", ".env");
+const piConfigDir = process.env.PI_CONFIG_DIR || ".pi";
+const envPath = join(homedir(), piConfigDir, ".env");
 
 if (existsSync(envPath)) {
   try {

@@ -104,7 +104,7 @@ function listDirectory(vaultRoot: string, dirPath: string, url: string): PiUrlRe
     }
 }
 
-export function resolveVaultUrl(path: string, url: string): PiUrlResult {
+export function resolveVaultUrl(path: string, url: string, _cwd?: string): PiUrlResult {
     const vaultRoot = resolveVaultRoot();
 
     if (!vaultRoot) {

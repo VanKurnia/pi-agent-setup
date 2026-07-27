@@ -1,7 +1,7 @@
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
-export type ProtocolResolver = (path: string, url: string) => PiUrlResult;
+export type ProtocolResolver = (path: string, url: string, cwd?: string) => PiUrlResult | Promise<PiUrlResult>;
 
 export interface ProtocolHandler {
     resolver: ProtocolResolver;
@@ -15,7 +15,7 @@ export interface PiUrlResult {
     path: string;
 }
 
-export const PI_AGENT_DIR = join(homedir(), ".pi", "agent");
+export const PI_AGENT_DIR = getAgentDir();
 export const SKILLS_DIR = join(PI_AGENT_DIR, "skills");
 
 export function formatError(

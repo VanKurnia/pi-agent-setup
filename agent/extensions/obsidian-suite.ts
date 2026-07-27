@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { readFileSync, existsSync, mkdirSync, writeFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -7,7 +8,7 @@ interface ObsidianConfig {
     vaultPath: string;
 }
 
-const CONFIG_PATH = join(homedir(), ".pi", "agent", "obsidian-config.json");
+const CONFIG_PATH = join(getAgentDir(), "obsidian-config.json");
 
 export default function (pi: ExtensionAPI) {
     // ── State ──────────────────────────────────────────────────────
@@ -92,6 +93,18 @@ export default function (pi: ExtensionAPI) {
                 };
             }
         }
+    });
+
+    // ── resources_discover: expose vault skills/prompts ────────────
+    pi.on("resources_discover", async (_event: any, _ctx: any) => {
+        const vp = vaultPath ?? loadConfig()?.vaultPath;
+        if (!vp || !existsSync(vp)) return;
+        const result: { skillPaths?: string[]; promptPaths?: string[] } = {};
+        const skillsDir = join(vp, "_agent", "skills");
+        if (existsSync(skillsDir)) result.skillPaths = [skillsDir];
+        const promptsDir = join(vp, "_agent", "prompts");
+        if (existsSync(promptsDir)) result.promptPaths = [promptsDir];
+        return Object.keys(result).length > 0 ? result : undefined;
     });
 
     // ── Command: /obsidian-status — Show vault state ─────────────

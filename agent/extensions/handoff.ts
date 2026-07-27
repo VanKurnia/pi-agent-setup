@@ -138,6 +138,7 @@ export default function (pi: ExtensionAPI) {
 								stdio: ["ignore", "pipe", "pipe"],
 								windowsHide: true,
 								timeout: 10_000,
+								signal: loader.signal,
 							});
 							let stdout = "";
 							let stderr = "";

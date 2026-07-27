@@ -7,37 +7,49 @@ import {
     readLatestEntries,
     findCliBinary,
 } from "./io.ts";
-import { execSync } from "node:child_process";
 import { readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-let probeDone = false;
-let cliAvailable = false;
+let probePromise: Promise<boolean> | null = null;
 
-function ensureProbe(): void {
-    if (probeDone) return;
-    probeDone = true;
-    const binary = findCliBinary();
-    if (binary) {
+async function ensureProbe(): Promise<boolean> {
+    if (probePromise) return probePromise;
+    probePromise = (async () => {
+        const binary = findCliBinary();
+        if (!binary) return false;
         try {
-            cliAvailable =
-                execSync(`"${binary}" version`, { encoding: "utf-8", timeout: 4000 }).trim()
-                    .length > 0;
+            const { execFile } = await import("node:child_process");
+            const { promisify } = await import("node:util");
+            const execFileAsync = promisify(execFile);
+            const { stdout } = await execFileAsync(binary, ["version"], {
+                encoding: "utf-8",
+                timeout: 4000,
+            });
+            return stdout.trim().length > 0;
         } catch {
-            cliAvailable = false;
+            return false;
         }
-    }
+    })();
+    return probePromise;
 }
 
-function cliSearch(query: string): string | null {
-    if (!cliAvailable) return null;
+async function cliSearch(query: string): Promise<string | null> {
+    const available = await ensureProbe();
+    if (!available) return null;
     const binary = findCliBinary();
     if (!binary) return null;
     try {
-        return execSync(`"${binary}" search:context query="${query.replace(/"/g, '\\"')}"`, {
+        const { execFile } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        const execFileAsync = promisify(execFile);
+        const { stdout } = await execFileAsync(binary, [
+            "search:context",
+            `query=${query.replace(/"/g, '\\"')}`,
+        ], {
             encoding: "utf-8",
             timeout: 5000,
-        }).trim();
+        });
+        return stdout.trim();
     } catch {
         return null;
     }
@@ -91,7 +103,7 @@ export function registerMemoryRecall(pi: ExtensionAPI): void {
             limit: Type.Optional(Type.Number({ default: 10, description: "Max results. Max 50." })),
         }),
         async execute(_id, params, _signal, _onUpdate) {
-            ensureProbe(); // lazy — blocks only on first tool call, not at registration
+            await ensureProbe(); // lazy — blocks only on first tool call, not at registration
             const query = params.query?.trim() || "";
             const scope = params.scope || "all";
             const limit = Math.min(params.limit || 10, 50);
@@ -144,7 +156,7 @@ export function registerMemoryRecall(pi: ExtensionAPI): void {
                 };
             }
 
-            const cliResult = cliSearch(query);
+            const cliResult = await cliSearch(query);
             if (cliResult !== null)
                 return { content: [{ type: "text", text: cliResult }], details: {} };
 
