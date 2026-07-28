@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import {
     createAgentSession,
     DEFAULT_MAX_BYTES,
@@ -8,7 +10,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig, AgentProgress, AgentResult } from "./types.js";
-import { resolveModel } from "./config.js";
 import { throttle } from "./utils.js";
 
 function extractTextFromContent(content: unknown): string {
@@ -43,10 +44,50 @@ export async function runSubagent(
 ): Promise<AgentResult> {
     const agentDir = getAgentDir();
 
-    // Resolve model
+    // Build model object directly, bypassing ModelRegistry.
+    // ModelRegistry.resolveModel() triggers _refreshCurrentModelFromRegistry()
+    // via pi-9router-ext's registerProvider call during session startup, which
+    // replaces the Agent's model object. Direct construction avoids this.
     let resolvedModel = undefined;
     if (agent.model) {
-        resolvedModel = await resolveModel(agent.model, agentDir);
+        const provider = agent.model.slice(0, agent.model.lastIndexOf('/'));
+        const id = agent.model.slice(agent.model.lastIndexOf('/') + 1);
+        // Read provider config from models.json to get baseUrl and api type
+        const modelsJsonPath = path.join(agentDir, 'models.json');
+        let providerCfg: any = undefined;
+        try {
+            const modelsData = JSON.parse(fs.readFileSync(modelsJsonPath, 'utf-8'));
+            if (modelsData.providers?.[provider]) {
+                providerCfg = modelsData.providers[provider];
+                // Find the specific model definition (may include extra metadata)
+                const modelDef = providerCfg.models?.find((m: any) => m.id === id);
+                if (modelDef) {
+                    resolvedModel = {
+                        id,
+                        provider,
+                        api: providerCfg.api || 'openai-completions',
+                        baseUrl: providerCfg.baseUrl,
+                        input: modelDef.input || ['text'],
+                        contextWindow: modelDef.contextWindow || 128000,
+                        maxTokens: modelDef.maxTokens || 64000,
+                        reasoning: modelDef.reasoning ?? false,
+                    };
+                }
+            }
+        } catch {}
+        if (!resolvedModel) {
+            // Fallback: construct from string alone
+            resolvedModel = {
+                id,
+                provider,
+                api: 'openai-completions',
+                baseUrl: 'http://localhost:20128/v1',
+                input: ['text'],
+                contextWindow: 128000,
+                maxTokens: 64000,
+                reasoning: false,
+            };
+        }
     }
 
     const result: AgentResult = {
