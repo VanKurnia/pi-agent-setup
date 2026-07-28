@@ -227,7 +227,11 @@ export async function resolveModel(
     try {
         const authStorage = AuthStorage.create(path.join(agentDir, "auth.json"));
         const registry = ModelRegistry.create(authStorage, path.join(agentDir, "models.json"));
-        registry.refresh();
+        // NB: intentionally NOT calling registry.refresh() — it calls
+        // resetApiProviders() which is a GLOBAL side effect that clears
+        // API provider registrations (including pi-9router-ext's dynamic
+        // models). The constructor already calls loadModels() which reads
+        // models.json, so find() works correctly without refresh().
         const model = registry.find(provider, name);
         return model ?? undefined;
     } catch {
