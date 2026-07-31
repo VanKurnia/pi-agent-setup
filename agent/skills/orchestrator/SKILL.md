@@ -136,6 +136,7 @@ Never claim success without proving it. Run the actual command, show the output.
 | "Tests pass" | Run tests, show output |
 | "Build succeeds" | Run build, show exit 0 |
 | "Bug fixed" | Reproduce original issue, show it's gone |
+| "Code is clean" | Run `ocr_review` or `ocr_scan`, show findings |
 | "Script works" | Run it, show expected output |
 
 
