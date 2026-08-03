@@ -16,7 +16,8 @@
     "os": false,
     "gitMetrics": false,
     "gitCommit": false,
-    "packageVersion": false
+    "packageVersion": false,
+    "sessionName": false
   },
   "features": {
     "copyFriendly": true,
@@ -30,8 +31,9 @@
     },
     "colorModes": {
       "filechanges": "original",
-      "codebase-memory": "zentui"
-    }
+      "codebase-memory": "original"
+    },
+    "defaultPlacement": "off"
   },
   "pathDisplay": {
     "mode": "basename",
@@ -44,5 +46,7 @@
   "fixedEditor": {
     "enabled": true
   },
-  "separator": "dot"
+  "separator": "dot",
+  "editorModelLabel": "id",
+  "editorBorderColorMode": "adaptive"
 }
