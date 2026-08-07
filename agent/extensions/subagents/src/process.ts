@@ -64,6 +64,7 @@ export async function runSubagent(
                 if (modelDef) {
                     resolvedModel = {
                         id,
+                        name: modelDef.name || id,
                         provider,
                         api: providerCfg.api || 'openai-completions',
                         baseUrl: providerCfg.baseUrl,
@@ -71,6 +72,7 @@ export async function runSubagent(
                         contextWindow: modelDef.contextWindow || 128000,
                         maxTokens: modelDef.maxTokens || 64000,
                         reasoning: modelDef.reasoning ?? false,
+                        cost: modelDef.cost || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
                     };
                 }
             }
@@ -79,6 +81,7 @@ export async function runSubagent(
             // Fallback: construct from string alone
             resolvedModel = {
                 id,
+                name: id,
                 provider,
                 api: 'openai-completions',
                 baseUrl: 'http://localhost:20128/v1',
@@ -86,6 +89,7 @@ export async function runSubagent(
                 contextWindow: 128000,
                 maxTokens: 64000,
                 reasoning: false,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
             };
         }
     }
