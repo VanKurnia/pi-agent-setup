@@ -66,7 +66,7 @@ export default function (pi: ExtensionAPI) {
     });
 
     // ── before_agent_start: inject vault context once per session ──
-    pi.on("before_agent_start", async (event, ctx) => {
+    pi.on("before_agent_start", async (_event, _ctx) => {
         if (hasInjectedVault) return;
 
         // 1. Detect vault path from config (no auto-prompt)

@@ -26,7 +26,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, execSync } from "node:child_process";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { AgentToolUpdateCallback, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 // ---------------------------------------------------------------------------
@@ -300,7 +300,7 @@ const optionalBool = (description: string) => Type.Optional(Type.Boolean({ descr
  * proper object format: { content: [{ type: "text", text: msg }], details: {} }
  * Calling onUpdate with a plain string crashes pi.
  */
-function wrapUpdate(onUpdate: ((update: { content: Array<{ type: string; text: string }>; details?: Record<string, unknown> }) => void) | undefined): (msg: string) => void {
+function wrapUpdate(onUpdate: AgentToolUpdateCallback<unknown> | undefined): (msg: string) => void {
   return (msg: string) => {
     try { onUpdate?.({ content: [{ type: "text", text: msg }], details: {} }); } catch { /* safety */ }
   };

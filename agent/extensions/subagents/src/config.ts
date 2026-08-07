@@ -2,10 +2,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-    AuthStorage,
     CONFIG_DIR_NAME,
     getAgentDir,
-    ModelRegistry,
+    ModelRuntime,
     parseFrontmatter,
 } from "@earendil-works/pi-coding-agent";
 import type { Model } from "@earendil-works/pi-ai";
@@ -225,14 +224,18 @@ export async function resolveModel(
     const provider = modelId.slice(0, slashIdx);
     const name = modelId.slice(slashIdx + 1);
     try {
-        const authStorage = AuthStorage.create(path.join(agentDir, "auth.json"));
-        const registry = ModelRegistry.create(authStorage, path.join(agentDir, "models.json"));
-        // NB: intentionally NOT calling registry.refresh() — it calls
-        // resetApiProviders() which is a GLOBAL side effect that clears
-        // API provider registrations (including pi-9router-ext's dynamic
-        // models). The constructor already calls loadModels() which reads
-        // models.json, so find() works correctly without refresh().
-        const model = registry.find(provider, name);
+        // pi >= 0.84: AuthStorage + ModelRegistry.create() were replaced by
+        // ModelRuntime.create({ authPath, modelsPath }). allowModelNetwork is
+        // false so this never refreshes catalogs over the network (the old
+        // code intentionally avoided refresh() because resetApiProviders()
+        // clears global provider registrations, e.g. pi-9router-ext's
+        // dynamic models).
+        const registry = await ModelRuntime.create({
+            authPath: path.join(agentDir, "auth.json"),
+            modelsPath: path.join(agentDir, "models.json"),
+            allowModelNetwork: false,
+        });
+        const model = registry.getModel(provider, name);
         return model ?? undefined;
     } catch {
         return undefined;

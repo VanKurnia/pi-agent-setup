@@ -49,7 +49,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "search_graph",
     label: "CBM Search Graph",
-    description: "Search the code graph for symbols and implementation locations: functions, methods, classes, routes, controllers, services, and related concepts.",
+    description: "Search code graph for symbols/implementations (functions, classes, routes, services). USE INSTEAD OF grep for 'where is X?'. MODES (combinable): `query`=BM25 text, `name_pattern`=regex, `semantic_query`=[words] bridges vocabulary. RETURNS compact location-first rows + `total`/`has_more`; page via `offset`. `include_metadata=true` for full metrics.",
     promptSnippet: "search_graph(query/name_pattern/semantic_query, project?): structural and semantic code graph search",
     promptGuidelines: [
       "Use search_graph first for symbol/workflow/route/class/function discovery and 'where is X implemented/handled/performed?' questions.",
@@ -86,7 +86,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "resolve_symbol",
     label: "CBM Resolve Symbol",
-    description: "Resolve a symbol name to compact candidate identities without returning source.",
+    description: "Resolve symbol name → candidate identities (qualified_name, file, lines, signature) WITHOUT source. Use to disambiguate before reading. FAILS OPEN: multiple matches → all candidates + `ambiguous:true`. Narrow with `file_path`/`parent_class`/`label`/`route_path`.",
     promptSnippet: "resolve_symbol(name, file_path?/parent_class?/label?): resolve symbol candidates without source",
     promptGuidelines: [
       "Use resolve_symbol when you know a symbol name but need the exact qualified_name or need to disambiguate candidates.",
@@ -114,7 +114,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "read_symbol",
     label: "CBM Read Symbol",
-    description: "Resolve a symbol name and read its source only when the match is unambiguous.",
+    description: "Read source for a symbol, ONLY if unambiguous — FAILS CLOSED (returns candidates, never guesses). Prefer over raw file reads for symbols. `neighbors=callers|callees|both` → caller/callee ARRAYS. If compacted: `max_symbol_lines` or `full_output=true`.",
     promptSnippet: "read_symbol(name, file_path?/parent_class?/label?): read source only if symbol resolution is unambiguous",
     promptGuidelines: [
       "Use read_symbol when you know a symbol name plus enough disambiguators, such as file_path, parent_class, label, route_path, or route_method.",
@@ -147,7 +147,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "get_code_snippet",
     label: "CBM Snippet",
-    description: "Retrieve compact source for a known graph symbol by qualified_name.",
+    description: "Retrieve source for a KNOWN qualified_name — RETRIEVAL, not search (search_graph first). Accepts short name if unambiguous. Returns source + `callers`/`callees` as COUNTS (for arrays use read_symbol neighbors). `max_symbol_lines`/`full_output=true` if compacted.",
     promptSnippet: "get_code_snippet(qualified_name, project?): read precise source for a graph symbol",
     promptGuidelines: [
       "Use get_code_snippet only after search_graph/search_code identifies the qualified_name; it is a retrieval tool, not a search tool.",
@@ -171,7 +171,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "get_code_snippets",
     label: "CBM Snippets",
-    description: "Retrieve compact source for multiple known graph symbols by qualified_name in one batch call.",
+    description: "BATCH-read source for multiple qualified_names in one call (prefer over repeated get_code_snippet). Keep 3-12 symbols. Returns per-item `status` + summary counts (`requested/returned/failed`). `include_metadata`/`max_symbol_lines`/`full_output` controls.",
     promptSnippet: "get_code_snippets(qualified_names, project?): batch-read precise source for known graph symbols",
     promptGuidelines: [
       "Use get_code_snippets after search_graph/query_graph/trace_path/search_and_read_symbols identifies several exact qualified_name values.",
@@ -195,7 +195,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "read_symbols",
     label: "CBM Read Symbols",
-    description: "Resolve and read multiple concrete symbols in one batch call; each item fails closed on ambiguity.",
+    description: "BATCH resolve+read multiple symbol requests; each FAILS CLOSED on ambiguity (candidates, never guessed source). Add per-item disambiguators (`file_path`, `parent_class`, `label`, `route_path`). Echoes each `request`; per-item `status` + `resolved` + `snippet`. Compact by default.",
     promptSnippet: "read_symbols(symbols, project?): batch resolve/read source for concrete symbol requests",
     promptGuidelines: [
       "Use read_symbols when you know multiple symbol names/classes/methods and need their source.",
@@ -221,7 +221,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "search_and_read_symbols",
     label: "CBM Search + Read",
-    description: "Search the code graph and immediately read source for the top matching symbols in one call.",
+    description: "Search graph AND read top matches in ONE call (discover+inspect). Keep `read_limit` small (3-8). Returns ranked `results` (search_result + snippet) + `unread_candidates` for the rest. Use search_graph alone if you only need locations.",
     promptSnippet: "search_and_read_symbols(query/name_pattern/qn_pattern/file_pattern, read_limit?): search graph and batch-read top matches",
     promptGuidelines: [
       "Use search_and_read_symbols when you need to discover implementation locations and inspect likely code in one step.",
@@ -253,7 +253,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "trace_path",
     label: "CBM Trace",
-    description: "Trace callers, callees, data flow, or cross-service paths from a known anchor function/method.",
+    description: "Trace callers/callees, data flow, or cross-service paths from an anchor function. INSTEAD OF grep for impact/dependency tracing. MODES: `calls`|`data_flow`|`cross_service`; `direction`=inbound|outbound|both; `depth` 2-3. Auto-resolves short names; ambiguous → candidates. `exclude_paths` filters. `risk_labels` heuristic, noisy. Returns `callers`/`callees` with per-hop `hop` distance.",
     promptSnippet: "trace_path(function_name, direction?, mode?): trace callers, callees, data-flow, or cross-service paths",
     promptGuidelines: [
       "Use trace_path for caller/callee questions, dependency tracing, workflow tracing, data-flow tracing, and impact analysis instead of repeated grep.",
@@ -286,7 +286,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "get_architecture",
     label: "CBM Architecture",
-    description: "Get a compact high-level architecture overview: hotspots, routes/entry points, packages, dependencies, and layers when available.",
+    description: "Compact high-level overview: total nodes/edges, languages, packages, entry_points, hotspots (fan_in), layers. Orient early; NOT for 'where is X' (use search_graph). Targeted `aspects` for large repos. `include_metadata=true` for full.",
     promptSnippet: "get_architecture(project?, aspects?): high-level codebase architecture overview",
     promptGuidelines: [
       "Use get_architecture early when orienting yourself in an indexed codebase.",
@@ -304,7 +304,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "get_graph_schema",
     label: "CBM Schema",
-    description: "Inspect available graph labels, edge types, and properties.",
+    description: "List graph node labels, edge types with counts + property lists. Use BEFORE non-trivial query_graph Cypher. Sparse use — verbose. May include `adr_present`/`adr_hint` pointing at manage_adr (not exposed as a pi tool).",
     promptSnippet: "get_graph_schema(project?): inspect available graph labels, edge types, and properties",
     promptGuidelines: [
       "Use get_graph_schema before writing non-trivial query_graph Cypher.",
@@ -318,7 +318,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "query_graph",
     label: "CBM Query Graph",
-    description: "Run read-only Cypher-like graph queries for custom structural questions, aggregations, and multi-hop relationships.",
+    description: "Read-only Cypher-like queries for multi-hop/aggregation/cross-service. AFTER get_graph_schema; prefer search_graph for simple discovery. Cypher SUBSET — simple MATCH. Returns `columns`+`rows`+`total`; common metric columns coerced to numbers. Keep `max_rows` (200) modest.",
     promptSnippet: "query_graph(query, project?): run read-only Cypher over the code graph",
     promptGuidelines: [
       "Use query_graph for complex multi-hop graph questions after checking get_graph_schema. Prefer search_graph for simple symbol discovery.",
@@ -335,7 +335,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "search_code",
     label: "CBM Search Code",
-    description: "Literal text/regex search over indexed files, enriched with symbol-grouped context.",
+    description: "Literal/regex text search enriched with symbol context. For exact strings: env keys, routes, messages, constants. Symbol names → resolve_symbol/read_symbol. Returns `total_grep_matches` vs deduplicated `total_results` + `dedup_ratio`; hits carry `match_lines`+`context`. `max_symbol_lines`/`full_output=true` if compacted.",
     promptSnippet: "search_code(pattern, project?): grep-like search enriched with graph context",
     promptGuidelines: [
       "Use search_code for exact literal text/regex search in indexed files: env vars, config keys, route strings, error messages, constants, template text, comments, and docstrings.",
@@ -363,7 +363,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "detect_changes",
     label: "CBM Detect Changes",
-    description: "Analyze local git changes and map them to affected symbols/callers.",
+    description: "Map local git diff → changed files + impacted symbols (blast radius). Use before edit/commit. Returns `changed_files`+`changed_count`+`impacted_symbols`. May include duplicate entries when index is stale — cross-check with git_status. `include_metadata=true` for raw impact.",
     promptSnippet: "detect_changes(project?, depth?, base_branch?/since?): graph impact analysis for local changes",
     promptGuidelines: [
       "Use detect_changes when reviewing local diffs or estimating blast radius before editing or committing.",
