@@ -63,8 +63,15 @@ agent/trust.json
 agent/obsidian-config.json
 agent/subagents.json
 
+# Boot audit runtime data
+agent/boot-audit.json
+
 # Hindsight
 agent/hindsight.json
 hindsight
 hindsight.json
 
+
+# Locally-modified extensions (machine-specific, not tracked)
+agent/extensions/herdr-agent-state.ts
+agent/extensions/rtk.ts
