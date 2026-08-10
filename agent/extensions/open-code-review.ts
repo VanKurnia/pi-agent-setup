@@ -24,124 +24,52 @@
  */
 
 import fs from "node:fs";
-import path from "node:path";
 import { spawn, execSync } from "node:child_process";
 import type { AgentToolUpdateCallback, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 // ---------------------------------------------------------------------------
-// OCR binary resolution — find JS entry point spawned via node (shell:false)
+// OCR binary resolution — find the ocr binary on PATH (shell:false)
 // ---------------------------------------------------------------------------
 
-interface OcrTarget {
-  /** Node.js executable (process.execPath) */
-  node: string;
-  /** Full path to ocr.js entry point */
-  js: string;
-}
-
-let ocrTarget: OcrTarget | null = null;
-
 /**
- * Resolve the OCR JS entry point by locating the .cmd wrapper via `where`
- * and deriving the JS file path from the npm install structure.
- *
- * Returns null if OCR is not installed.
+ * Resolve the OCR binary path via system PATH (`where ocr` or `which ocr`).
+ * Works with both standalone compiled binaries (Scoop/GitHub releases)
+ * and Node.js npm global scripts.
  */
-function resolveOcrJs(): OcrTarget | null {
-  if (ocrTarget) return ocrTarget;
-
+function resolveOcrCmd(): string | null {
   try {
-    // Platform-aware binary resolution
-    // Windows: `where ocr` returns .cmd path; Unix: `which ocr` returns binary path
     const isWin = process.platform === "win32";
     const findCmd = isWin ? "where ocr" : "which ocr";
-
     const findOutput = execSync(findCmd, { encoding: "utf8", timeout: 10_000 });
     const lines = findOutput.trim().split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
-    // Find the binary path
-    // On Windows, prefer the .cmd/.bat wrapper; on Unix, take the first result
-    let binPath: string | undefined;
-    if (isWin) {
-      binPath = lines.find((l) => l.endsWith(".cmd") || l.endsWith(".bat"));
-    } else {
-      binPath = lines[0];
-    }
-    if (!binPath || !fs.existsSync(binPath)) return null;
+    let binPath = lines.find((l) => l.endsWith(".exe") || l.endsWith(".cmd") || l.endsWith(".bat")) || lines[0];
+    if (binPath && fs.existsSync(binPath)) return binPath;
 
-    // Derive JS path from npm global install convention:
-    //   Windows: <prefix>/ocr.cmd  →  <prefix>/node_modules/@alibaba-group/open-code-review/bin/ocr.js
-    //   Unix:    <prefix>/ocr      →  <prefix>/../lib/node_modules/@alibaba-group/open-code-review/bin/ocr.js
-    function deriveJsPath(bin: string): string | null {
-      // Candidate 1: sibling node_modules (Windows npm global)
-      const prefix = path.dirname(bin);
-      const cand1 = path.join(prefix, "node_modules", "@alibaba-group", "open-code-review", "bin", "ocr.js");
-      if (fs.existsSync(cand1)) return cand1;
-
-      // Candidate 2: Unix lib/node_modules (common for `which` results in /usr/local/bin)
-      const cand2 = path.join(prefix, "..", "lib", "node_modules", "@alibaba-group", "open-code-review", "bin", "ocr.js");
-      if (fs.existsSync(cand2)) return cand2;
-
-      // Candidate 3: nvm global (e.g. ~/.nvm/versions/node/vX.Y.Z/bin/ocr  →  .../lib/node_modules/...)
-      if (prefix.includes(path.join("versions", "node")) && prefix.endsWith("bin")) {
-        const cand3 = path.join(prefix, "..", "lib", "node_modules", "@alibaba-group", "open-code-review", "bin", "ocr.js");
-        if (fs.existsSync(cand3)) return cand3;
-      }
-
-      return null;
-    }
-
-    const jsPath = deriveJsPath(binPath);
-    if (!jsPath) return null;
-
-    ocrTarget = { node: process.execPath, js: jsPath };
-    return ocrTarget;
+    return null;
   } catch {
     return null;
   }
 }
 
 function isOcrAvailable(): boolean {
-  return resolveOcrJs() !== null;
+  return resolveOcrCmd() !== null;
 }
 
 // ---------------------------------------------------------------------------
-// Lazy OCR availability check + auto-install
+// Lazy OCR availability check
 // ---------------------------------------------------------------------------
 
 let ocrReady: boolean | undefined;
-let ocrInstallAttempted = false;
 
-async function ensureOcr(pi: ExtensionAPI, signal?: AbortSignal): Promise<string | null> {
-  if (ocrReady === true) return null;
-
-  if (!isOcrAvailable() && !ocrInstallAttempted) {
-    ocrInstallAttempted = true;
-    try {
-      const installResult = await pi.exec("npm", ["install", "-g", "@alibaba-group/open-code-review"], {
-        timeout: 120_000,
-        signal,
-      });
-      if (installResult.code !== 0) {
-        ocrReady = false;
-        return installFailed(installResult.stderr);
-      }
-    } catch (e) {
-      ocrReady = false;
-      return installFailed((e as Error).message);
-    }
-
-    if (!isOcrAvailable()) {
-      ocrReady = false;
-      return "Open Code Review CLI installation completed but `ocr` is still not found. Check your npm global path.";
-    }
-  }
-
+async function ensureOcr(signal?: AbortSignal): Promise<string | null> {
   if (!isOcrAvailable()) {
     ocrReady = false;
-    return installFailed("not found");
+    return installFailed();
   }
+
+  if (ocrReady === true) return null;
 
   // Verify LLM connectivity
   try {
@@ -167,13 +95,15 @@ async function ensureOcr(pi: ExtensionAPI, signal?: AbortSignal): Promise<string
   return null;
 }
 
-function installFailed(detail: string): string {
+function installFailed(detail?: string): string {
   return [
-    "Open Code Review CLI (`ocr`) is not installed and automatic installation failed.",
+    "Open Code Review CLI (`ocr`) is not installed.",
     "",
-    "Install it manually:",
+    "Install it from the official GitHub repo:",
+    "https://github.com/alibaba/open-code-review",
+    "",
+    "Then configure its LLM provider:",
     "```bash",
-    "npm install -g @alibaba-group/open-code-review",
     "ocr config provider",
     "ocr config model",
     "ocr llm test",
@@ -195,18 +125,17 @@ function runOcr(
       return reject(new DOMException("Operation aborted", "AbortError"));
     }
 
-    const target = resolveOcrJs();
-    if (!target) {
+    const bin = resolveOcrCmd();
+    if (!bin) {
       return reject(new Error(
-        "Open Code Review (`ocr`) is not installed.\nInstall: npm install -g @alibaba-group/open-code-review",
+        "Open Code Review CLI (`ocr`) is not installed.\nSee: https://github.com/alibaba/open-code-review",
       ));
     }
 
-    // Spawn node + ocr.js directly — no shell, args are safe from injection
-    const child = spawn(target.node, [target.js, ...args], {
+    // Spawn `ocr` binary directly
+    const child = spawn(bin, args, {
       cwd: opts.cwd,
       stdio: ["ignore", "pipe", "pipe"],
-      // shell: false — explicit. This is the default, but stating it for clarity.
       shell: false,
     });
 
@@ -247,7 +176,7 @@ function runOcr(
     child.on("error", (err: NodeJS.ErrnoException) => {
       if (done) return;
       const msg = err.code === "ENOENT"
-        ? `Node.js executable not found at ${target.node}`
+        ? `OCR executable not found at ${bin}`
         : `Failed to start OCR: ${err.message}`;
       cleanup(() => reject(new Error(msg)));
     });
@@ -347,7 +276,7 @@ export default function (pi: ExtensionAPI) {
       try {
         const emit = wrapUpdate(onUpdate);
 
-        const setupMsg = await ensureOcr(pi, signal);
+        const setupMsg = await ensureOcr(signal);
         if (setupMsg) { emit("[ocr] Setup issue"); return fail(setupMsg); }
 
         const args = ["review", "--audience", "agent"];
@@ -439,7 +368,7 @@ export default function (pi: ExtensionAPI) {
       try {
         const emit = wrapUpdate(onUpdate);
 
-        const setupMsg = await ensureOcr(pi, signal);
+        const setupMsg = await ensureOcr(signal);
         if (setupMsg) { emit("[ocr] Setup issue"); return fail(setupMsg); }
 
         const args = ["scan", "--audience", "agent"];
@@ -512,7 +441,7 @@ export default function (pi: ExtensionAPI) {
       try {
         const emit = wrapUpdate(onUpdate);
 
-        const setupMsg = await ensureOcr(pi, signal);
+        const setupMsg = await ensureOcr(signal);
         if (setupMsg) { emit("[ocr] Setup issue"); return fail(setupMsg); }
 
         emit("[ocr] Checking ocr...");
