@@ -52,7 +52,7 @@
   "components": {
     "editor": {
       "enabled": true,
-      "style": "opencode",
+      "style": "opencode-copy-friendly",
       "colorSource": "terminal",
       "borderColorMode": "adaptive",
       "modelLabel": "id",
