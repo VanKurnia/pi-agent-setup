@@ -11,7 +11,7 @@ This package does not implement an MCP client. It uses `codebase-memory-mcp cli 
 - **Symbol-first helpers.** Upstream `get_code_snippet` works best when you already know the exact `qualified_name`. `pi-cbm` adds `resolve_symbol` and `read_symbol` so the agent can start from a normal symbol name, disambiguate with file/class/route filters, and only read source when the match is unambiguous.
 - **Safe-by-default symbol reading.** `read_symbol` fails closed on ambiguity: it returns candidate identities instead of guessing and reading the wrong source. When exactly one symbol matches, it calls upstream `get_code_snippet` and can optionally include compact direct callers/callees.
 - **Batch source-reading workflows.** `get_code_snippets`, `read_symbols`, and `search_and_read_symbols` let agents inspect several relevant symbols in one tool call instead of looping through many single-symbol calls. These batch tools keep the same compact metadata defaults while preserving essential locations, per-item ambiguity/error results, and source compaction controls.
-- **Current project stays indexed.** On Pi session start, the extension indexes the current git root, or a safe non-git working directory when enabled, in full mode and refreshes it periodically in the background. Root, home, system, and common builtin OS directories are never auto-indexed.
+- **Current project stays indexed.** On Pi session start, the extension indexes the current git root, or a safe non-git working directory when explicitly enabled, in full mode and refreshes it periodically in the background. A cross-process per-repository lease prevents duplicate indexers for one repository, while a configurable global token queue limits indexing across repositories (`PI_CBM_MAX_CONCURRENT_INDEXES`, default `1`). Root, home, system, and common builtin OS directories are never auto-indexed.
 - **Project inference for cwd workflows.** Most tools accept optional `project`, but for normal current-repo work the extension infers the indexed project from Pi's current working directory.
 - **Query tools only.** The agent gets code-exploration tools, not administrative controls. `index_repository` and `list_projects` are used internally for background indexing and project inference; destructive/admin MCP tools such as project deletion are not registered as Pi tools.
 
@@ -137,7 +137,13 @@ Open the pi-cbm settings menu:
 - `/cbm enable-non-git` — auto-index safe non-git working directories.
 - `/cbm disable-non-git` — only auto-index git repositories.
 
-Non-git auto-indexing is enabled by default to preserve normal cwd workflows. The unsafe-path guard is always enabled: filesystem roots, home directories, system directories, and common macOS/Linux builtin directories are skipped with a status message explaining why.
+Non-git auto-indexing is disabled by default. Enable it explicitly when working in a non-git project. The unsafe-path guard is always enabled: filesystem roots, home directories, system directories, and common macOS/Linux builtin directories are skipped with a status message explaining why.
+
+Set `PI_CBM_MAX_CONCURRENT_INDEXES` to configure the machine-wide maximum number of simultaneous repository indexers. It defaults to `1`; use a higher value only when all Pi sessions share the same cache directory and the machine can safely support the additional concurrency.
+
+Set `PI_CBM_AUTO_REFRESH_INTERVAL_MS` to override the background refresh interval in milliseconds. It defaults to `60000` (60 seconds), so single-agent workflows do not have to wait for a long freshness TTL. `PI_CBM_CACHE_DIR` optionally overrides the coordination/cache directory and is forwarded to the upstream CLI as `CBM_CACHE_DIR`.
+
+The legacy `CBM_MAX_CONCURRENT_INDEXES`, `CBM_AUTO_REFRESH_INTERVAL_MS`, and `CBM_CACHE_DIR` names remain supported for backwards compatibility. When both names are set, the `PI_CBM_*` value takes precedence.
 
 Notes:
 

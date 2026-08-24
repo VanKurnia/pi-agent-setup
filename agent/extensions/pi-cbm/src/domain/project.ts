@@ -3,6 +3,7 @@ import { CbmClient } from "../cbm/client.js";
 import { indexTimeoutMs } from "../cbm/timeouts.js";
 import { errorText } from "../shared/strings.js";
 import { validateAutoIndexPath } from "./auto-index-paths.js";
+import type { IndexCoordinator } from "./index-coordinator.js";
 
 const AUTO_INDEX_MODE = "full";
 
@@ -50,6 +51,7 @@ export class ProjectService {
   constructor(
     private readonly cbm: CbmClient,
     private readonly settings: AutoIndexSettings,
+    private readonly indexCoordinator: IndexCoordinator,
   ) {}
 
   async gitRoot(cwd: string, signal?: AbortSignal): Promise<string> {
@@ -117,18 +119,27 @@ export class ProjectService {
       return { status: "skipped", reason: target.reason };
     }
 
-    const result = await this.cbm.callTool(
-      "index_repository",
-      { repo_path: target.path, mode: AUTO_INDEX_MODE },
-      { signal, timeoutMs: indexTimeoutMs(undefined) },
-    );
-    const data = result.data && typeof result.data === "object" ? (result.data as Record<string, unknown>) : {};
-    return {
-      status: "indexed",
-      project: typeof data.project === "string" ? data.project : "ready",
-      nodes: typeof data.nodes === "number" ? data.nodes : undefined,
-      edges: typeof data.edges === "number" ? data.edges : undefined,
-      data,
-    };
+    const coordination = await this.indexCoordinator.acquire(target.path, signal);
+    if (!coordination.ok) {
+      return { status: "skipped", reason: coordination.reason };
+    }
+
+    try {
+      const result = await this.cbm.callTool(
+        "index_repository",
+        { repo_path: target.path, mode: AUTO_INDEX_MODE },
+        { signal: coordination.lease.signal, timeoutMs: indexTimeoutMs(undefined) },
+      );
+      const data = result.data && typeof result.data === "object" ? (result.data as Record<string, unknown>) : {};
+      return {
+        status: "indexed",
+        project: typeof data.project === "string" ? data.project : "ready",
+        nodes: typeof data.nodes === "number" ? data.nodes : undefined,
+        edges: typeof data.edges === "number" ? data.edges : undefined,
+        data,
+      };
+    } finally {
+      await coordination.lease.release();
+    }
   }
 }

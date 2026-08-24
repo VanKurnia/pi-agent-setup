@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { formatSize } from "@earendil-works/pi-coding-agent";
+import { formatSize } from "../shared/strings.js";
 import { resolveCbmBinary } from "./binary.js";
 import { parseCbmEnvelope, parseMaybeJson } from "./envelope.js";
 import type { CbmCallOptions, CbmCallResult } from "./result.js";

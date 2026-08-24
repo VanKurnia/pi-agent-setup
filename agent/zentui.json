@@ -117,7 +117,7 @@
           },
           "segments": {
             "cwd": true,
-            "sessionName": false,
+            "sessionName": true,
             "gitBranch": true,
             "gitStatus": false,
             "gitCounts": false,
@@ -150,7 +150,8 @@
             "defaultPlacement": "off",
             "placements": {
               "filechanges": "off",
-              "codebase-memory": "off"
+              "codebase-memory": "off",
+              "extmgr": "off"
             },
             "colorModes": {
               "filechanges": "original",
@@ -158,6 +159,43 @@
             }
           }
         }
+      }
+    },
+    "workingLine": {
+      "enabled": false,
+      "turnSummary": true,
+      "spinner": "braille",
+      "spinnerIntervalMs": 100,
+      "animateSpinnerColor": false,
+      "textIntervalMs": 60,
+      "textAnimation": "disabled",
+      "colorSource": "terminal",
+      "messages": {
+        "custom": true,
+        "values": [
+          "Sautéing…",
+          "Cooking…",
+          "Ionizing…",
+          "Zigzagging…",
+          "Razzle-dazzling…",
+          "Photosynthesizing…",
+          "Nucleating…",
+          "Brewing…",
+          "Combobulating…",
+          "Boogieing…",
+          "Befuddling…",
+          "Alchemizing…",
+          "Conjuring…",
+          "Baking…",
+          "Simmering…",
+          "Blanching…"
+        ]
+      },
+      "segments": {
+        "tool": false,
+        "elapsed": false,
+        "thought": false,
+        "tokens": false
       }
     }
   }

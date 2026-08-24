@@ -9,7 +9,7 @@ export interface CbmSettings {
 }
 
 const DEFAULT_SETTINGS: Required<CbmSettings> = {
-  autoIndexNonGitDirectories: true,
+  autoIndexNonGitDirectories: false,
 };
 
 function getSettingsPath(): string {

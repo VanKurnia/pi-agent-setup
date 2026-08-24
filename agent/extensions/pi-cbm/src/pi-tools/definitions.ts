@@ -384,4 +384,30 @@ export const toolDefinitions: ToolDefinition[] = [
     renderCall: renderCall("detect_changes"),
     renderResult: renderResult("detect_changes"),
   },
+  {
+    name: "check_index_coverage",
+    label: "Check Index Coverage",
+    description: "Check exactly which parts of your codebase are indexed, skipped, or failed to parse. Pass 'paths' for specific files or 'scopes' for directory prefixes (use '.' for the root). Use this when search_graph or read tools fail to find expected code, to verify if the file is supported and indexed.",
+    promptSnippet: "check_index_coverage(paths?, scopes?): check which parts of the codebase are indexed, skipped, or failed",
+    promptGuidelines: [
+      "Use check_index_coverage when search_graph or read tools fail to find expected code, to verify if the file is supported and indexed.",
+      "Pass paths for specific files or scopes for directory prefixes (use '.' for the root).",
+    ],
+    parameters: Type.Object({
+      project: OPTIONAL_PROJECT,
+      paths: Type.Optional(Type.Array(Type.String(), { description: "Repository-relative files to check exactly." })),
+      scopes: Type.Optional(Type.Array(Type.String(), { description: "Repository-relative path prefixes; use '.' for the project root." })),
+      scope_limit: Type.Optional(Type.Number()),
+      scope_offset: Type.Optional(Type.Number()),
+      timeout_ms: TIMEOUT_MS,
+    }),
+    async execute(params: any, services: CbmServices, ctx: ToolExecutionContext) {
+      const project = params.project ?? (await services.projects.inferProject(ctx.cwd, ctx.signal));
+      const result = await services.cbm.callTool("check_index_coverage", { ...params, project }, ctx);
+      return services.output.buildCompactableToolResult("Index coverage", result.data, params, result);
+    },
+    renderCall: renderCall("check_index_coverage"),
+    renderResult: renderResult("check_index_coverage"),
+  },
 ];
+
