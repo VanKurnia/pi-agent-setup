@@ -14,6 +14,8 @@ Before starting any task, build a grounded understanding of this workspace.
    - Invariants and conventions to respect
    - Open questions if context files are missing or contradictory
 
+4. **Name the session** — call the `rename_session` tool with `Base {current directory name} | {dd-mm-YY}` using today-date (2-digit day, month, year). Example: cwd ending in `.pi` on 23 Sep 2026 becomes `Base .pi | 23-09-26`. Do this before the briefing so every grounded session is identifiable in the session selector.
+
 ## Constraints
 
 - Do not assume rules — verify by reading.

@@ -1,0 +1,134 @@
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { Type } from "typebox";
+
+/** Ask for a session name. Re-prompts on empty input. Returns undefined on cancel. */
+async function promptForName(
+    ctx: ExtensionCommandContext,
+    title: string,
+    prefill?: string,
+): Promise<string | undefined> {
+    if (!ctx.hasUI) {
+        ctx.ui.notify(
+            `${title}: no dialog available. Pass a name inline, e.g. /rclone my-name.`,
+            "error",
+        );
+        return undefined;
+    }
+    for (;;) {
+        const answer = await ctx.ui.input(title, prefill);
+        if (answer === undefined) return undefined;
+        if (answer.trim().length === 0) {
+            ctx.ui.notify("Name cannot be empty. Try again or press Esc to cancel.", "warning");
+        } else {
+            return answer.trim();
+        }
+    }
+}
+
+async function handleRclone(args: string, ctx: ExtensionCommandContext): Promise<void> {
+    const sourceFile = ctx.sessionManager.getSessionFile();
+    if (!sourceFile || !existsSync(sourceFile)) {
+        ctx.ui.notify("Current session is not persisted to disk — nothing to clone.", "error");
+        return;
+    }
+    // Unlike builtin /clone: always ask for the new name first.
+    const name = await promptForName(ctx, "Name for cloned session", args.trim() || undefined);
+    if (!name) {
+        ctx.ui.notify("Clone cancelled.", "warning");
+        return;
+    }
+
+    let raw: string;
+    try {
+        raw = readFileSync(sourceFile, "utf8");
+    } catch {
+        ctx.ui.notify(`Could not read current session file: ${sourceFile}`, "error");
+        return;
+    }
+    const lines = raw.split("\n");
+    let header: Record<string, unknown>;
+    try {
+        header = JSON.parse(lines[0] ?? "") as Record<string, unknown>;
+    } catch {
+        ctx.ui.notify("Current session file has an invalid header — refusing to clone.", "error");
+        return;
+    }
+    if (!header || header["type"] !== "session" || typeof header["id"] !== "string") {
+        ctx.ui.notify("Current session file has an invalid header — refusing to clone.", "error");
+        return;
+    }
+
+    const newId = randomUUID();
+    const now = new Date().toISOString();
+    const cloneHeader = { ...header, id: newId, timestamp: now, parentSession: sourceFile };
+    const nameEntry = {
+        type: "session_info",
+        id: randomUUID().slice(0, 8),
+        parentId: ctx.sessionManager.getLeafId(),
+        timestamp: now,
+        name,
+    };
+    const bodyLines = lines.slice(1).filter((line) => line.trim().length > 0);
+    const content = [JSON.stringify(cloneHeader), ...bodyLines, JSON.stringify(nameEntry), ""].join(
+        "\n",
+    );
+
+    const stamp = now.replace(/[:.]/g, "-");
+    const destFile = join(ctx.sessionManager.getSessionDir(), `${stamp}_${newId}.jsonl`);
+    if (existsSync(destFile)) {
+        ctx.ui.notify("A session file with the new id already exists — try again.", "error");
+        return;
+    }
+    try {
+        writeFileSync(destFile, content, "utf8");
+    } catch {
+        ctx.ui.notify(`Could not write cloned session file: ${destFile}`, "error");
+        return;
+    }
+    try {
+        await ctx.switchSession(destFile, {
+            withSession: async (newCtx) => {
+                newCtx.ui.notify(
+                    `Cloned into "${name}" — continuing in the new session now.`,
+                    "info",
+                );
+            },
+        });
+    } catch {
+        ctx.ui.notify(
+            `Clone saved as "${name}" (id ${newId.slice(0, 8)}…). Resume it from the session selector or with: pi --session ${newId}`,
+            "info",
+        );
+    }
+}
+
+/** Plain text result for the rename_session tool. */
+function textResult(text: string) {
+    return { content: [{ type: "text" as const, text }], details: undefined };
+}
+
+export default function sessionMgr(pi: ExtensionAPI): void {
+    pi.registerTool({
+        name: "rename_session",
+        label: "Rename session",
+        description: "Set the display name of the current session (shown in the session selector).",
+        promptSnippet: "Rename the current session with rename_session",
+        parameters: Type.Object({
+            name: Type.String({ description: "New display name for the current session." }),
+        }),
+        async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+            const name = params.name.trim();
+            if (name.length === 0) return textResult("Name cannot be empty.");
+            pi.setSessionName(name);
+            return textResult(`Session renamed to "${name}".`);
+        },
+    });
+    pi.registerCommand("rclone", {
+        description:
+            "Clone the current session into a new session file and switch to it. Unlike builtin /clone, always asks for the new session name first (an argument pre-fills the prompt).",
+        handler: (args, ctx) => handleRclone(args, ctx),
+    });
+}

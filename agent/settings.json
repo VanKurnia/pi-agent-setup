@@ -9,15 +9,23 @@
     "npm:pi-zentui",
     "npm:pi-extmgr"
   ],
-  "theme": "dark",
+  "theme": "tokyo-night",
+  "defaultTools": [
+    "read",
+    "powershell",
+    "edit",
+    "write"
+  ],
   "lastChangelogVersion": "0.87.1",
   "enableInstallTelemetry": false,
-  "treeFilterMode": "all",
+  "treeFilterMode": "user-only",
   "quietStartup": true,
   "terminal": {
     "showTerminalProgress": false
   },
   "showCacheMissNotices": true,
   "tuiMode": "fullscreen",
-  "outputPad": 1
+  "outputPad": 1,
+  "fullscreenScrollbar": "always",
+  "httpIdleTimeoutMs": 300000
 }
