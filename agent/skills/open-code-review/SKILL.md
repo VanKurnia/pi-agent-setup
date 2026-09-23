@@ -7,6 +7,7 @@ description: >
   review and fix high-confidence issues. Produces line-level review
   comments. Follows the official Open Code Review agent integration
   guidelines from alibaba/open-code-review/skills.
+disable-model-invocation: true
 license: Apache-2.0
 compatibility: >
   Requires the `ocr` CLI installed (via `npm install -g

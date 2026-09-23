@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync, readFileSync } from "node:fs";
 import { join, basename, extname } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -21,6 +21,43 @@ async function execSafe(cmd: string, args: string[], cwd?: string): Promise<stri
     }
 }
 
+// ~5s TTL cache for git probes, keyed by cwd + argv. Staleness within
+// the window is accepted; beyond it is a bug.
+const GIT_PROBE_TTL_MS = 5000;
+const GIT_PROBE_CACHE_MAX = 50;
+const gitProbeCache = new Map<string, { at: number; value: string | null }>();
+
+async function cachedExecSafe(cmd: string, args: string[], cwd?: string): Promise<string | null> {
+    const dir = cwd ?? process.cwd();
+    const key = JSON.stringify([dir, cmd, ...args]);
+    const now = Date.now();
+    const hit = gitProbeCache.get(key);
+    if (hit && now - hit.at < GIT_PROBE_TTL_MS) return hit.value;
+    const value = await execSafe(cmd, args, cwd);
+    if (gitProbeCache.size >= GIT_PROBE_CACHE_MAX) gitProbeCache.clear();
+    gitProbeCache.set(key, { at: now, value });
+    return value;
+}
+
+function readHeadBranch(dir: string): string | null {
+    try {
+        const head = readFileSync(join(dir, ".git", "HEAD"), "utf-8").trim();
+        const m = head.match(/^ref:\s*refs\/heads\/(.+)\s*$/);
+        if (m?.[1]) return m[1];
+        if (/^[0-9a-f]{4,40}$/i.test(head)) return head;
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+export async function getCachedGitBranch(cwd?: string): Promise<string | null> {
+    const dir = cwd ?? process.cwd();
+    const fileBranch = readHeadBranch(dir);
+    if (fileBranch) return fileBranch;
+    return cachedExecSafe("git", ["rev-parse", "--abbrev-ref", "HEAD"], cwd);
+}
+
 const BINARY_EXTS = new Set([
     ".exe",
     ".dll",
@@ -39,8 +76,10 @@ const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "__
 async function workspaceInfo(cwd?: string): Promise<string> {
     const vaultRoot = resolveVaultRoot();
     const dir = cwd ?? process.cwd();
-    const remote = await execSafe("git", ["config", "--get", "remote.origin.url"], dir);
-    const branch = await execSafe("git", ["rev-parse", "--abbrev-ref", "HEAD"], dir);
+    const [remote, branch] = await Promise.all([
+        cachedExecSafe("git", ["config", "--get", "remote.origin.url"], dir),
+        getCachedGitBranch(dir),
+    ]);
     const workspaceKey = createHash("sha256")
         .update(remote || dir)
         .digest("hex")
@@ -60,8 +99,10 @@ async function workspaceInfo(cwd?: string): Promise<string> {
 }
 
 async function workspaceGit(cwd?: string): Promise<string> {
-    const log = await execSafe("git", ["log", "-1", "--oneline", "--decorate"], cwd);
-    const status = await execSafe("git", ["status", "--porcelain"], cwd);
+    const [log, status] = await Promise.all([
+        cachedExecSafe("git", ["log", "-1", "--oneline", "--decorate"], cwd),
+        cachedExecSafe("git", ["status", "--porcelain"], cwd),
+    ]);
     const lines: string[] = [];
     lines.push("## Git Status");
     lines.push("");
@@ -111,9 +152,7 @@ function workspaceFiles(cwd?: string): string {
             } catch {
                 continue;
             }
-            const rel = full.startsWith(dir)
-                ? full.slice(dir.length).replace(/^[/\\]/, "")
-                : full;
+            const rel = full.startsWith(dir) ? full.slice(dir.length).replace(/^[/\\]/, "") : full;
             if (stats.isDirectory()) {
                 if (SKIP_DIRS.has(basename(full))) continue;
                 results.push(`📁 \`${rel}/\``);

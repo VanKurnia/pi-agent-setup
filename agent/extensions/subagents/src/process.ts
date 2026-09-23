@@ -1,5 +1,3 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
 import {
     createAgentSession,
     DEFAULT_MAX_BYTES,
@@ -10,6 +8,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig, AgentProgress, AgentResult } from "./types.js";
+import { resolveAgentModel } from "./config.js";
 import { throttle } from "./utils.js";
 
 function extractTextFromContent(content: unknown): string {
@@ -44,53 +43,28 @@ export async function runSubagent(
 ): Promise<AgentResult> {
     const agentDir = getAgentDir();
 
-    // Build model object directly, bypassing ModelRegistry.
-    // ModelRegistry.resolveModel() triggers _refreshCurrentModelFromRegistry()
-    // via pi-9router-ext's registerProvider call during session startup, which
-    // replaces the Agent's model object. Direct construction avoids this.
+    // Resolve the agent model through the registry. Fail closed on unknown
+    // models — the old localhost fallback sent the wrong key to the wrong
+    // URL (401 invalid_api_key), so no fallback survives here.
     let resolvedModel = undefined;
     if (agent.model) {
-        const provider = agent.model.slice(0, agent.model.lastIndexOf('/'));
-        const id = agent.model.slice(agent.model.lastIndexOf('/') + 1);
-        // Read provider config from models.json to get baseUrl and api type
-        const modelsJsonPath = path.join(agentDir, 'models.json');
-        let providerCfg: any = undefined;
-        try {
-            const modelsData = JSON.parse(fs.readFileSync(modelsJsonPath, 'utf-8'));
-            if (modelsData.providers?.[provider]) {
-                providerCfg = modelsData.providers[provider];
-                // Find the specific model definition (may include extra metadata)
-                const modelDef = providerCfg.models?.find((m: any) => m.id === id);
-                if (modelDef) {
-                    resolvedModel = {
-                        id,
-                        name: modelDef.name || id,
-                        provider,
-                        api: providerCfg.api || 'openai-completions',
-                        baseUrl: providerCfg.baseUrl,
-                        input: modelDef.input || ['text'],
-                        contextWindow: modelDef.contextWindow || 128000,
-                        maxTokens: modelDef.maxTokens || 64000,
-                        reasoning: modelDef.reasoning ?? false,
-                        cost: modelDef.cost || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-                    };
-                }
-            }
-        } catch {}
+        resolvedModel = await resolveAgentModel(agent.model, agentDir);
         if (!resolvedModel) {
-            // Fallback: construct from string alone
-            resolvedModel = {
-                id,
-                name: id,
-                provider,
-                api: 'openai-completions',
-                baseUrl: 'http://localhost:20128/v1',
-                input: ['text'],
-                contextWindow: 128000,
-                maxTokens: 64000,
-                reasoning: false,
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            };
+            throw new Error(
+                `Unknown agent model '${agent.model}' for agent '${agent.name}'. Pick an installed model via /subagents:settings.`,
+            );
+        }
+    }
+
+    // Omit unsupported thinking levels: a null entry in the model's
+    // thinkingLevelMap means the level is unsupported — fall back to the
+    // model default rather than sending it.
+    let thinkingLevel = agent.thinkingLevel;
+    if (thinkingLevel && resolvedModel) {
+        const levelMap = (resolvedModel as { thinkingLevelMap?: Record<string, string | null> })
+            .thinkingLevelMap;
+        if (levelMap && levelMap[thinkingLevel] === null) {
+            thinkingLevel = undefined;
         }
     }
 
@@ -128,6 +102,7 @@ export async function runSubagent(
             agentDir,
             tools: agent.tools.length > 0 ? agent.tools : undefined,
             model: resolvedModel,
+            thinkingLevel,
             sessionManager: SessionManager.inMemory(cwd), // ponytail: subagents are one-shot, never resumed — in-memory avoids orphaned session .jsonl files
         });
         session = sessionResult.session;

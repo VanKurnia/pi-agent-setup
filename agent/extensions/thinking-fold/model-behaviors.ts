@@ -24,20 +24,31 @@ export interface ModelIdentity {
 
 const BUILT_IN_CONFIG_PATH = fileURLToPath(new URL("./model-behaviors.json", import.meta.url));
 
-function optionalPattern(value: unknown, field: string, index: number): string | undefined {
+interface CompiledRulePatterns {
+  api?: RegExp;
+  provider?: RegExp;
+  model?: RegExp;
+}
+
+const compiledRulePatterns = new WeakMap<ModelBehaviorRule, CompiledRulePatterns>();
+
+function optionalPattern(
+  value: unknown,
+  field: string,
+  index: number,
+): { source: string; regex: RegExp } | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(`model-behaviors rule ${index} has invalid ${field}`);
   }
-  const pattern = value.trim();
+  const source = value.trim();
   try {
-    new RegExp(pattern, "i");
+    return { source, regex: new RegExp(source, "i") };
   } catch (error) {
     throw new Error(
       `model-behaviors rule ${index} has invalid ${field} regex: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  return pattern;
 }
 
 export function parseModelBehaviorConfig(value: unknown): ModelBehaviorConfig {
@@ -63,20 +74,26 @@ export function parseModelBehaviorConfig(value: unknown): ModelBehaviorConfig {
     if (rule.id !== undefined && (typeof rule.id !== "string" || !rule.id.trim())) {
       throw new Error(`model-behaviors rule ${index} has invalid id`);
     }
-    return {
+    const parsed: ModelBehaviorRule = {
       ...(typeof rule.id === "string" ? { id: rule.id.trim() } : {}),
-      ...(api ? { api } : {}),
-      ...(provider ? { provider } : {}),
-      ...(model ? { model } : {}),
+      ...(api ? { api: api.source } : {}),
+      ...(provider ? { provider: provider.source } : {}),
+      ...(model ? { model: model.source } : {}),
       behavior: rule.behavior,
     };
+    compiledRulePatterns.set(parsed, {
+      ...(api ? { api: api.regex } : {}),
+      ...(provider ? { provider: provider.regex } : {}),
+      ...(model ? { model: model.regex } : {}),
+    });
+    return parsed;
   });
 
   return { version: 1, rules };
 }
 
-function regexMatches(pattern: string, value: string): boolean {
-  return new RegExp(pattern, "i").test(value);
+function regexMatches(regex: RegExp, value: string): boolean {
+  return regex.test(value);
 }
 
 function specificity(rule: ModelBehaviorRule): number {
@@ -98,9 +115,11 @@ export function resolveConfiguredThinkingBehavior(
   let selected: { behavior: ConfiguredThinkingBehavior; score: number; index: number } | undefined;
 
   config.rules.forEach((rule, index) => {
-    if (rule.api && !regexMatches(rule.api, identity.api)) return;
-    if (rule.provider && !regexMatches(rule.provider, identity.provider)) return;
-    if (rule.model && !regexMatches(rule.model, identity.model)) return;
+    const compiled = compiledRulePatterns.get(rule);
+    if (rule.api && (!compiled?.api || !regexMatches(compiled.api, identity.api))) return;
+    if (rule.provider && (!compiled?.provider || !regexMatches(compiled.provider, identity.provider)))
+      return;
+    if (rule.model && (!compiled?.model || !regexMatches(compiled.model, identity.model))) return;
     const score = specificity(rule);
     if (!selected || score > selected.score || (score === selected.score && index > selected.index)) {
       selected = { behavior: rule.behavior, score, index };

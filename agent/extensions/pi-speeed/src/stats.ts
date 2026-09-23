@@ -37,6 +37,10 @@ export type AggregateStats = {
 
 const MAX_RECENT = 200;
 
+// Long-window medians reflect the last 500 samples; older tok/s samples age out
+// so per-message median cost stays bounded while max/min/avg stay lifetime-based.
+const MAX_TOK_S_VALUES = 500;
+
 function asRecord(value: unknown): Record<string, unknown> {
     return value !== null && typeof value === "object" && !Array.isArray(value)
         ? (value as Record<string, unknown>)
@@ -93,9 +97,10 @@ export function emptyStats(): AggregateStats {
 
 function normalizeBucket(rawBucket: unknown): StatsBucket {
     const bucket = asRecord(rawBucket);
-    const tokSValues = numberArrayFrom(bucket.tokSValues).concat(
+    let tokSValues = numberArrayFrom(bucket.tokSValues).concat(
         numberArrayFrom(bucket.medianTokSValues),
     );
+    if (tokSValues.length > MAX_TOK_S_VALUES) tokSValues = tokSValues.slice(-MAX_TOK_S_VALUES);
     const normalized = {
         messages: finiteNumber(bucket.messages),
         outputTokens: finiteNumber(bucket.outputTokens),
@@ -174,12 +179,53 @@ export function saveStats(stats: AggregateStats) {
     writeFileSync(STATS_PATH, `${JSON.stringify(normalizeStats(stats), null, 2)}\n`);
 }
 
+// Coalesced writer: per-completion calls schedule (cheap dirty-flag update) while a
+// single 2s timer performs the actual disk write. flushStats() provides the
+// synchronous shutdown fallback so a crash between completion and flush loses
+// at most the coalescing window.
+let pendingStats: AggregateStats | undefined;
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+export function scheduleStatsSave(stats: AggregateStats) {
+    pendingStats = stats;
+    if (saveTimer) return;
+    saveTimer = setTimeout(() => {
+        saveTimer = undefined;
+        const pending = pendingStats;
+        pendingStats = undefined;
+        if (pending) persistStats(pending);
+    }, 2000);
+    saveTimer.unref();
+}
+
+export function flushStats() {
+    if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = undefined;
+    }
+    const pending = pendingStats;
+    pendingStats = undefined;
+    if (pending) persistStats(pending);
+}
+
+// Best-effort stats persistence: a write failure (disk full, EACCES) must
+// never surface as an extension-host error on the timer/shutdown paths.
+function persistStats(stats: AggregateStats) {
+    try {
+        saveStats(stats);
+    } catch {
+        // Drop the snapshot; the next window rebuilds it.
+    }
+}
+
 function addToBucket(bucket: StatsBucket, stat: RecentStat) {
     bucket.messages += 1;
     bucket.outputTokens += stat.outputTokens;
     bucket.durationMs += stat.durationMs;
     if (stat.tokS !== null && Number.isFinite(stat.tokS)) {
         bucket.tokSValues.push(stat.tokS);
+        if (bucket.tokSValues.length > MAX_TOK_S_VALUES)
+            bucket.tokSValues = bucket.tokSValues.slice(-MAX_TOK_S_VALUES);
         bucket.maxTokS = bucket.maxTokS === null ? stat.tokS : Math.max(bucket.maxTokS, stat.tokS);
         bucket.minTokS = bucket.minTokS === null ? stat.tokS : Math.min(bucket.minTokS, stat.tokS);
     }

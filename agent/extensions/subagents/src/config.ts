@@ -41,7 +41,12 @@ export function loadEnv(force = false): void {
             }
             process.env[key] = val;
         }
-    } catch {}
+    } catch (err) {
+        // Warn, then continue with whatever parsed.
+        console.warn(
+            `[subagents] Failed to load ${envPath}: ${(err as Error)?.message ?? String(err)}; using partial env.`,
+        );
+    }
 }
 
 function isDirectory(p: string): boolean {
@@ -50,6 +55,19 @@ function isDirectory(p: string): boolean {
     } catch {
         return false;
     }
+}
+
+/** Expand `${VAR}` and `$VAR` from process.env, leaving unknowns intact. */
+export function substituteEnv(s: string): string {
+    return s
+        .replace(/\${([^}]+)}/g, (_, name) => {
+            const val = process.env[name];
+            return val !== undefined ? val : `\${${name}}`;
+        })
+        .replace(/\$([A-Z_a-z0-9]+)/g, (_, name) => {
+            const val = process.env[name];
+            return val !== undefined ? val : `$${name}`;
+        });
 }
 
 /**
@@ -84,14 +102,7 @@ export function loadAgentsFromDir(dir: string, source: AgentSource): AgentConfig
             .filter(Boolean);
 
         let model = frontmatter.model || "anthropic/claude-sonnet-4-6";
-        model = model.replace(/\${([^}]+)}/g, (_, name) => {
-            const val = process.env[name];
-            return val !== undefined ? val : `\${${name}}`;
-        });
-        model = model.replace(/\$([A-Z_a-z0-9]+)/g, (_, name) => {
-            const val = process.env[name];
-            return val !== undefined ? val : `$${name}`;
-        });
+        model = substituteEnv(model);
 
         agents.push({
             name: frontmatter.name,
@@ -128,8 +139,21 @@ export interface AgentDiscoveryResult {
     projectAgentsDir: string | null;
 }
 
-// Module-level cache for discoverAgents() — agent files don't change mid-session
+// Module-level cache for discoverAgents() — agent files don't change mid-session.
+// Bounded with FIFO eviction so long sessions with many cwds can't grow it.
+const MAX_AGENT_DISCOVERY_CACHE_ENTRIES = 32;
 const agentDiscoveryCache = new Map<string, AgentDiscoveryResult>();
+
+function setAgentDiscoveryCache(key: string, value: AgentDiscoveryResult): void {
+    if (
+        !agentDiscoveryCache.has(key) &&
+        agentDiscoveryCache.size >= MAX_AGENT_DISCOVERY_CACHE_ENTRIES
+    ) {
+        const oldest = agentDiscoveryCache.keys().next().value;
+        if (oldest !== undefined) agentDiscoveryCache.delete(oldest);
+    }
+    agentDiscoveryCache.set(key, value);
+}
 
 export function clearAgentCache(): void {
     agentDiscoveryCache.clear();
@@ -173,11 +197,11 @@ export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryRe
                 agents: Array.from(agentMap.values()),
                 projectAgentsDir,
             };
-            agentDiscoveryCache.set(cacheKey, result);
+            setAgentDiscoveryCache(cacheKey, result);
             return result;
         }
         const result2: AgentDiscoveryResult = { agents: merged, projectAgentsDir };
-        agentDiscoveryCache.set(cacheKey, result2);
+        setAgentDiscoveryCache(cacheKey, result2);
         return result2;
     }
 
@@ -198,7 +222,7 @@ export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryRe
         agents: Array.from(agentMap.values()),
         projectAgentsDir,
     };
-    agentDiscoveryCache.set(cacheKey, result);
+    setAgentDiscoveryCache(cacheKey, result);
     return result;
 }
 
@@ -212,32 +236,40 @@ export function loadAgents(): AgentConfig[] {
 }
 
 /**
+ * Create a private ModelRuntime for agent model resolution.
+ * Per-call construction (local file reads only, no network).
+ */
+export async function createAgentRuntime(agentDir: string): Promise<ModelRuntime> {
+    return ModelRuntime.create({
+        authPath: path.join(agentDir, "auth.json"),
+        modelsPath: path.join(agentDir, "models.json"),
+        modelsStorePath: path.join(agentDir, "models-store.json"),
+        allowModelNetwork: false,
+    });
+}
+
+/**
  * Resolve a model string (e.g. "anthropic/claude-sonnet-4-6") to a Model object.
  * Returns undefined if the model cannot be resolved.
  */
-export async function resolveModel(
+export async function resolveAgentModel(
     modelId: string,
     agentDir: string,
 ): Promise<Model<any> | undefined> {
-    const slashIdx = modelId.lastIndexOf("/");
+    const slashIdx = modelId.indexOf("/");
     if (slashIdx === -1) return undefined;
     const provider = modelId.slice(0, slashIdx);
     const name = modelId.slice(slashIdx + 1);
     try {
-        // pi >= 0.84: AuthStorage + ModelRegistry.create() were replaced by
-        // ModelRuntime.create({ authPath, modelsPath }). allowModelNetwork is
-        // false so this never refreshes catalogs over the network (the old
-        // code intentionally avoided refresh() because resetApiProviders()
-        // clears global provider registrations, e.g. pi-9router-ext's
-        // dynamic models).
-        const registry = await ModelRuntime.create({
-            authPath: path.join(agentDir, "auth.json"),
-            modelsPath: path.join(agentDir, "models.json"),
-            allowModelNetwork: false,
-        });
-        const model = registry.getModel(provider, name);
+        const runtime = await createAgentRuntime(agentDir);
+        const model = runtime.getModel(provider, name);
         return model ?? undefined;
-    } catch {
+    } catch (err) {
+        // Warn, then report unknown-model: the cause (bad auth/models file)
+        // is otherwise invisible to the caller.
+        console.warn(
+            `[subagents] Failed to resolve model '${modelId}': ${(err as Error)?.message ?? String(err)}`,
+        );
         return undefined;
     }
 }

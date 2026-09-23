@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: Default session rules governing tool choice (subagent vs direct tools), context-window budgeting, implementation workflow, and output discipline. Load this as the session baseline — it tells you when to delegate to scout/researcher/worker/chain vs. work directly, how to explore without blowing your context, how to investigate before fixing, and how to verify before claiming done. Referenced by most other skills as the top-level orchestrator.
+description: Default session rules governing tool choice (subagent vs direct tools), context-window budgeting, implementation workflow, and output discipline. Load this as the session baseline — it tells you when to delegate to scout/worker/chain vs. work directly, how to explore without blowing your context, how to investigate before fixing, and how to verify before claiming done. Referenced by most other skills as the top-level orchestrator.
 ---
 
 # Session Orchestration
@@ -10,7 +10,7 @@ description: Default session rules governing tool choice (subagent vs direct too
 This skill is the **default session governor** — it applies to every turn, not just specific situations. Load it whenever you:
 
 - **Start a new task** — sets the baseline workflow: investigate → verify → implement → prove
-- **Decide between subagent vs. direct tool** — tells you when to delegate (scout/researcher/worker/chain) vs. when to just edit the file yourself
+- **Decide between subagent vs. direct tool** — tells you when to delegate (scout/worker/chain) vs. when to just edit the file yourself
 - **Worry about context limits** — gives you the discipline to use scouts instead of reading files directly
 - **Fix a bug** — prescribes observe → hypothesize → verify → fix, not guess-and-pray
 - **Claim something is done** — requires a concrete verification command and its output
@@ -28,9 +28,7 @@ Never start implementing until you are **100% certain** of what needs to be done
 
 **Fill knowledge gaps with:**
 - **`ask_user_question`** — ambiguous requirements, preference between approaches, any detail that would materially change the implementation. One question per call. Never guess what the user wants.
-- **`memory_recall`** — check prior-session agent memory for decisions, user preferences, project context, and architecture facts stored via `memory_write`. Use this before any vault or codebase search: it's the fastest path to context the agent itself has saved. Run `memory_recall` with key terms from the question; if scope matters, narrow with `scope=global` or `scope=project`.
-- **`memory_write`** — save decisions, user preferences, project-specific facts, and architecture context to agent memory. Scope with `scope=global` (user-level) or `scope=project` (per-project). Tag entries (`tags[]`) for easier recall. Write after you learn something that should persist across sessions: confirmed requirements, rejected approaches, architectural choices, user preferences.
-- **`resolve_pi_url`** — read vault notes (`pi://vault/<path>`), skill docs (`pi://skill/<name>`), workspace state (`pi://workspace/`, `pi://workspace/git`), project databases (`pi://db/`), or health check (`pi://health`). Use when you know the exact path — faster than ff-search/grep.
+- **`resolve_pi_url`** — read skill docs (`pi://skill/<name>`), workspace state (`pi://workspace/`, `pi://workspace/git`), project databases (`pi://db/`), or health check (`pi://health`). Use when you know the exact path — faster than ff-search/grep.
 - **`search_graph`** — First tool for code discovery. Use before grep or scout.
   Query modes: BM25 natural language, name regex, and semantic (vector) search.
 - **`search_code`** — Literal text/regex search with graph enrichment (deduplicates
@@ -53,14 +51,13 @@ Fall back to traditional tools only when: (1) CBM returns no results (code
 not indexed yet), or (2) the target is non-code (configs, docs, manifests,
 build scripts, markdown).
 
-- **`subagent` scout** — codebase recon: find files, read sections, map architecture. Tools: `read`, `grep`, `find`, `ls`, `ask_user_question`, plus git tools and `query_sqlite`/`query_mysql`. Fast and cheap (Haiku).
-- **`subagent` researcher** — web research: search, fetch, synthesize. Tools: `web_search`, `web_fetch`, `batch_web_fetch`, `ask_user_question`, plus git tools and database queries.
+- **`subagent` scout** — codebase recon + lightweight web research (web_search, web_fetch, batch_web_fetch when task requires it): find files, read sections, map architecture. Tools: `read`, `grep`, `find`, `ls`, `ask_user_question`, plus git tools and `query_sqlite`/`query_mysql`.
 - **`subagent` worker** — isolated code changes. Tools: `read`, `write`, `edit`, `safe_bash`, `ask_user_question`, plus full git toolkit and database queries. Use when the change is well-specified but still supports one-shot questions to the user.
 
 **Before any non-trivial implementation, you must know:**
 - Exactly what the change does (confirmed with user)
 - Exactly which files are involved (confirmed with scout)
-- Exactly which APIs/patterns to use (confirmed with scout or researcher)
+- Exactly which APIs/patterns to use (confirmed with scout)
 
 If any of those are fuzzy, you're not ready to implement.
 
@@ -90,7 +87,7 @@ has no index for the target project.
 
 The rule is: use scouts for *exploration*, direct reads for *verification of a known claim*. If you know the file and line number already, reading it directly is faster and more reliable than delegating.
 
-**Use parallel mode** (`tasks[]`) when dispatching multiple independent subagents — e.g. a scout investigating file structure while a researcher looks up API docs.
+**Use parallel mode** (`tasks[]`) when dispatching multiple independent subagents — e.g. two scouts — one mapping file structure, one researching API docs — or a scout plus parent web_search for a single lookup.
 
 **Use chain mode** (`chain[]`) when steps depend on each other — e.g. a scout maps the architecture, then a worker implements the change guided by the scout's findings. The `{previous}` placeholder interpolates the prior step's full output into the next task string.
 

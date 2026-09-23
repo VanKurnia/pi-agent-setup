@@ -116,7 +116,7 @@ export default function (pi: ExtensionAPI) {
     const elapsedSecond = Math.floor(Math.max(0, now - thinkingStartedAt) / 1000);
     if (elapsedSecond === lastItemTimerSecond) return;
     lastItemTimerSecond = elapsedSecond;
-    patch.tick(now);
+    patch.tick(now, currentAssistant?.timestamp);
   };
 
   const startItemTimer = (ctx: ExtensionContext) => {

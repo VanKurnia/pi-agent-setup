@@ -2,9 +2,9 @@
   "name": "browser-tools",
   "version": "1.0.0",
   "description": "Pi Extension — Chrome DevTools Protocol browser automation",
-  "main": "src/index.ts",
+  "main": "index.ts",
   "pi": {
-    "extensions": ["./src/index.ts"]
+    "extensions": ["./index.ts"]
   },
   "dependencies": {
     "puppeteer-core": "^24.0.0",

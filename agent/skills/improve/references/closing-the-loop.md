@@ -15,7 +15,7 @@ The founding rule survives unchanged: **the advisor never edits source code.** I
 
 ### Dispatch
 
-Spawn as many subagents as the plan demands, following [orchestrator guidelines](../../orchestrator/SKILL.md). Use your judgment on how to split the work — the model decides the right number and parallelism.
+Spawn as many `worker` subagents as the plan demands, following [orchestrator guidelines](../../orchestrator/SKILL.md). Use your judgment on how to split the work — the model decides the right number and parallelism. Dispatch `tasks[]` in parallel for independent workstreams, or `chain` with `{previous}` when steps depend on prior output (chain stops on first step failure, so order cheapest/lowest-risk first).
 
 The subagent prompt must contain:
 
@@ -59,10 +59,10 @@ Review like a tech lead reviewing a PR against the spec — never fix anything y
 | Verdict | When | Action |
 |---|---|---|
 | **APPROVE** | Criteria pass, scope clean, quality holds | Update index status to DONE. Present to the user: diff summary and anything from NOTES. **The user decides whether and how to apply changes.** |
-| **REVISE** | Fixable gaps | SendMessage to the same executor with specific, actionable feedback ("criterion 3 fails: X; the error handling in `api.ts:90` swallows the error — use the Result pattern per the plan"). **Max 2 revision rounds**, then BLOCK. |
+| **REVISE** | Fixable gaps | Dispatch a fresh `worker` subagent with the executor's report plus specific, actionable feedback ("criterion 3 fails: X; the error handling in `api.ts:90` swallows the error — use the Result pattern per the plan"). There is no follow-up messaging to a finished subagent — every revision round is a new dispatch with full plan text inlined. **Max 2 revision rounds**, then BLOCK. |
 | **BLOCK** | STOP condition hit, scope violated unrecoverably, or revisions exhausted | Mark BLOCKED in the index with the reason. Refine or rewrite the plan with what was learned. Tell the user what happened and what changed in the plan. |
 
-Running verification commands in the executor's working directory is fine — you're reviewing, not mutating the user's working tree. The no-mutating-commands rule protects the user's working tree, not the executor's working directory.
+Edits land directly in your working tree (there is no sandbox) — run verification commands there. Verifying is reviewing, not implementing; the rule that matters is that *your own hands* never edit source files outside `.plans/`.
 
 ---
 

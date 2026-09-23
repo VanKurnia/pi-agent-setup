@@ -18,7 +18,7 @@ import { applyRunCatIndicator, type RunCatState } from "./runcat";
 import { openSettings } from "./settings";
 import { SpeedAnimator } from "./speed-animation";
 import { SpeedTracker } from "./speed-tracker";
-import { loadStats, summarizeStats } from "./stats";
+import { flushStats, loadStats, scheduleStatsSave, summarizeStats } from "./stats";
 import { showReadOnlyPanel } from "./ui";
 
 export default function (pi: ExtensionAPI) {
@@ -180,14 +180,21 @@ export default function (pi: ExtensionAPI) {
         );
         if (!completed) return;
 
-        recordCompletedMessageSpeed(pi, config, aggregateStats, completed, {
-            endedAt: Date.now(),
-            model: event.message.model,
-            provider: event.message.provider,
-            api: event.message.api,
-            responseId: event.message.responseId,
-            stopReason: event.message.stopReason,
-        });
+        recordCompletedMessageSpeed(
+            pi,
+            config,
+            aggregateStats,
+            completed,
+            {
+                endedAt: Date.now(),
+                model: event.message.model,
+                provider: event.message.provider,
+                api: event.message.api,
+                responseId: event.message.responseId,
+                stopReason: event.message.stopReason,
+            },
+            scheduleStatsSave,
+        );
         footerSpeedAnimator.setTarget(speedTracker.sessionAvgTokS());
         updateStatus(ctx, config, renderFooterStatus(ctx));
         startFooterAnimation(ctx);
@@ -206,12 +213,14 @@ export default function (pi: ExtensionAPI) {
         if (ctx.hasUI) ctx.ui.setWorkingMessage();
         if (!config.enabled && ctx.hasUI) clearUi(ctx);
         occurrence = { label: null, workingPrefix: null };
+        flushStats();
     });
 
     pi.on("session_shutdown", async (_event, ctx) => {
         stopLiveAnimation();
         stopFooterAnimation();
         clearUi(ctx);
+        flushStats();
     });
 
     async function handleConfigCommand(args: string, ctx: ExtensionCommandContext) {
@@ -226,6 +235,7 @@ export default function (pi: ExtensionAPI) {
             return;
         }
         if (cmd === "stats") {
+            flushStats();
             aggregateStats = loadStats();
             await showReadOnlyPanel(ctx, "pi-speeed stats", summarizeStats(aggregateStats));
             return;

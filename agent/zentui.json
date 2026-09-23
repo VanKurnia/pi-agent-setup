@@ -53,16 +53,18 @@
     "editor": {
       "enabled": true,
       "style": "opencode-copy-friendly",
-      "colorSource": "terminal",
+      "colorSource": "theme",
       "borderColorMode": "adaptive",
       "modelLabel": "id",
       "viewportIndicators": true,
       "styles": {
         "opencode": {
-          "metadataFormat": "$model  $provider(  $thinking)"
+          "metadataFormat": "$model  $provider(  $thinking)",
+          "completionMenu": "palette"
         },
         "opencode-copy-friendly": {
-          "metadataFormat": "$model  $provider(  $thinking)"
+          "metadataFormat": "$model  $provider(  $thinking)",
+          "completionMenu": "palette"
         },
         "minimalist": {
           "pathDisplay": "compact",
@@ -76,6 +78,11 @@
             "warning": 70,
             "error": 90
           }
+        },
+        "accent-rail": {
+          "rail": "▎",
+          "asciiRail": "|",
+          "transparent": false
         }
       }
     },
@@ -130,7 +137,7 @@
             "cost": false,
             "sessionDuration": false,
             "username": false,
-            "time": true,
+            "time": false,
             "os": false,
             "packageVersion": false
           },
@@ -155,7 +162,8 @@
             },
             "colorModes": {
               "filechanges": "original",
-              "codebase-memory": "original"
+              "codebase-memory": "original",
+              "extmgr": "zentui"
             }
           }
         }

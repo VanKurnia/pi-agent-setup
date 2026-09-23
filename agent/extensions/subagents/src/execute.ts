@@ -72,8 +72,11 @@ export async function executeSingle(
     }
 
     const isError = result.exitCode !== 0 || !!result.progress.error;
+    const errorMsg = result.progress.error
+        ? `[Subagent error: ${result.progress.error}]`
+        : "(no output)";
     return {
-        content: [{ type: "text", text: result.output || "(no output)" }],
+        content: [{ type: "text", text: result.output || errorMsg }],
         details: { mode: "single" as const, results: [result], agentScope },
         ...(isError ? { isError: true } : {}),
     };

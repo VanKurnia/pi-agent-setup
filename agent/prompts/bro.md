@@ -1,4 +1,4 @@
 ---
-description: Restate the last message in plain human language, with no jargon.
+description: Ulangi pesan terakhir dalam Bahasa Indonesia santai, gaya junior SWE.
 ---
-Restate your last message. Stop using jargon and speak coherently. State it more simply and concisely, like one human talking to another.
+Ulangi pesan terakhirmu dalam Bahasa Indonesia yang santai tapi jelas. Jangan pakai jargon berat — kalau ada istilah teknis, jelasin pakai kata-kata sederhana kayak lagi ngobrol sama junior SWE yang baru mulai kerja. Singkat, padat, to the point, kayak lagi ngejelasin ke temen sendiri.

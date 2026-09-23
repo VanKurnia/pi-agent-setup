@@ -1,38 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { PiUrlResult, PI_AGENT_DIR, formatError } from "./types.ts";
-
-type DbRow = Record<string, unknown>;
-
-interface DbConnection {
-    name: string;
-    driver: "sqlite" | "mysql";
-    directory: string;
-    connection: string;
-    default?: boolean;
-}
-
-interface DbConfig {
-    connections: DbConnection[];
-}
-
-let _cachedConfig: DbConfig | null = null;
-
-function readConfig(): DbConfig | null {
-    if (_cachedConfig) return _cachedConfig;
-    const configPath = join(PI_AGENT_DIR, "db-config.json");
-    if (!existsSync(configPath)) {
-        _cachedConfig = null;
-        return null;
-    }
-    try {
-        _cachedConfig = JSON.parse(readFileSync(configPath, "utf-8")) as DbConfig;
-        return _cachedConfig;
-    } catch {
-        _cachedConfig = null;
-        return null;
-    }
-}
+import { existsSync } from "node:fs";
+import { PiUrlResult, formatError } from "./types.ts";
+import {
+    readDbConfig,
+    formatRowsToMarkdown,
+    type DbConnection,
+    type DbConfig,
+    type DbRow,
+} from "../shared/db.js";
 
 function resolveConnection(config: DbConfig): DbConnection | null {
     const cwd = process.cwd().replace(/\\/g, "/");
@@ -47,23 +21,6 @@ function resolveConnection(config: DbConfig): DbConnection | null {
 
 function safeTableName(name: string): boolean {
     return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
-}
-
-function formatRowsToMarkdown(rows: DbRow[]): string {
-    if (!rows || rows.length === 0) return "_Empty (0 rows)_";
-    const columns = Object.keys(rows[0]);
-    const header = `| ${columns.join(" | ")} |`;
-    const sep = `| ${columns.map(() => "---").join(" | ")} |`;
-    const data = rows.map(
-        (row: DbRow) =>
-            `| ${columns
-                .map((col) => {
-                    const v = row[col];
-                    return v === null || v === undefined ? "NULL" : String(v).replace(/\|/g, "\\|");
-                })
-                .join(" | ")} |`,
-    );
-    return [header, sep, ...data].join("\n");
 }
 
 function allConnections(config: DbConfig): string {
@@ -112,20 +69,32 @@ async function listTables(conn: DbConnection): Promise<string> {
     return `Unknown driver "${conn.driver}".`;
 }
 
-async function queryTable(conn: DbConnection, table: string, _limit: number = 20): Promise<string> {
+async function queryTable(
+    conn: DbConnection,
+    table: string,
+    limit = 200,
+    offset = 0,
+): Promise<string> {
     if (!safeTableName(table)) {
         return `Error: Invalid table name "${table}". Use only letters, numbers, and underscores.`;
     }
+    const safeLimit = Number.isInteger(limit) ? Math.min(1000, Math.max(1, limit)) : 200;
+    const safeOffset = Number.isInteger(offset) ? Math.max(0, offset) : 0;
     if (conn.driver === "sqlite") {
         const { DatabaseSync } = await import("node:sqlite");
         try {
             if (!existsSync(conn.connection))
                 return `Error: SQLite database not found at \`${conn.connection}\`.`;
             const db = new DatabaseSync(conn.connection);
-            const rows = db.prepare(`SELECT * FROM "${table}" LIMIT ${_limit}`).all() as DbRow[];
+            const rows = db
+                .prepare(`SELECT * FROM "${table}" LIMIT ${safeLimit + 1} OFFSET ${safeOffset}`)
+                .all() as DbRow[];
             db.close();
-            const formatted = formatRowsToMarkdown(rows);
+            const formatted = formatRowsToMarkdown(rows.slice(0, safeLimit), "_Empty (0 rows)_");
             if (rows.length === 0) return `Table \`${table}\` is empty (0 rows).`;
+            if (rows.length > safeLimit) {
+                return `**${table}** (${safeLimit} rows — truncated):\n\n${formatted}\n\n_…truncated to ${safeLimit} rows — use limit/offset to page._`;
+            }
             return `**${table}** (${rows.length} rows):\n\n${formatted}`;
         } catch (e: unknown) {
             const message = e instanceof Error ? e.message : String(e);
@@ -136,11 +105,16 @@ async function queryTable(conn: DbConnection, table: string, _limit: number = 20
         try {
             const mysql = await import("mysql2/promise");
             const db = await mysql.createConnection(conn.connection);
-            const [rows] = await db.execute(`SELECT * FROM \`${table}\` LIMIT ${_limit}`);
+            const [rows] = await db.execute(
+                `SELECT * FROM \`${table}\` LIMIT ${safeLimit + 1} OFFSET ${safeOffset}`,
+            );
             await db.end();
             const arr = rows as DbRow[];
-            const formatted = formatRowsToMarkdown(arr);
+            const formatted = formatRowsToMarkdown(arr.slice(0, safeLimit), "_Empty (0 rows)_");
             if (arr.length === 0) return `Table \`${table}\` is empty (0 rows).`;
+            if (arr.length > safeLimit) {
+                return `**${table}** (${safeLimit} rows — truncated):\n\n${formatted}\n\n_…truncated to ${safeLimit} rows — use limit/offset to page._`;
+            }
             return `**${table}** (${arr.length} rows):\n\n${formatted}`;
         } catch (e: unknown) {
             const message = e instanceof Error ? e.message : String(e);
@@ -197,7 +171,7 @@ async function tableSchema(conn: DbConnection, table: string): Promise<string> {
 }
 
 export async function resolveDbUrl(path: string, url: string, _cwd?: string): Promise<PiUrlResult> {
-    const config = readConfig();
+    const config = readDbConfig();
     if (!config || !config.connections || config.connections.length === 0) {
         return {
             content:
@@ -208,7 +182,25 @@ export async function resolveDbUrl(path: string, url: string, _cwd?: string): Pr
         };
     }
 
-    const pathParts = path.replace(/\/+$/, "").split("/").filter(Boolean);
+    const queryIndex = path.indexOf("?");
+    const cleanPath = queryIndex === -1 ? path : path.slice(0, queryIndex);
+    const queryString = queryIndex === -1 ? "" : path.slice(queryIndex + 1);
+    let limit: number | undefined;
+    let offset: number | undefined;
+    if (queryString) {
+        const search = new URLSearchParams(queryString);
+        const limitRaw = search.get("limit");
+        if (limitRaw !== null) {
+            const parsed = Number(limitRaw);
+            if (Number.isInteger(parsed)) limit = parsed;
+        }
+        const offsetRaw = search.get("offset");
+        if (offsetRaw !== null) {
+            const parsed = Number(offsetRaw);
+            if (Number.isInteger(parsed)) offset = parsed;
+        }
+    }
+    const pathParts = cleanPath.replace(/\/+$/, "").split("/").filter(Boolean);
 
     // pi://db/connections
     if (pathParts.length === 1 && pathParts[0] === "connections") {
@@ -251,7 +243,7 @@ export async function resolveDbUrl(path: string, url: string, _cwd?: string): Pr
 
     // pi://db/<table>
     if (pathParts.length === 1) {
-        const content = await queryTable(conn, pathParts[0]);
+        const content = await queryTable(conn, pathParts[0], limit ?? 200, offset ?? 0);
         return { content, mime: "text/markdown", protocol: "db", path };
     }
 

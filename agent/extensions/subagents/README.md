@@ -1,12 +1,11 @@
 # Minimal Subagents
 
-A pi extension that registers a single `subagent` tool with three agents:
+A pi extension that registers a single `subagent` tool with two agents:
 
 | Agent | Tools | Model | Purpose |
 |-------|-------|-------|---------|
-| **scout** | read, grep, find, ls | claude-haiku-4-5 | Fast codebase recon |
-| **researcher** | web_search, web_fetch | claude-sonnet-4-6 | Web research |
-| **worker** | read, write, edit, safe_bash | claude-sonnet-4-6 | Code changes |
+| **scout** | read, grep, find, ls, web_search, web_fetch | 9router/plan-reason (`$SCOUT_MODEL` / `subagents.json`) | Fast codebase recon + lightweight web research |
+| **worker** | read, write, edit, safe_bash | muse-spark-1.2-contributor (`$WORKER_MODEL` / `subagents.json`) | Code changes |
 | — | git_status, git_diff, git_log, etc. | — | Git operations (via git-toolkit) |
 | — | query_sqlite, query_mysql | — | Database queries (via db-viewer) |
 
@@ -21,7 +20,7 @@ A pi extension that registers a single `subagent` tool with three agents:
 ```json
 { "tasks": [
   { "agent": "scout", "task": "Map the database layer" },
-  { "agent": "researcher", "task": "Best practices for connection pooling" }
+  { "agent": "scout", "task": "Best practices for connection pooling (web research)" }
 ]}
 ```
 

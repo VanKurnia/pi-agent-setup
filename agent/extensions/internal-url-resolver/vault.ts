@@ -1,53 +1,55 @@
-import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
 import { formatError, PiUrlResult } from "./types.ts";
 import { resolveVaultRoot, isInside } from "../shared/resolve-vault.ts";
+import { safeReadText } from "../shared/safe-read.ts";
 
 const MAX_WIKILINK_DEPTH = 5;
 
-function safeRead(path: string): string | null {
-    try {
-        return readFileSync(path, "utf-8");
-    } catch {
-        return null;
-    }
-}
-
 function absPathToPiUrl(vaultRoot: string, absPath: string): string {
-    // Normalize both paths to forward slashes for reliable string replacement
+    // Normalize both paths to forward slashes, then strip the root prefix.
     const normalizedRoot = vaultRoot.replace(/\\/g, "/");
     const normalizedPath = absPath.replace(/\\/g, "/");
-    const rel = normalizedPath.replace(normalizedRoot, "");
+    const rel = normalizedPath.startsWith(normalizedRoot)
+        ? normalizedPath.slice(normalizedRoot.length)
+        : normalizedPath;
     const withoutExt = rel.replace(/\.md$/i, "");
     return `pi://vault${withoutExt}`;
 }
 
 /**
- * Recursively search for a file by name under root, up to maxDepth.
- * Returns absolute path or null. Skips hidden dirs.
+ * Single bounded walk building a filename index for one resolution.
+ * First match wins, preserving old depth-first order for duplicates.
+ * Skips hidden dirs.
  */
-function findFile(root: string, fileName: string, maxDepth: number): string | null {
-    if (maxDepth < 0) return null;
-    try {
-        const entries = readdirSync(root, { withFileTypes: true });
-        for (const entry of entries) {
-            if (entry.name.startsWith(".")) continue; // skip hidden
-            const fullPath = join(root, entry.name);
-            if (entry.isDirectory()) {
-                const found = findFile(fullPath, fileName, maxDepth - 1);
-                if (found) return found;
-            } else if (entry.isFile() && entry.name.toLowerCase() === fileName.toLowerCase()) {
-                return fullPath;
+function buildFilenameIndex(root: string, maxDepth: number): Map<string, string> {
+    const index = new Map<string, string>();
+    function walk(dir: string, depthRemaining: number): void {
+        if (depthRemaining < 0) return;
+        try {
+            const entries = readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                if (entry.name.startsWith(".")) continue; // skip hidden
+                const fullPath = join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    walk(fullPath, depthRemaining - 1);
+                } else if (entry.isFile()) {
+                    const key = entry.name.toLowerCase();
+                    if (!index.has(key)) index.set(key, fullPath);
+                }
             }
+        } catch {
+            // permission denied, skip
         }
-    } catch {
-        // permission denied, skip
     }
-    return null;
+    walk(root, maxDepth);
+    return index;
 }
 
 function resolveWikilinks(content: string, vaultRoot: string): string {
+    if (!content.includes("[[")) return content;
     const linkRegex = /\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g;
+    const index = buildFilenameIndex(vaultRoot, MAX_WIKILINK_DEPTH);
 
     return content.replace(linkRegex, (_match, rawLink, displayText) => {
         let targetPath = "";
@@ -55,7 +57,7 @@ function resolveWikilinks(content: string, vaultRoot: string): string {
         if (existsSync(baseSearch)) {
             targetPath = baseSearch;
         } else {
-            const found = findFile(vaultRoot, `${rawLink}.md`, MAX_WIKILINK_DEPTH);
+            const found = index.get(`${rawLink}.md`.toLowerCase());
             if (found) targetPath = found;
         }
 
@@ -155,7 +157,7 @@ export function resolveVaultUrl(path: string, url: string, _cwd?: string): PiUrl
         };
     }
 
-    const rawContent = safeRead(notePath);
+    const rawContent = safeReadText(notePath);
     if (rawContent === null) {
         return {
             content: formatError(`Cannot read: ${notePath}`, url),

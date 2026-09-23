@@ -1,14 +1,7 @@
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { SKILLS_DIR, formatError, PiUrlResult } from "./types.ts";
-
-function safeRead(path: string): string | null {
-    try {
-        return readFileSync(path, "utf-8");
-    } catch {
-        return null;
-    }
-}
+import { safeReadText } from "../shared/safe-read.ts";
 
 export function resolveSkillUrl(path: string, url: string, _cwd?: string): PiUrlResult {
     if (!path) {
@@ -30,7 +23,7 @@ export function resolveSkillUrl(path: string, url: string, _cwd?: string): PiUrl
                 path,
             };
         }
-        const content = safeRead(file);
+        const content = safeReadText(file);
         return content !== null
             ? { content, mime: "text/markdown", protocol: "skill", path }
             : {
@@ -52,7 +45,7 @@ export function resolveSkillUrl(path: string, url: string, _cwd?: string): PiUrl
             path,
         };
 
-    const content = safeRead(file);
+    const content = safeReadText(file);
     return content !== null
         ? { content, mime: "text/markdown", protocol: "skill", path }
         : {

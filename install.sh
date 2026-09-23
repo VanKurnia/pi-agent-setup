@@ -109,8 +109,7 @@ if [[ ! -f "$PI_ROOT/agent/9router-config.json" ]]; then
   cat > "$PI_ROOT/agent/9router-config.json" <<'EOF'
 {
   "baseUrl": "http://localhost:20128",
-  "apiKey": "sk-9a0ed15031caf806-mu0zo9-aaf53a85",
-  "enableReasoning": false
+  "apiKey": "YOUR_9ROUTER_KEY_HERE"
 }
 EOF
   ok "Created agent/9router-config.json (edit with your 9router URL/key)"

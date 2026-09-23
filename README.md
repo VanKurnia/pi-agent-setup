@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/VanKurnia/pi-agent-setup"><img src="https://img.shields.io/github/stars/VanKurnia/pi-agent-setup?style=flat-square&logo=github" alt="Stars"></a>
   <a href="https://github.com/VanKurnia/pi-agent-setup/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
-  <a href="https://pi.dev"><img src="https://img.shields.io/badge/pi-0.80.2-8A2BE2?style=flat-square" alt="pi"></a>
+  <a href="https://pi.dev"><img src="https://img.shields.io/badge/pi-0.87.1-8A2BE2?style=flat-square" alt="pi"></a>
 </p>
 
 <p align="center">
@@ -66,7 +66,6 @@ bash install.sh
 | Extension not loading | Run `bash install.sh` to reinstall deps. Check `agent/auth.json` exists. |
 | Icons look broken | Install a Nerd Font and set it as your terminal font. |
 | `install.sh` / `update.sh` fails | Run in Git Bash (Windows) or bash (Linux/macOS). The `~` path doesn't expand in cmd/PowerShell. |
-| `rtk binary unavailable` warning | Install [rtk](https://github.com/rtk-ai/rtk) from [GitHub releases](https://github.com/rtk-ai/rtk/releases). |
 
 ## Pi URL Ecosystem (`pi://`)
 
@@ -85,8 +84,6 @@ The `resolve_pi_url` tool resolves 5 internal protocols that interconnect all ex
 Every extension's output now produces `pi://` URLs that feed back into the resolver:
 
 ```
-memory_recall  → pi://vault/_agent/memory/  → resolve_pi_url reads full file
-memory_write   → pi://vault/_agent/memory/  → resolve_pi_url reads recent entries
 git_status     → pi://workspace/ + health/  → resolve_pi_url shows workspace snapshot
 db queries     → pi://db/<name>/schema      → resolve_pi_url explores schema
 vault notes    → wikilinks → pi://vault/    → resolve_pi_url reads linked notes
@@ -98,7 +95,7 @@ The `internal-url-resolver` exposes `"pi-url"` with `{ resolvePiUrl, registerPro
 
 ### Context Injection
 
-Vault context is injected once per session (not per turn) with a nudge: `memory_recall → resolve_pi_url → ffgrep`. This trains the agent to use `pi://` URLs before falling back to grep.
+Vault context is injected once per session (not per turn) with a nudge: `resolve_pi_url → ffgrep`. This trains the agent to use `pi://` URLs before falling back to grep.
 
 ---
 
@@ -109,16 +106,14 @@ Pi connects to these external tools and services (not counting Pi packages):
 | Tool / Service | Integration | Status |
 |----------------|-------------|--------|
 | [[Obsidian]] | Obsidian Suite auto-detects vault, injects Index + project context once per session. | Active |
-| [[9router]] | Local LLM routing proxy at `localhost:20128`. Sole provider (`defaultProvider: "9router"`) — all model requests go through it. Reasoning enabled. | Active |
+| [[9router]] | Local LLM routing proxy at `localhost:20128`. Available as a provider alongside `opencode-go` (current `defaultProvider`); ninerouter extension also exposes it as native web tools. | Active |
 | [[VS Code]] / Zed / Neovim | `pi-x-ide` polls active file path and selection. Reconnects on session start, injects context per user message. | Active |
 | [[MySQL]] | `db-viewer` extension provides `query_mysql` tool — read-only queries via connection URI. | Active |
 | [[SQLite]] | `db-viewer` extension provides `query_sqlite` tool — read-only queries against local `.db` files. | Active |
 | [[Git]] | `git-toolkit` extension wraps 12 Git operations. Shell: Git Bash at `C:\Program Files\Git\bin\bash.exe`. | Active |
 | [[Chrome]] / Puppeteer | `browser-tools` extension provides browser automation. | Active |
 | [[Node.js]] | Runtime for all extensions (loaded via jiti). Version managed by nvm. | Active |
-| [rtk](https://github.com/rtk-ai/rtk) | Command rewriting binary — rewrites `git`, `npm`, `cargo` etc. to optimized equivalents. Used by `pi-rtk-optimizer`. **Not an npm package** — install via [GitHub releases](https://github.com/rtk-ai/rtk/releases) or Homebrew/Cargo. | Active |
 
-**Single point of failure:** 9router is the only provider. If it goes down, Pi has no models to call. Consider a local fallback (Ollama) or direct API key.
 
 ---
 
@@ -128,56 +123,62 @@ Pi connects to these external tools and services (not counting Pi packages):
 
 | Extension | Description |
 |-----------|-------------|
-| `bash-guard` | Safeguards bash commands — validates before execution |
-| `browser-tools` | Chrome DevTools automation (puppeteer, Readability, jsdom) |
-| `db-viewer` | Secure read-only SQLite/MySQL viewer; outputs `pi://db/` links |
-| `filechanges` | Tracks diffs across edits |
-| `git-toolkit` | Git status, diff, log, commit, branch; appends `pi://workspace/` + `pi://health/` footers |
-| `internal-url-resolver` | Resolves `pi://` URLs (vault, skill, workspace, health, db); cross-extension protocol registry |
-| `obsidian-memory` | Agent memory read/write as vault markdown; outputs `pi://vault/` links |
-| `obsidian-suite` | Vault auto-detection, context injection, `/obsidian-path` command |
-| `subagents` | Subagent orchestration for delegating tasks |
-| `plan-mode` | Step-by-step plan authoring and tracking |
-| `handoff` | Model-switch briefs for /compact |
-| `update-setup` | Runs `update.sh` inside pi with live output widget |
-| `ask-user-question` | Interactive Q&A dialog |
-| `context` | Token usage grid overlay (`/context`) |
+| `ask-user-question` | Interactive Q&A dialog (`ask_user_question` tool) |
+| `bash-guard` | Validates bash commands before execution (`/bash-guard`) |
+| `browser-tools` | Browser automation — 7 `browser_*` tools (start, nav, eval, pick, content, screenshot, cookies) |
 | `custom-header` | Customizable startup header |
-| `md-link` | Collaborative `.md` editing (`/link-md`, `/send-diff`) |
+| `db-viewer` | Secure read-only SQLite/MySQL viewer (`query_sqlite`, `query_mysql`); outputs `pi://db/` links |
+| `filechanges` | Tracks diffs across edits (`/filechanges`, `/filechanges-accept`, `/filechanges-decline`) |
+| `git-toolkit` | 12 `git_*` tools (status, diff, log, commit, branch…); appends `pi://workspace/` + `pi://health/` footers |
+| `herdr-agent-state` | Agent-state sync for the herdr integration (managed file — do not edit) |
+| `internal-url-resolver` | Resolves `pi://` URLs (vault, skill, workspace, health, db); cross-extension protocol registry |
+| `load-env` | Loads `agent/.env` at startup |
+| `ninerouter` | Minimal native 9router web tools (`ninerouter_web_search`, `ninerouter_web_fetch`); config in `agent/9router-config.json` |
+| `obsidian-suite` | Vault auto-detection, context injection, `/obsidian-status` + `/obsidian-path` commands |
+| `open-code-review` | AI-powered review of git changes (`ocr_review`, `ocr_scan`, `ocr_health`) |
+| `pi-cbm` | Codebase memory index — 15 native tools (`search_graph`, `search_code`, `read_symbol`, `resolve_symbol`, `get_code_snippet(s)`, `trace_path`, `get_architecture`, `query_graph`…). Auto-indexes current git repo on session start. |
+| `pi-speeed` | Session performance monitoring (`/pi-speeed`) |
+| `pi-tool-display` | Local config stub; implementation comes from the npm package of the same name |
 | `plan-artifact` | Browser UI for `.plans/` markdown with commenting and syntax highlighting |
-| `pi-rtk-optimizer` | Output compaction + command rewriting via [rtk](https://github.com/rtk-ai/rtk). Compacts git, test, linter, search output. Saves context tokens. |
+| `subagents` | Subagent orchestration for delegating tasks (`subagent` tool, `/reload-agents`, `/subagents:settings`) |
+| `thinking-fold` | Collapsible thinking blocks with per-model behavior (`/thinking-fold-settings`) |
+| `update-setup` | Runs `update.sh` inside pi with live output widget (`/update-setup`) |
 
 ### External Packages
 
 | Package | Description |
 |---------|-------------|
 | `@ff-labs/pi-fff` | Fuzzy file finder (`fffind`) and content grep (`ffgrep`) |
-| `pi-9router-ext` | Web search and URL content extraction |
 | `pi-x-ide` | VS Code / IDE integration |
 | `pi-zentui` | Extended TUI components |
 | `pi-blackhole` | Session compaction & observation engine — manages context window via truncation, reflection, and automatic archival |
-| `pi-cbm` | Codebase memory index — wraps `codebase-memory-mcp` CLI as 13 native Pi tools (`search_graph`, `search_code`, `read_symbol`, `resolve_symbol`, `get_code_snippet`, `get_code_snippets`, `read_symbols`, `search_and_read_symbols`, `trace_path`, `get_architecture`, `get_graph_schema`, `query_graph`, `detect_changes`). Auto-indexes current git repo on session start. |
-| `pi-speeed` | Performance monitoring for pi agent sessions |
-| `pi-tool-display` | TUI rendering — collapsed tool output, diff visualization, thinking labels. Complements rtk-optimizer. |
+| `pi-speeed` | Performance monitoring for pi agent sessions (npm companion to the local extension) |
+| `pi-smart-fetch` | Enhanced web-fetch tool |
+| `pi-smart-web-search` | Enhanced web-search tool |
+| `pi-extmgr` | Extension management commands |
+| `pi-tool-display` | TUI rendering — collapsed tool output, diff visualization, thinking labels. |
 
 ### Skills
 
 | Skill | Description |
 |-------|-------------|
-| `codebase-design` | Shared vocabulary for deep module design — module, depth, seam, adapter, leverage, locality |
 | `grill-me` | Stress-test plans through relentless questioning |
 | `improve` | Read-only codebase audit with prioritized implementation plans |
 | `improve-codebase-architecture` | Scan for deepening opportunities — surface architectural friction with visual HTML report |
-| `obsidian` | Vault navigation protocol, link qualification, writing conventions |
+| `open-code-review` | AI-powered review of git changes via the `ocr` CLI |
 | `orchestrator` | Session orchestration: subagent routing, context hygiene |
-| `stop-slop` | Strips AI writing patterns from prose |
+| `posting` | File-based API client (Postman/Insomnia alternative) — pi maintains `*.posting.yaml` collections, the human drives the TUI |
 
 ### Prompts
 
 | Prompt | Description |
 |--------|-------------|
-| `commit-auto` | Conventional commit messages from staged changes |
-| `review-changes` | Systematic diff review — correctness, edge cases, side effects |
+| `bro` | Rephrase the last message in casual Indonesian, junior-SWE style |
+| `commit` | Generate git commit title + description |
+| `initiate-base-knowledge` | Bootstrap context with workspace rules and architecture |
+| `review-changes` | Review all changes via `ocr_review`, then inspect flagged hunks — correctness, edge cases, side effects |
+| `set-scope` | Set working scope to given paths and understand them deeply before proceeding |
+| `simplify-changes` | Simplify a completed workpackage without changing its behavior |
 
 ---
 
@@ -189,9 +190,9 @@ Set your default provider and model in `agent/settings.json`:
 
 ```json
 {
-  "defaultProvider": "9router",
-  "defaultModel": "versatile",
-  "defaultThinkingLevel": "medium"
+  "defaultProvider": "opencode-go",
+  "defaultModel": "muse-spark-1.3-contributor",
+  "defaultThinkingLevel": "xhigh"
 }
 ```
 
@@ -211,16 +212,19 @@ Configure per-agent models via `/subagents:settings` inside pi. Settings are sto
 
 ```json
 {
-  "maxConcurrent": 8,
+  "maxConcurrent": 4,
   "agentModels": {
-    "researcher": "9router/reason",
-    "scout": "9router/assistant",
-    "worker": "9router/coder"
+    "scout": "opencode-go/mimo-v2.6-flash",
+    "worker": "opencode-go/muse-spark-1.3-contributor"
+  },
+  "agentThinking": {
+    "scout": "high",
+    "worker": "xhigh"
   }
 }
 ```
 
-Models override the env-var references in the built-in agent files (`$SCOUT_MODEL` etc.). `.env` is not used — settings are the single source of truth.
+Per-agent models plus thinking levels, edited via `/subagents:settings` — settings are the single source of truth.
 
 ### Custom Models
 

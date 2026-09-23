@@ -1,11 +1,14 @@
 export type AgentScope = "user" | "project" | "both";
 export type AgentSource = "user" | "project";
 
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+
 export interface AgentConfig {
     name: string;
     description: string;
     tools: string[];
     model: string;
+    thinkingLevel?: ThinkingLevel;
     systemPrompt: string;
     filePath: string;
     source?: AgentSource;
@@ -48,8 +51,6 @@ export interface AgentResult {
         turns: number;
     };
     step?: number;
-    /** Cached rendered Markdown component for the output (performance optimization) */
-    _renderedOutput?: any; // Markdown instance, cached to avoid re-parse per frame
 }
 
 export type HybridCollect = "all" | "first";

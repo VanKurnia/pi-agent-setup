@@ -249,7 +249,7 @@ export default function (pi: ExtensionAPI) {
         promptGuidelines: [
             "Use plan_artifact when you have a concrete plan ready for user review, not during exploration.",
             "Write the plan in markdown with clear ## sections for each step.",
-            "When plan mode is active, write/edit tools are blocked until the plan is accepted via the artifact. You must propose a plan through this tool before any implementation.",
+            "After the user accepts the plan, proceed with implementation and track progress against the plan steps.",
         ],
         parameters: Type.Object({
             summary: Type.String({ description: "Short summary of the plan" }),

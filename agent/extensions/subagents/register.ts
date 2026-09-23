@@ -1,12 +1,20 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { Container, SelectList, Text } from "@earendil-works/pi-tui";
+import {
+    Container,
+    SelectList,
+    Text,
+    Input,
+    fuzzyFilter,
+    getKeybindings,
+} from "@earendil-works/pi-tui";
 import type { SelectItem } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
-import { clearAgentCache, discoverAgents, loadEnv } from "./src/config.js";
-import { SettingsManager } from "./src/settings.js";
+import { clearAgentCache, discoverAgents, loadEnv, substituteEnv } from "./src/config.js";
+import { SettingsManager, THINKING_LEVELS } from "./src/settings.js";
 import { refreshAgents } from "./src/registry.js";
 import { buildSubagentExecute } from "./dispatch.js";
 import { renderSubagentToolCall, renderSubagentToolResult } from "./render.js";
@@ -122,18 +130,24 @@ export default function registerSubagent(pi: ExtensionAPI) {
     });
 
     pi.registerCommand("subagents:settings", {
-        description: "Configure subagent settings (model per agent, max concurrency)",
+        description:
+            "Configure subagent settings (model and thinking level per agent, max concurrency)",
         handler: async (_args: string, ctx: any) => {
+            let agents = discoverAgents(ctx.cwd, "user").agents;
+            let allModels = ctx.modelRegistry.getAvailable();
+            const refreshListings = (): void => {
+                agents = discoverAgents(ctx.cwd, "user").agents;
+                allModels = ctx.modelRegistry.getAvailable();
+            };
             while (true) {
-                const agents = discoverAgents(ctx.cwd, "user").agents;
-
-                // Step 1: pick agent or concurrency/depth — show current model info
+                // Step 1: pick agent or concurrency — show current model info
                 const agentOptions = [
                     "[max concurrency]",
-                    "[bash depth]",
                     ...agents.map((a) => {
                         const m = settings.getAgentModel(a.name);
-                        return m ? `${a.name} — ${m}` : a.name;
+                        const t = settings.getAgentThinking(a.name);
+                        const base = m ? `${a.name} — ${m}` : a.name;
+                        return t ? `${base} · thinking: ${t}` : base;
                     }),
                 ];
                 const selectedAgent = await ctx.ui.select(
@@ -147,34 +161,6 @@ export default function registerSubagent(pi: ExtensionAPI) {
                     ? selectedAgent
                     : selectedAgent.split(" — ")[0];
 
-                if (agentName === "[bash depth]") {
-                    const current = settings.depth;
-                    const answer = await ctx.ui.input(
-                        `Current bash-guard depth: ${current}`,
-                        "Enter 0 (main session) or >= 1 (subagent), or leave empty",
-                    );
-                    if (answer) {
-                        const trimmed = answer.trim();
-                        const n = parseInt(trimmed, 10);
-                        if (!isNaN(n) && n >= 0) {
-                            // Directly set depth field in settings file for bash-guard to read
-                            settings.depth = n;
-                            const ok = settings.save();
-                            // Reload to sync in-memory state for next loop iteration
-                            settings.load();
-                            ctx.ui.notify?.(
-                                ok
-                                    ? `Bash depth set to ${n}`
-                                    : `Set to ${n} (session only; failed to persist)`,
-                                ok ? "info" : "warning",
-                            );
-                        } else {
-                            ctx.ui.notify?.("Must be 0 or a positive integer.", "warning");
-                        }
-                    }
-                    continue;
-                }
-
                 if (agentName === "[max concurrency]") {
                     const current = settings.maxConcurrent;
                     const answer = await ctx.ui.input(
@@ -187,6 +173,7 @@ export default function registerSubagent(pi: ExtensionAPI) {
                         if (!isNaN(n) && n >= 1 && n <= 1024) {
                             const toast = settings.applyMaxConcurrent(n);
                             ctx.ui.notify?.(toast.message, toast.level);
+                            settings.reload();
                         } else {
                             ctx.ui.notify?.("Must be 1-1024.", "warning");
                         }
@@ -195,7 +182,6 @@ export default function registerSubagent(pi: ExtensionAPI) {
                 }
 
                 // Step 2: pick model via scrollable TUI modal
-                const allModels = ctx.modelRegistry.getAvailable();
                 const currentModel = settings.getAgentModel(agentName);
 
                 const modelItems: SelectItem[] = [
@@ -222,7 +208,128 @@ export default function registerSubagent(pi: ExtensionAPI) {
                         container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
                         container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
 
-                        const list = new SelectList(modelItems, Math.min(14, modelItems.length), {
+                        const search = new Input();
+                        search.focused = true;
+                        container.addChild(search);
+
+                        const listTheme = {
+                            selectedPrefix: (t: string) => theme.fg("accent", t),
+                            selectedText: (t: string) => theme.fg("accent", t),
+                            description: (t: string) => theme.fg("dim", t),
+                            scrollInfo: (t: string) => theme.fg("dim", t),
+                            noMatch: (t: string) => theme.fg("warning", t),
+                        };
+                        // modelItems[0] is always [reset to default] — keep it pinned
+                        // on top so the reset affordance survives filtering.
+                        const makeList = (items: SelectItem[]) => {
+                            // Reset row is always pinned, so items is never empty.
+                            const visible = Math.min(14, items.length);
+                            const fresh = new SelectList(items, visible, listTheme);
+                            fresh.onSelect = (item) => done(item.value);
+                            fresh.onCancel = () => done(null);
+                            return fresh;
+                        };
+                        let list = makeList(modelItems);
+                        container.addChild(list);
+                        const refreshList = () => {
+                            const query = search.getValue().trim();
+                            const pool = modelItems.slice(1);
+                            const matched = query ? fuzzyFilter(pool, query, (i) => i.label) : pool;
+                            const idx = container.children.indexOf(list);
+                            list = makeList([modelItems[0], ...matched]);
+                            container.children.splice(idx, 1, list);
+                            container.invalidate();
+                        };
+
+                        container.addChild(
+                            new Text(
+                                theme.fg(
+                                    "dim",
+                                    "type to filter • ↑↓ navigate • enter select • esc close",
+                                ),
+                                1,
+                                0,
+                            ),
+                        );
+                        container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+
+                        const kb = getKeybindings();
+                        return {
+                            render: (w: number) => container.render(w),
+                            invalidate: () => container.invalidate(),
+                            handleInput: (data: string) => {
+                                if (
+                                    kb.matches(data, "tui.select.up") ||
+                                    kb.matches(data, "tui.select.down") ||
+                                    kb.matches(data, "tui.select.confirm") ||
+                                    kb.matches(data, "tui.select.cancel")
+                                ) {
+                                    list.handleInput(data);
+                                } else {
+                                    search.handleInput(data);
+                                    refreshList();
+                                }
+                                tui.requestRender();
+                            },
+                        };
+                    },
+                );
+                if (!selectedValue) continue;
+
+                if (selectedValue === "__reset__") {
+                    settings.setAgentModel(agentName, undefined);
+                } else {
+                    settings.setAgentModel(agentName, selectedValue);
+                }
+
+                const saved = settings.save();
+                const label = selectedValue === "__reset__" ? "default" : selectedValue;
+                ctx.ui.notify?.(
+                    saved
+                        ? `Model for "${agentName}" set to ${label}`
+                        : `Set to ${label} (session only; failed to persist)`,
+                    saved ? "info" : "warning",
+                );
+                settings.reload();
+                refreshListings();
+
+                // Step 3: pick thinking level for the agent's effective model
+                const agentFile = agents.find((x) => x.name === agentName);
+                const rawModel = settings.getAgentModel(agentName) ?? agentFile?.model;
+                const effectiveModel = rawModel ? substituteEnv(rawModel) : undefined;
+                const effectiveEntry = effectiveModel
+                    ? allModels.find((m: any) => `${m.provider}/${m.id}` === effectiveModel)
+                    : undefined;
+                const levelSupported = (level: ThinkingLevel): boolean => {
+                    const map = (effectiveEntry as any)?.thinkingLevelMap;
+                    if (!map) return true;
+                    return map[level] !== null;
+                };
+                const levelItems: SelectItem[] = [
+                    {
+                        value: "__default__",
+                        label: "[model default]",
+                        description: "Use model default",
+                    },
+                    ...THINKING_LEVELS.map((level) => ({
+                        value: level,
+                        label: level,
+                        description: levelSupported(level) ? "supported" : "unsupported",
+                    })),
+                ];
+                const currentThinking = settings.getAgentThinking(agentName);
+                const levelTitle = currentThinking
+                    ? `Thinking for "${agentName}" (current: ${currentThinking})`
+                    : `Thinking for "${agentName}":`;
+                const selectedLevel = await (ctx.ui as any).custom(
+                    (tui: any, theme: any, _kb: any, done: any) => {
+                        const container = new Container();
+                        container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+                        container.addChild(
+                            new Text(theme.fg("accent", theme.bold(levelTitle)), 1, 0),
+                        );
+
+                        const list = new SelectList(levelItems, Math.min(8, levelItems.length), {
                             selectedPrefix: (t: string) => theme.fg("accent", t),
                             selectedText: (t: string) => theme.fg("accent", t),
                             description: (t: string) => theme.fg("dim", t),
@@ -251,24 +358,25 @@ export default function registerSubagent(pi: ExtensionAPI) {
                             },
                         };
                     },
-                    { overlay: true },
                 );
-                if (!selectedValue) continue;
-
-                if (selectedValue === "__reset__") {
-                    settings.setAgentModel(agentName, undefined);
-                } else {
-                    settings.setAgentModel(agentName, selectedValue);
+                if (selectedLevel) {
+                    if (selectedLevel === "__default__") {
+                        settings.setAgentThinking(agentName, undefined);
+                    } else {
+                        settings.setAgentThinking(agentName, selectedLevel as ThinkingLevel);
+                    }
+                    const savedThinking = settings.save();
+                    const thinkingLabel =
+                        selectedLevel === "__default__" ? "model default" : selectedLevel;
+                    ctx.ui.notify?.(
+                        savedThinking
+                            ? `Thinking for "${agentName}" set to ${thinkingLabel}`
+                            : `Set to ${thinkingLabel} (session only; failed to persist)`,
+                        savedThinking ? "info" : "warning",
+                    );
+                    settings.reload();
+                    refreshListings();
                 }
-
-                const saved = settings.save();
-                const label = selectedValue === "__reset__" ? "default" : selectedValue;
-                ctx.ui.notify?.(
-                    saved
-                        ? `Model for "${agentName}" set to ${label}`
-                        : `Set to ${label} (session only; failed to persist)`,
-                    saved ? "info" : "warning",
-                );
                 // Loop back — user sees updated model info in agent list
             }
         },
@@ -400,8 +508,8 @@ export default function registerSubagent(pi: ExtensionAPI) {
         promptSnippet: "Run subagents for delegated tasks",
         promptGuidelines: [
             "Parallel tool calls are your primary parallelism mechanism — put multiple independent read/fetch/search calls in one function_calls block. Don't use subagents to parallelize simple I/O.",
-            "Use subagent to delegate *reasoning and decisions*: codebase exploration (scout), web research (researcher — use for multi-step research, not single lookups), or isolated code changes (worker)",
-            "Single fact lookup on the web? Call web_search directly. Need 3+ searches, source comparison, or synthesis? Delegate to researcher.",
+            "Use subagent to delegate *reasoning and decisions*: codebase exploration and lightweight web research (scout), or isolated code changes (worker)",
+            "Single fact lookup on the web? Call web_search directly. Need 2+ searches, source comparison, or synthesis? Delegate to scout.",
             "For multiple independent subagent tasks, use parallel mode with tasks[] array",
             "For multi-phase workflows (scout → implement → verify), use hybrid mode with hybrid[] array — phases execute sequentially, each phase feeds the next via {previous}.",
             "Subagents have NO context from the current conversation — include ALL necessary context in the task description",

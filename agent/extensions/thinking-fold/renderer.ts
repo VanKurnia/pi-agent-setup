@@ -81,7 +81,7 @@ interface PatchRecord {
   setMessageTiming(timestamp: number, timing: ThinkingTiming): void;
   beginMessage(message: AssistantMessage, startedAt?: number): void;
   completeMessage(message: AssistantMessage, completedAt?: number): void;
-  tick(now?: number): void;
+  tick(now?: number, activeTimestamp?: number): void;
   rerenderAll(): void;
   rerenderTimestamp(timestamp: number): void;
 }
@@ -95,7 +95,7 @@ export interface ThinkingFoldPatchHandle {
   setMessageTiming(timestamp: number, timing: ThinkingTiming): void;
   beginMessage(message: AssistantMessage, startedAt?: number): void;
   completeMessage(message: AssistantMessage, completedAt?: number): void;
-  tick(now?: number): void;
+  tick(now?: number, activeTimestamp?: number): void;
   dispose(): void;
 }
 
@@ -680,8 +680,16 @@ function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
       // override an explicit expanded choice.
       this.rerenderTimestamp(message.timestamp);
     },
-    tick(now = Date.now()) {
+    tick(now = Date.now(), activeTimestamp?: number) {
       this.now = now;
+      if (activeTimestamp !== undefined) {
+        forEachLiveComponent(this, (component, state) => {
+          if (state.fullMessage?.timestamp !== activeTimestamp) return;
+          if (this.timings.get(activeTimestamp)?.completedAt !== undefined) return;
+          rebuild(component, state, this);
+        });
+        return;
+      }
       forEachLiveComponent(this, (component, state) => {
         const timestamp = state.fullMessage?.timestamp;
         if (timestamp === undefined || this.timings.get(timestamp)?.completedAt !== undefined) return;
@@ -755,8 +763,8 @@ export function installThinkingFoldPatch(
     completeMessage(message, completedAt) {
       record.completeMessage(message, completedAt);
     },
-    tick(now) {
-      record.tick(now);
+    tick(now, activeTimestamp?) {
+      record.tick(now, activeTimestamp);
     },
     dispose() {
       if (disposed) return;

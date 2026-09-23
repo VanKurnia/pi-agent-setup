@@ -14,6 +14,8 @@ agent/bin/
 agent/auth.json
 agent/settings.json
 agent/pi-blackhole/
+agent/fff/
+agent/thinking-fold.json
 git/
 mcp-cache.json
 mcp-npx-cache.json
@@ -75,4 +77,6 @@ hindsight.json
 # Locally-modified extensions (machine-specific, not tracked)
 agent/extensions/herdr-agent-state.ts
 agent/extensions/rtk.ts
+agent/extensions/browser-tools/declarations.d.ts
 agent/models-store.json
+/.pi/todos/

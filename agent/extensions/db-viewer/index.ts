@@ -1,50 +1,21 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { DatabaseSync } from "node:sqlite";
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
 import { isQuerySafe } from "../shared/query-safe.js";
+import { readDbConfig, formatRowsToMarkdown, findDbConnectionByValue } from "../shared/db.js";
 
-const DB_CONFIG_PATH = join(homedir(), ".pi", "agent", "db-config.json");
-
-function getDbPiUrl(dbPath: string, connStr: string): string {
-    if (!existsSync(DB_CONFIG_PATH)) return "";
-    try {
-        const config = JSON.parse(readFileSync(DB_CONFIG_PATH, "utf-8"));
-        const conn = (config.connections || []).find(
-            (c: any) =>
-                (c.driver === "sqlite" && c.connection === dbPath) ||
-                (c.driver === "mysql" && c.connection === connStr),
-        );
-        if (!conn) return "";
-        const name = conn.name || "db";
-        return `\n\n> 💡 **${name}** — [\`pi://db/connections\`](pi://db/connections) · [\`pi://db/tables\`](pi://db/tables) · [\`pi://db/<table\>/schema\`](pi://db/tables/schema)`;
-    } catch {
-        return "";
-    }
+function resolveMaxRows(raw: number | undefined): number {
+    if (raw === undefined || !Number.isFinite(raw)) return 200;
+    return Math.min(1000, Math.max(1, Math.floor(raw)));
 }
 
-// Format result rows to markdown tables
-function formatRowsToMarkdown(rows: any[]): string {
-    if (!rows || rows.length === 0) {
-        return "Query executed successfully. 0 rows returned.";
-    }
-
-    const columns = Object.keys(rows[0] as object);
-    const headers = `| ${columns.join(" | ")} |`;
-    const separators = `| ${columns.map(() => "---").join(" | ")} |`;
-    const dataRows = rows.map((row: any) => {
-        return `| ${columns
-            .map((col) => {
-                const val = row[col];
-                if (val === null || val === undefined) return "NULL";
-                return String(val).replace(/\|/g, "\\|");
-            })
-            .join(" | ")} |`;
-    });
-
-    return [headers, separators, ...dataRows].join("\n");
+function getDbPiUrl(dbPath: string, connStr: string): string {
+    const config = readDbConfig();
+    if (!config) return "";
+    const conn = findDbConnectionByValue(config, dbPath, connStr);
+    if (!conn) return "";
+    const name = conn.name || "db";
+    return `\n\n> 💡 **${name}** — [\`pi://db/connections\`](pi://db/connections) · [\`pi://db/tables\`](pi://db/tables) · [\`pi://db/<table\>/schema\`](pi://db/tables/schema)`;
 }
 
 export default function dbViewerExtension(pi: ExtensionAPI) {
@@ -62,6 +33,9 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
         parameters: Type.Object({
             dbPath: Type.String({ description: "Relative or absolute path to SQLite file" }),
             query: Type.String({ description: "SQL query to execute" }),
+            maxRows: Type.Optional(
+                Type.Number({ description: "Maximum rows to return (default 200, 1-1000)" }),
+            ),
         }),
         async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
             const safety = isQuerySafe(params.query);
@@ -78,11 +52,19 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
                 db = new DatabaseSync(params.dbPath);
                 const statement = db.prepare(params.query);
                 const rows = statement.all();
+                const maxRows = resolveMaxRows(params.maxRows);
+                const total = rows.length;
+                const displayRows = total > maxRows ? rows.slice(0, maxRows) : rows;
+                const notice =
+                    total > maxRows
+                        ? `\n\n_…truncated to ${maxRows} of ${total} rows — narrow the query or raise maxRows._`
+                        : "";
                 const piUrl = getDbPiUrl(params.dbPath, "");
-                const text = formatRowsToMarkdown(rows) + piUrl;
+                const text =
+                    formatRowsToMarkdown(displayRows as Record<string, unknown>[]) + notice + piUrl;
                 return {
                     content: [{ type: "text", text }],
-                    details: { rowsCount: rows.length, rows },
+                    details: { rowsCount: total, rows: displayRows },
                 };
             } catch (error: any) {
                 return {
@@ -116,6 +98,9 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
                 description: "MySQL connection URI, e.g. mysql://user:password@host:port/database",
             }),
             query: Type.String({ description: "SQL query to execute" }),
+            maxRows: Type.Optional(
+                Type.Number({ description: "Maximum rows to return (default 200, 1-1000)" }),
+            ),
         }),
         async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
             const safety = isQuerySafe(params.query);
@@ -148,11 +133,19 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
                 connection = await mysql.default.createConnection(params.connectionString);
                 const [rows] = await connection.execute(params.query);
                 const rowsArray = Array.isArray(rows) ? rows : [rows];
+                const maxRows = resolveMaxRows(params.maxRows);
+                const total = rowsArray.length;
+                const displayRows = total > maxRows ? rowsArray.slice(0, maxRows) : rowsArray;
+                const notice =
+                    total > maxRows
+                        ? `\n\n_…truncated to ${maxRows} of ${total} rows — narrow the query or raise maxRows._`
+                        : "";
                 const piUrl = getDbPiUrl("", params.connectionString);
-                const text = formatRowsToMarkdown(rowsArray) + piUrl;
+                const text =
+                    formatRowsToMarkdown(displayRows as Record<string, unknown>[]) + notice + piUrl;
                 return {
                     content: [{ type: "text", text }],
-                    details: { rowsCount: rowsArray.length, rows: rowsArray },
+                    details: { rowsCount: total, rows: displayRows },
                 };
             } catch (error: any) {
                 return {

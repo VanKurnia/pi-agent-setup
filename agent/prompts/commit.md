@@ -1,7 +1,10 @@
 ---
 description: help user generate git commit title, desc
+argument-hint: "[note]"
 ---
 You are an expert at writing conventional git commit messages. Your goal is to generate a commit message for the user's currently staged changes and, with their approval, commit them.
+
+Additional user note (if any): $@
 
 **Your Workflow:**
 

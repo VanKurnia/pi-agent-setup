@@ -1,11 +1,11 @@
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as path from "node:path";
 import { resolve } from "node:path";
 import { getExtensionApi } from "../../shared/cross-extension-api.js";
 import type { FilechangesApi } from "../src/types.js";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // Heuristic: a "file path" inside backticks has at least one / or \\
 // plus an extension (dot followed by alphanumeric). This excludes things
@@ -64,20 +64,20 @@ async function getFileDiff(filePath: string, cwd: string): Promise<string> {
 
     let isTracked = false;
     try {
-        await execAsync(`git cat-file -e HEAD:${relPath}`, { cwd });
+        await execFileAsync("git", ["cat-file", "-e", `HEAD:${relPath}`], { cwd });
         isTracked = true;
     } catch {}
 
     let raw: string;
     if (isTracked) {
-        const { stdout } = await execAsync(`git diff HEAD -- "${relPath}"`, {
+        const { stdout } = await execFileAsync("git", ["diff", "HEAD", "--", relPath], {
             cwd,
             maxBuffer: 1024 * 64,
         });
         raw = stdout;
     } else {
         const nullDevice = process.platform === "win32" ? "NUL" : "/dev/null";
-        const { stdout } = await execAsync(`git diff --no-index ${nullDevice} "${relPath}"`, {
+        const { stdout } = await execFileAsync("git", ["diff", "--no-index", nullDevice, relPath], {
             cwd,
             maxBuffer: 1024 * 64,
         });
@@ -103,14 +103,18 @@ export async function computeWorkerDiffs(output: string, cwd: string, ctx?: any)
             // because computeWorkerDiffs runs *after* the worker finished.
             if (filechanges) {
                 try {
-                    const isTracked = await execAsync(`git cat-file -e HEAD:${relPath}`, { cwd })
+                    const isTracked = await execFileAsync(
+                        "git",
+                        ["cat-file", "-e", `HEAD:${relPath}`],
+                        { cwd },
+                    )
                         .then(() => true)
                         .catch(() => false);
                     // originalContent for tracked files = git HEAD;
                     // for new files = null (didn't exist before)
                     const orig = isTracked
                         ? (
-                              await execAsync(`git show HEAD:"${relPath}"`, { cwd }).then(
+                              await execFileAsync("git", ["show", `HEAD:${relPath}`], { cwd }).then(
                                   (r) => r.stdout,
                               )
                           ).trimEnd()
