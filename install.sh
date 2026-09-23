@@ -52,6 +52,9 @@ else
   git clone --branch "$BRANCH" --depth 1 "$REPO_URL" "$PI_ROOT"
 fi
 
+# Git hooks run from .husky (lint-staged pre-commit)
+git -C "$PI_ROOT" config core.hooksPath .husky
+
 # ── Migration: handle old extensions/ directory ───────────────
 if [[ -d "$PI_ROOT/extensions" && ! -d "$PI_ROOT/agent/extensions" ]]; then
   if [[ -n "$(ls -A "$PI_ROOT/extensions" 2>/dev/null)" ]]; then

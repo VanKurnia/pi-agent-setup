@@ -81,3 +81,6 @@ agent/models-store.json
 /.pi/todos/
 # Local machine database config (tracked example: agent/db-config.example.json)
 agent/db-config.json
+# Husky user hooks are tracked (.husky/_ internals stay ignored)
+!.husky/
+.husky/_/
