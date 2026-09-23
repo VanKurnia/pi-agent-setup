@@ -1,0 +1,23 @@
+{
+  "packages": [
+    "npm:@ff-labs/pi-fff",
+    "npm:pi-blackhole",
+    "npm:pi-smart-fetch",
+    "npm:pi-smart-web-search",
+    "npm:pi-tool-display",
+    "npm:pi-x-ide",
+    "npm:pi-zentui",
+    "npm:pi-extmgr"
+  ],
+  "theme": "dark",
+  "lastChangelogVersion": "0.87.1",
+  "enableInstallTelemetry": false,
+  "treeFilterMode": "all",
+  "quietStartup": true,
+  "terminal": {
+    "showTerminalProgress": false
+  },
+  "showCacheMissNotices": true,
+  "tuiMode": "fullscreen",
+  "outputPad": 1
+}

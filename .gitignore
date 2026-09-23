@@ -12,7 +12,6 @@ agent/9router-config.json
 agent/sessions/
 agent/bin/
 agent/auth.json
-agent/settings.json
 agent/pi-blackhole/
 agent/fff/
 agent/thinking-fold.json
