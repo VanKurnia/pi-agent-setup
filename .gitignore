@@ -79,3 +79,5 @@ agent/extensions/rtk.ts
 agent/extensions/browser-tools/declarations.d.ts
 agent/models-store.json
 /.pi/todos/
+# Local machine database config (tracked example: agent/db-config.example.json)
+agent/db-config.json

@@ -1,0 +1,17 @@
+{
+  "connections": [
+    {
+      "name": "local-mysql",
+      "driver": "mysql",
+      "directory": "C:/path/to/project",
+      "connection": "mysql://user:password@localhost:3306/database",
+      "default": true
+    },
+    {
+      "name": "local-sqlite",
+      "driver": "sqlite",
+      "directory": "C:/path/to/project",
+      "connection": "C:/path/to/project/data.db"
+    }
+  ]
+}

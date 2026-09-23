@@ -156,10 +156,12 @@ if [[ ! -f "$PI_ROOT/agent/zentui.json" && -f "$PI_ROOT/zentui.json" ]]; then
   ok "Copied zentui.json to agent/"
 fi
 
-# db-config.json
-if [[ ! -f "$PI_ROOT/agent/db-config.json" && -f "$PI_ROOT/db-config.json" ]]; then
-  cp "$PI_ROOT/db-config.json" "$PI_ROOT/agent/db-config.json"
-  ok "Copied db-config.json to agent/"
+# db-config.json (local machine config - tracked example only)
+if [[ ! -f "$PI_ROOT/agent/db-config.json" && -f "$PI_ROOT/agent/db-config.example.json" ]]; then
+  cp "$PI_ROOT/agent/db-config.example.json" "$PI_ROOT/agent/db-config.json"
+  ok "Created agent/db-config.json from example - edit with your connections"
+else
+  ok "agent/db-config.json exists"
 fi
 
 # pi-speeed post-install fix (HOME on Windows)
