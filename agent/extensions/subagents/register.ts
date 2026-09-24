@@ -18,6 +18,7 @@ import { SettingsManager, THINKING_LEVELS } from "./src/settings.js";
 import { refreshAgents } from "./src/registry.js";
 import { buildSubagentExecute } from "./dispatch.js";
 import { renderSubagentToolCall, renderSubagentToolResult } from "./render.js";
+import { finishSubagentWidget, updateSubagentWidget } from "./src/widget.js";
 import {
     SUBAGENT_EVENTS,
     type SubagentCreatedEvent,
@@ -311,10 +312,9 @@ export default function registerSubagent(pi: ExtensionAPI) {
                         label: "[model default]",
                         description: "Use model default",
                     },
-                    ...THINKING_LEVELS.map((level) => ({
+                    ...THINKING_LEVELS.filter(levelSupported).map((level) => ({
                         value: level,
                         label: level,
-                        description: levelSupported(level) ? "supported" : "unsupported",
                     })),
                 ];
                 const currentThinking = settings.getAgentThinking(agentName);
@@ -469,7 +469,17 @@ export default function registerSubagent(pi: ExtensionAPI) {
             }
         }
 
-        const result = await execute(toolCallId, params, signal, onUpdate, ctx);
+        // Fan progress snapshots to the above-editor widget; entries clear on return.
+        const widgetOnUpdate = (upd: any) => {
+            updateSubagentWidget(ctx, toolCallId, upd?.details?.results);
+            onUpdate?.(upd);
+        };
+        let result: Awaited<ReturnType<typeof execute>>;
+        try {
+            result = await execute(toolCallId, params, signal, widgetOnUpdate, ctx);
+        } finally {
+            finishSubagentWidget(ctx, toolCallId);
+        }
 
         // Emit completed/failed events per result
         if (result?.details?.results) {

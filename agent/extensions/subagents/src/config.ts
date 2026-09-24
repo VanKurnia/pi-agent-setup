@@ -1,12 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-    CONFIG_DIR_NAME,
-    getAgentDir,
-    ModelRuntime,
-    parseFrontmatter,
-} from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentConfig, AgentScope, AgentSource } from "./types.js";
 
@@ -236,34 +231,20 @@ export function loadAgents(): AgentConfig[] {
 }
 
 /**
- * Create a private ModelRuntime for agent model resolution.
- * Per-call construction (local file reads only, no network).
- */
-export async function createAgentRuntime(agentDir: string): Promise<ModelRuntime> {
-    return ModelRuntime.create({
-        authPath: path.join(agentDir, "auth.json"),
-        modelsPath: path.join(agentDir, "models.json"),
-        modelsStorePath: path.join(agentDir, "models-store.json"),
-        allowModelNetwork: false,
-    });
-}
-
-/**
- * Resolve a model string (e.g. "anthropic/claude-sonnet-4-6") to a Model object.
+ * Resolve a model string (e.g. "anthropic/claude-sonnet-4-6") to a Model object
+ * via the shared ExtensionContext model registry.
  * Returns undefined if the model cannot be resolved.
  */
 export async function resolveAgentModel(
     modelId: string,
-    agentDir: string,
+    registry: { find(provider: string, modelId: string): Model<any> | undefined },
 ): Promise<Model<any> | undefined> {
     const slashIdx = modelId.indexOf("/");
     if (slashIdx === -1) return undefined;
     const provider = modelId.slice(0, slashIdx);
     const name = modelId.slice(slashIdx + 1);
     try {
-        const runtime = await createAgentRuntime(agentDir);
-        const model = runtime.getModel(provider, name);
-        return model ?? undefined;
+        return registry.find(provider, name);
     } catch (err) {
         // Warn, then report unknown-model: the cause (bad auth/models file)
         // is otherwise invisible to the caller.

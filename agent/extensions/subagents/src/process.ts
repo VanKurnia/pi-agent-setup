@@ -7,6 +7,8 @@ import {
     SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { Model } from "@earendil-works/pi-ai";
 import type { AgentConfig, AgentProgress, AgentResult } from "./types.js";
 import { resolveAgentModel } from "./config.js";
 import { throttle } from "./utils.js";
@@ -33,47 +35,25 @@ function extractToolArgsPreview(args: Record<string, unknown>): string {
     return s.length > 80 ? s.slice(0, 80) + "…" : s;
 }
 
-export async function runSubagent(
+async function runAttempt(
     agent: AgentConfig,
     task: string,
     cwd: string,
+    agentDir: string,
+    model: Model<any> | undefined,
     signal: AbortSignal | undefined,
     onUpdate?: (progress: AgentProgress) => void,
-    _ctx?: any,
 ): Promise<AgentResult> {
-    const agentDir = getAgentDir();
-
-    // Resolve the agent model through the registry. Fail closed on unknown
-    // models — the old localhost fallback sent the wrong key to the wrong
-    // URL (401 invalid_api_key), so no fallback survives here.
-    let resolvedModel = undefined;
-    if (agent.model) {
-        resolvedModel = await resolveAgentModel(agent.model, agentDir);
-        if (!resolvedModel) {
-            throw new Error(
-                `Unknown agent model '${agent.model}' for agent '${agent.name}'. Pick an installed model via /subagents:settings.`,
-            );
-        }
-    }
-
-    // Omit unsupported thinking levels: a null entry in the model's
-    // thinkingLevelMap means the level is unsupported — fall back to the
-    // model default rather than sending it.
-    let thinkingLevel = agent.thinkingLevel;
-    if (thinkingLevel && resolvedModel) {
-        const levelMap = (resolvedModel as { thinkingLevelMap?: Record<string, string | null> })
-            .thinkingLevelMap;
-        if (levelMap && levelMap[thinkingLevel] === null) {
-            thinkingLevel = undefined;
-        }
-    }
-
+    // Omit unsupported thinking levels (null map entry): fall back to the model default.
+    let thinkingLevel: ThinkingLevel | undefined = agent.thinkingLevel;
+    const levelMap = model?.thinkingLevelMap;
+    if (thinkingLevel && levelMap && levelMap[thinkingLevel] === null) thinkingLevel = undefined;
     const result: AgentResult = {
         agent: agent.name,
         task,
         output: "",
         exitCode: 0,
-        model: agent.model,
+        model: model ? `${model.provider}/${model.id}` : agent.model,
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 },
         progress: {
             agent: agent.name,
@@ -101,7 +81,7 @@ export async function runSubagent(
             cwd,
             agentDir,
             tools: agent.tools.length > 0 ? agent.tools : undefined,
-            model: resolvedModel,
+            model,
             thinkingLevel,
             sessionManager: SessionManager.inMemory(cwd), // ponytail: subagents are one-shot, never resumed — in-memory avoids orphaned session .jsonl files
         });
@@ -238,4 +218,47 @@ export async function runSubagent(
     }
 
     return result;
+}
+
+// Retry budget: 3 attempts on the selected model, then 2 on the fallback.
+const SELECTED_ATTEMPTS = 3;
+const FALLBACK_ATTEMPTS = 2;
+
+export async function runSubagent(
+    agent: AgentConfig,
+    task: string,
+    cwd: string,
+    signal: AbortSignal | undefined,
+    onUpdate?: (progress: AgentProgress) => void,
+    ctx?: any,
+): Promise<AgentResult> {
+    const agentDir = getAgentDir();
+
+    // Unknown models fail closed (not retried): the name is wrong, not the call.
+    let selectedModel = undefined;
+    if (agent.model) {
+        selectedModel = await resolveAgentModel(agent.model, ctx?.modelRegistry);
+        if (!selectedModel) {
+            throw new Error(
+                `Unknown agent model '${agent.model}' for agent '${agent.name}'. Pick an installed model via /subagents:settings.`,
+            );
+        }
+    }
+
+    // Fallback is the main session model: its credentials demonstrably work.
+    const phases: Array<{ model: Model<any> | undefined; attempts: number }> = [
+        { model: selectedModel, attempts: SELECTED_ATTEMPTS },
+    ];
+    if (ctx?.model) phases.push({ model: ctx.model, attempts: FALLBACK_ATTEMPTS });
+
+    let lastResult: AgentResult | undefined;
+    for (const phase of phases) {
+        for (let i = 0; i < phase.attempts; i++) {
+            const r = await runAttempt(agent, task, cwd, agentDir, phase.model, signal, onUpdate);
+            if (r.exitCode === 0 && !r.progress.error) return r;
+            if (signal?.aborted) return r;
+            lastResult = r;
+        }
+    }
+    return lastResult!;
 }
