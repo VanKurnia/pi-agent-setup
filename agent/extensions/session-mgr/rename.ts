@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { ok } from "../git-toolkit/helpers.js";
+import { ok } from "./helpers/result.js";
 
 export function registerRename(pi: ExtensionAPI): void {
     pi.registerTool({

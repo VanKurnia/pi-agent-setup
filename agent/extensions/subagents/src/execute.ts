@@ -1,4 +1,11 @@
-import type { AgentConfig, AgentResult, Details, AgentScope, HybridPhase } from "./types.js";
+import type {
+    AgentConfig,
+    AgentResult,
+    Details,
+    AgentScope,
+    HybridPhase,
+    TaskSpec,
+} from "./types.js";
 import { runSubagent } from "./process.js";
 import { computeWorkerDiffs } from "./diff.js";
 import { mapConcurrent, throttle } from "./utils.js";
@@ -9,10 +16,12 @@ function emptyResult(
     task: string,
     model?: string,
     status: "pending" | "running" = "running",
+    title?: string,
 ): AgentResult {
     return {
         agent,
         task,
+        title,
         output: "",
         exitCode: -1,
         model,
@@ -39,6 +48,7 @@ export async function executeSingle(
     onUpdate: any,
     agentScope: AgentScope = "user",
     agents?: AgentConfig[],
+    title?: string,
 ): Promise<{ content: any[]; details: Details; isError?: boolean }> {
     const agentConfigs = agents ?? discoverAgents(cwd, agentScope).agents;
     const agent = agentConfigs.find((a) => a.name === agentName);
@@ -47,7 +57,7 @@ export async function executeSingle(
         throw new Error(`Unknown agent: ${agentName}. Available agents: ${available}`);
     }
 
-    const liveResult = emptyResult(agentName, task, agent.model, "running");
+    const liveResult = emptyResult(agentName, task, agent.model, "running", title);
     const result = await runSubagent(
         agent,
         task,
@@ -62,6 +72,7 @@ export async function executeSingle(
         },
         ctx,
     );
+    if (title !== undefined) result.title = title;
 
     // Compute post-hoc file diffs for worker subagent results
     if (agent.name === "worker" && result.output) {
@@ -83,7 +94,7 @@ export async function executeSingle(
 }
 
 export async function executeParallel(
-    taskList: Array<{ agent: string; task: string; cwd?: string }>,
+    taskList: TaskSpec[],
     maxConcurrency: number,
     cwd: string,
     signal: AbortSignal | undefined,
@@ -105,7 +116,13 @@ export async function executeParallel(
 
     // Initialize all result slots as pending
     for (let i = 0; i < taskList.length; i++) {
-        allResults[i] = emptyResult(taskList[i].agent, taskList[i].task, undefined, "pending");
+        allResults[i] = emptyResult(
+            taskList[i].agent,
+            taskList[i].task,
+            undefined,
+            "pending",
+            taskList[i].title,
+        );
     }
 
     const flushParallelUpdate = () => {
@@ -133,6 +150,7 @@ export async function executeParallel(
             },
             ctx,
         );
+        if (t.title !== undefined) result.title = t.title;
 
         // Compute post-hoc file diffs for worker subagent results
         if (agent.name === "worker" && result.output) {
@@ -167,7 +185,7 @@ export async function executeParallel(
  * Stops on first failure and returns `isError: true`.
  */
 export async function executeChain(
-    chainSteps: Array<{ agent: string; task: string; cwd?: string }>,
+    chainSteps: TaskSpec[],
     _maxConcurrency: number,
     cwd: string,
     signal: AbortSignal | undefined,
@@ -193,7 +211,7 @@ export async function executeChain(
         // Create an update callback that shows chain progress with step number
         const emitChainUpdate = (progress: any) => {
             const liveResult: AgentResult = {
-                ...emptyResult(step.agent, taskWithContext, agent.model, "running"),
+                ...emptyResult(step.agent, taskWithContext, agent.model, "running", step.title),
                 step: i + 1,
             };
             liveResult.progress = progress;
@@ -221,6 +239,7 @@ export async function executeChain(
             ctx,
         );
         result.step = i + 1;
+        if (step.title !== undefined) result.title = step.title;
         allResults.push(result);
 
         // Stop on failure
@@ -322,6 +341,7 @@ export async function executeHybrid(
                 },
                 agentScope,
                 agents,
+                phase.title,
             );
 
             const phaseResult = result.details.results[0];
@@ -345,6 +365,7 @@ export async function executeHybrid(
                 agent: t.agent,
                 task: resolvePrevious(t.task),
                 cwd: t.cwd,
+                title: t.title,
             }));
 
             fireHybridUpdate(i, `parallel (${tasksWithContext.length} tasks)`, []);
@@ -398,6 +419,7 @@ export async function executeHybrid(
                 agent: s.agent,
                 task: resolvePrevious(s.task),
                 cwd: s.cwd,
+                title: s.title,
             }));
 
             fireHybridUpdate(i, `chain (${stepsWithContext.length} steps)`, []);

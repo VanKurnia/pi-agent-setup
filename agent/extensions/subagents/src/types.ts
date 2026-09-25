@@ -38,6 +38,7 @@ export interface AgentProgress {
 export interface AgentResult {
     agent: string;
     task: string;
+    title?: string;
     output: string;
     exitCode: number;
     progress: AgentProgress;
@@ -55,15 +56,23 @@ export interface AgentResult {
 
 export type HybridCollect = "all" | "first";
 
+/** One unit of subagent work — full task plus optional short UI label and cwd. */
+export interface TaskSpec {
+    agent: string;
+    task: string;
+    cwd?: string;
+    title?: string;
+}
+
 /** A single phase in a hybrid execution — can be single, parallel, or chain */
 export type HybridPhase =
-    | { mode: "single"; agent: string; task: string; cwd?: string }
+    | ({ mode: "single" } & TaskSpec)
     | {
           mode: "parallel";
-          tasks: Array<{ agent: string; task: string; cwd?: string }>;
+          tasks: TaskSpec[];
           collect?: HybridCollect;
       }
-    | { mode: "chain"; tasks: Array<{ agent: string; task: string; cwd?: string }> };
+    | { mode: "chain"; tasks: TaskSpec[] };
 
 export interface Details {
     mode: "single" | "parallel" | "chain" | "hybrid";

@@ -12,7 +12,7 @@
  * Key behaviors:
  *   - Always uses `--audience agent`
  *   - Uses `--format json` for machine-readable output
- *   - Auto-installs the `ocr` CLI if missing
+ *   - Reports a setup message when the `ocr` CLI is missing (manual install required)
  *   - Reports findings by priority (High/Medium)
  *   - Only applies fixes when the user explicitly requests it
  *   - Never invents or hardcodes API keys
@@ -25,6 +25,9 @@
 
 import fs from "node:fs";
 import { spawn, execSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import os from "node:os";
 import type { AgentToolUpdateCallback, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { ok, fail } from "./git-toolkit/helpers.js";
@@ -269,6 +272,517 @@ function wrapUpdate(onUpdate: AgentToolUpdateCallback<unknown> | undefined): (ms
 }
 
 // ---------------------------------------------------------------------------
+// OCR background jobs
+// ---------------------------------------------------------------------------
+
+function resolveJobsDir(): string {
+    // Primary: agent/tmp/ocr-jobs next to the extension (agent/extensions/.. = agent/).
+    try {
+        return fileURLToPath(new URL("../tmp/ocr-jobs", import.meta.url));
+    } catch {
+        // Fallback: OS temp dir keeps jobs working if import.meta resolution fails.
+        return path.join(os.tmpdir(), "pi-ocr-jobs");
+    }
+}
+
+const JOBS_DIR = resolveJobsDir();
+const MAX_RUNNING_JOBS = 3;
+const JOB_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface OcrJobSidecar {
+    id: string;
+    kind: "review" | "scan";
+    args: string[];
+    repo: string;
+    pid: number | null;
+    status: "running" | "done" | "failed" | "cancelled";
+    exitCode: number | null;
+    startedAt: number;
+    endedAt: number | null;
+    note: string;
+}
+
+function mintJobId(): string {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        const id = `ocr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6).padEnd(4, "0")}`;
+        try {
+            if (!fs.existsSync(path.join(JOBS_DIR, `${id}.json`))) {
+                return id;
+            }
+        } catch {
+            return id;
+        }
+    }
+    throw new Error("Failed to mint unique job ID after 3 attempts.");
+}
+
+function readSidecar(id: string): OcrJobSidecar | null {
+    try {
+        const raw = fs.readFileSync(path.join(JOBS_DIR, `${id}.json`), "utf8");
+        return JSON.parse(raw) as OcrJobSidecar;
+    } catch {
+        return null;
+    }
+}
+
+function writeSidecar(s: OcrJobSidecar): void {
+    fs.mkdirSync(JOBS_DIR, { recursive: true });
+    fs.writeFileSync(path.join(JOBS_DIR, `${s.id}.json`), JSON.stringify(s, null, 2), "utf8");
+}
+
+function listSidecars(): OcrJobSidecar[] {
+    let files: string[];
+    try {
+        files = fs.readdirSync(JOBS_DIR);
+    } catch {
+        return [];
+    }
+    const out: OcrJobSidecar[] = [];
+    for (const f of files) {
+        if (!f.startsWith("ocr-") || !f.endsWith(".json")) {
+            continue;
+        }
+        const s = readSidecar(f.slice(0, -5));
+        if (s) {
+            out.push(s);
+        }
+    }
+    return out;
+}
+
+function isAlive(pid: number | null): boolean {
+    if (pid === null) {
+        return false;
+    }
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function finalizeIfDead(s: OcrJobSidecar): OcrJobSidecar {
+    if (s.status !== "running") {
+        return s;
+    }
+    if (isAlive(s.pid)) {
+        return s;
+    }
+    const final: OcrJobSidecar = {
+        ...s,
+        status: "failed",
+        endedAt: Date.now(),
+        exitCode: null,
+        note: "process gone (reload/crash); exit code unknown",
+    };
+    try {
+        writeSidecar(final);
+    } catch {
+        /* ignore */
+    }
+    return final;
+}
+
+function reapStaleJobs(): void {
+    const now = Date.now();
+    for (const s of listSidecars()) {
+        if (isAlive(s.pid)) {
+            continue;
+        }
+        const ageBase = s.endedAt ?? s.startedAt;
+        if (now - ageBase <= JOB_TTL_MS) {
+            continue;
+        }
+        for (const f of [`${s.id}.json`, `${s.id}.out.log`, `${s.id}.err.log`]) {
+            try {
+                fs.unlinkSync(path.join(JOBS_DIR, f));
+            } catch {
+                /* ignore */
+            }
+        }
+    }
+}
+
+function tailFile(p: string, maxLines: number): string {
+    try {
+        const stat = fs.statSync(p);
+        let text: string;
+        if (stat.size <= 64 * 1024) {
+            text = fs.readFileSync(p, "utf8");
+        } else {
+            const fd = fs.openSync(p, "r");
+            try {
+                const windowSize = 8192;
+                const start = Math.max(0, stat.size - windowSize);
+                const len = Math.min(windowSize, stat.size - start);
+                const buf = Buffer.alloc(len);
+                fs.readSync(fd, buf, 0, len, start);
+                let chunk = buf.toString("utf8");
+                if (start > 0) {
+                    const firstNl = chunk.indexOf("\n");
+                    if (firstNl !== -1) {
+                        chunk = chunk.slice(firstNl + 1);
+                    }
+                }
+                text = chunk;
+            } finally {
+                fs.closeSync(fd);
+            }
+        }
+        const lines = text.split(/\r?\n/);
+        return lines.slice(-maxLines).join("\n").slice(-4096);
+    } catch {
+        return "";
+    }
+}
+
+function formatDuration(ms: number): string {
+    if (ms < 1000) {
+        return `${ms}ms`;
+    }
+    if (ms < 60 * 1000) {
+        return `${(ms / 1000).toFixed(1)}s`;
+    }
+    if (ms < 60 * 60 * 1000) {
+        const m = Math.floor(ms / 60000);
+        const s = Math.floor((ms % 60000) / 1000);
+        return `${m}m${s}s`;
+    }
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    return `${h}h${m}m`;
+}
+
+async function startBackgroundJob(
+    kind: "review" | "scan",
+    args: string[],
+    opts: { repo?: string; ctx: any; emit: (msg: string) => void },
+): Promise<any> {
+    // NOTE: user --output still applies inside the job; job .out.log may be empty — poll reports sizes so this is visible.
+    reapStaleJobs();
+    for (const s of listSidecars()) {
+        if (s.status === "running") {
+            finalizeIfDead(s);
+        }
+    }
+    const running = listSidecars().filter((s) => s.status === "running" && isAlive(s.pid));
+    if (running.length >= MAX_RUNNING_JOBS) {
+        const ids = running.map((s) => s.id).join(", ");
+        return fail(
+            `Too many running OCR jobs (${running.length}/${MAX_RUNNING_JOBS}): ${ids}. ` +
+                "Wait for one, or stop it with ocr_job_cancel.",
+        );
+    }
+    fs.mkdirSync(JOBS_DIR, { recursive: true });
+    let id: string;
+    try {
+        id = mintJobId();
+    } catch (e) {
+        return fail((e as Error).message ?? String(e));
+    }
+    const repo = opts.repo ?? opts.ctx?.cwd ?? process.cwd();
+    const startedAt = Date.now();
+    let sidecar: OcrJobSidecar = {
+        id,
+        kind,
+        args,
+        repo,
+        pid: null,
+        status: "running",
+        exitCode: null,
+        startedAt,
+        endedAt: null,
+        note: "",
+    };
+    const bin = resolveOcrCmd();
+    if (!bin) {
+        try {
+            writeSidecar({ ...sidecar, status: "failed", endedAt: Date.now() });
+        } catch {
+            /* ignore */
+        }
+        return fail(installFailed());
+    }
+    try {
+        writeSidecar(sidecar);
+    } catch (e) {
+        return fail((e as Error).message ?? String(e));
+    }
+    let outFd: number;
+    let errFd: number;
+    try {
+        outFd = fs.openSync(path.join(JOBS_DIR, `${id}.out.log`), "w");
+        errFd = fs.openSync(path.join(JOBS_DIR, `${id}.err.log`), "w");
+    } catch (e) {
+        try {
+            writeSidecar({ ...sidecar, status: "failed", endedAt: Date.now() });
+        } catch {
+            /* ignore */
+        }
+        return fail((e as Error).message ?? String(e));
+    }
+    try {
+        const child = spawn(bin, args, {
+            cwd: opts.ctx?.cwd,
+            detached: true,
+            stdio: ["ignore", outFd, errFd],
+        });
+        sidecar = { ...sidecar, pid: child.pid ?? null };
+        try {
+            writeSidecar(sidecar);
+        } catch {
+            /* ignore */
+        }
+        child.unref();
+        try {
+            fs.closeSync(outFd);
+        } catch {
+            /* ignore */
+        }
+        try {
+            fs.closeSync(errFd);
+        } catch {
+            /* ignore */
+        }
+        child.on("close", (code) => {
+            try {
+                const cur = readSidecar(id);
+                if (cur && cur.status === "running") {
+                    writeSidecar({
+                        ...cur,
+                        status: code === 0 ? "done" : "failed",
+                        endedAt: Date.now(),
+                        exitCode: code ?? 1,
+                    });
+                }
+            } catch {
+                /* ignore */
+            }
+            try {
+                finishOcrWidget(opts.ctx, id);
+            } catch {
+                /* ignore */
+            }
+        });
+        child.on("error", () => {
+            try {
+                const cur = readSidecar(id);
+                if (cur && cur.status === "running") {
+                    writeSidecar({ ...cur, status: "failed", endedAt: Date.now() });
+                }
+            } catch {
+                /* ignore */
+            }
+            try {
+                finishOcrWidget(opts.ctx, id);
+            } catch {
+                /* ignore */
+            }
+        });
+        let commit: string | undefined;
+        let from: string | undefined;
+        let to: string | undefined;
+        let scanPath: string | undefined;
+        for (let i = 0; i < args.length; i += 1) {
+            if (args[i] === "--commit" && args[i + 1] !== undefined) {
+                commit = args[i + 1];
+            }
+            if (args[i] === "--from" && args[i + 1] !== undefined) {
+                from = args[i + 1];
+            }
+            if (args[i] === "--to" && args[i + 1] !== undefined) {
+                to = args[i + 1];
+            }
+            if (args[i] === "--path" && args[i + 1] !== undefined) {
+                scanPath = args[i + 1];
+            }
+        }
+        try {
+            updateOcrWidget(opts.ctx, id, {
+                kind,
+                title: jobTitle(kind, { commit, from, to, path: scanPath }),
+                startedAt,
+            });
+        } catch {
+            /* ignore */
+        }
+        opts.emit(`[ocr] Started background ${kind} job ${id} — poll with ocr_job_status.`);
+        return ok(
+            `OCR ${kind} job started in background.\njobId: ${id}\nPoll: ocr_job_status { "id": "${id}" }`,
+        );
+    } catch (e) {
+        try {
+            writeSidecar({ ...sidecar, status: "failed", endedAt: Date.now() });
+        } catch {
+            /* ignore */
+        }
+        try {
+            finishOcrWidget(opts.ctx, id);
+        } catch {
+            /* ignore */
+        }
+        try {
+            fs.closeSync(outFd);
+        } catch {
+            /* ignore */
+        }
+        try {
+            fs.closeSync(errFd);
+        } catch {
+            /* ignore */
+        }
+        return fail((e as Error).message ?? String(e));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// OCR live widget
+// ---------------------------------------------------------------------------
+
+const OCR_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const OCR_MAX_ROWS = 6;
+const OCR_TICK_MS = 500;
+
+const OCR_ANSI = {
+    reset: "\x1b[0m",
+    bold: "1",
+    dim: "2",
+    cyan: "36",
+    green: "32",
+    red: "31",
+    yellow: "33",
+    blue: "34",
+};
+const ocrStyled = (code: string, text: string): string => `\x1b[${code}m${text}${OCR_ANSI.reset}`;
+const OCR_DOT = ocrStyled(OCR_ANSI.dim, "·");
+
+interface OcrWidgetRow {
+    kind: "review" | "scan";
+    title: string;
+    startedAt: number;
+}
+
+const liveOcrJobs = new Map<string, OcrWidgetRow>();
+let lastOcrCtx: any;
+let ocrWidgetTimer: ReturnType<typeof setInterval> | undefined;
+
+function jobTitle(
+    kind: "review" | "scan",
+    params: { commit?: string; from?: string; to?: string; path?: string },
+): string {
+    let base: string;
+    if (kind === "review") {
+        const scope =
+            params.commit ??
+            (params.from && params.to ? `${params.from}..${params.to}` : "workspace");
+        base = `review ${scope}`;
+    } else {
+        base = `scan ${params.path ?? "whole repo"}`;
+    }
+    const words = base.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+    if (words.length <= 5) {
+        return base;
+    }
+    return `${words.slice(0, 5).join(" ")}…`;
+}
+
+function styledOcrDuration(ms: number): string {
+    return formatDuration(ms).replace(
+        /(\d+(?:\.\d+)?)(ms|s|m|h)/g,
+        (_, num, unit) => `${ocrStyled(OCR_ANSI.yellow, num)}${ocrStyled(OCR_ANSI.blue, unit)}`,
+    );
+}
+
+function renderOcrRow(row: OcrWidgetRow, now: number): string {
+    const icon = OCR_SPINNER[Math.floor(now / OCR_TICK_MS) % OCR_SPINNER.length];
+    const duration = styledOcrDuration(Math.max(0, now - row.startedAt));
+    const label = ocrStyled(OCR_ANSI.yellow, row.title || row.kind);
+    return `${ocrStyled(OCR_ANSI.cyan, icon)} ${label} ${OCR_DOT} ${duration}`;
+}
+
+function stopOcrTimer(): void {
+    if (ocrWidgetTimer !== undefined) {
+        clearInterval(ocrWidgetTimer);
+        ocrWidgetTimer = undefined;
+    }
+}
+
+function ensureOcrTimer(): void {
+    if (ocrWidgetTimer !== undefined) {
+        return;
+    }
+    ocrWidgetTimer = setInterval(() => {
+        if (liveOcrJobs.size === 0) {
+            stopOcrTimer();
+            return;
+        }
+        paintOcrWidget(lastOcrCtx);
+    }, OCR_TICK_MS);
+}
+
+function paintOcrWidget(ctx: any): void {
+    try {
+        const setWidget = ctx?.ui?.setWidget;
+        if (!ctx?.hasUI || typeof setWidget !== "function") {
+            return;
+        }
+        const rows = [...liveOcrJobs.values()];
+        if (rows.length === 0) {
+            try {
+                setWidget("ocr", undefined);
+            } catch {
+                /* non-interactive host — ignore */
+            }
+            return;
+        }
+        const now = Date.now();
+        const running = rows.length;
+        const shown = rows.slice(0, OCR_MAX_ROWS);
+        const hasMore = rows.length > OCR_MAX_ROWS;
+        const lines = [
+            `${ocrStyled(`${OCR_ANSI.bold};${OCR_ANSI.yellow}`, "ocr")} ${OCR_DOT} ${ocrStyled(`${OCR_ANSI.bold};${OCR_ANSI.yellow}`, String(running))} ${ocrStyled(`${OCR_ANSI.bold};${OCR_ANSI.green}`, "running")}`,
+            ...shown.map((r, i) => {
+                const branch = !hasMore && i === shown.length - 1 ? "└─" : "├─";
+                return `${branch} ${renderOcrRow(r, now)}`;
+            }),
+        ];
+        if (hasMore) {
+            lines.push(`└─ +${rows.length - OCR_MAX_ROWS} more`);
+        }
+        try {
+            setWidget("ocr", lines);
+        } catch {
+            /* non-interactive host — ignore */
+        }
+    } catch {
+        /* non-interactive host — ignore */
+    }
+}
+
+function updateOcrWidget(
+    ctx: any,
+    id: string,
+    patch: { kind: "review" | "scan"; title: string; startedAt: number },
+): void {
+    liveOcrJobs.set(id, { kind: patch.kind, title: patch.title, startedAt: patch.startedAt });
+    lastOcrCtx = ctx;
+    ensureOcrTimer();
+    paintOcrWidget(ctx);
+}
+
+function finishOcrWidget(ctx: any, id: string): void {
+    if (!liveOcrJobs.has(id)) {
+        return;
+    }
+    liveOcrJobs.delete(id);
+    if (liveOcrJobs.size === 0) {
+        stopOcrTimer();
+    }
+    paintOcrWidget(ctx);
+}
+
+// ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------
 
@@ -312,14 +826,28 @@ export default function (pi: ExtensionAPI) {
             concurrency: optionalPosInt("Maximum concurrent file reviews."),
             timeoutMinutes: optionalPosInt("Per-file OCR timeout in minutes."),
             maxTools: optionalPosInt(
-                "Maximum tool-call rounds per file (OCR enforces a minimum of 10).",
+                "Maximum tool-call rounds per file (OCR enforces a minimum of 50).",
             ),
             maxGitProcesses: optionalPosInt("Maximum concurrent Git subprocesses."),
+            effort: optionalString("Review effort preset: low | medium | high (default medium)."),
+            provider: optionalString("Override the configured LLM provider for this run."),
+            rule: optionalString("Path to JSON file with system review rules."),
+            tools: optionalString("Path to JSON tools config file."),
+            maxTokens: optionalPosInt("Per-group prompt token ceiling (unset = template default)."),
+            maxTokensBudget: optionalPosInt(
+                "Cap total token usage for this review (unset = unlimited).",
+            ),
+            noFilter: optionalBool("Keep all review comments without LLM post-filtering."),
+            output: optionalString("Write results to a UTF-8 file instead of stdout."),
             preview: optionalBool("List files that would be reviewed without calling an LLM."),
+            runInBackground: optionalBool(
+                "Run in background and return a job ID immediately; poll with ocr_job_status.",
+            ),
         }),
         async execute(_toolCallId, params, signal, onUpdate, ctx) {
             try {
                 const emit = wrapUpdate(onUpdate);
+                lastOcrCtx = ctx;
 
                 const setupMsg = await ensureOcr(signal);
                 if (setupMsg) {
@@ -350,8 +878,20 @@ export default function (pi: ExtensionAPI) {
                 push("--timeout", params.timeoutMinutes);
                 push("--max-tools", params.maxTools);
                 push("--max-git-procs", params.maxGitProcesses);
+                push("--effort", params.effort);
+                push("--provider", params.provider);
+                push("--rule", params.rule);
+                push("--tools", params.tools);
+                push("--max-tokens", params.maxTokens);
+                push("--max-tokens-budget", params.maxTokensBudget);
+                push("--output", params.output);
 
                 if (params.preview) args.push("--preview");
+                if (params.noFilter) args.push("--no-filter");
+
+                if (params.runInBackground) {
+                    return startBackgroundJob("review", args, { repo: params.repo, ctx, emit });
+                }
 
                 emit("[ocr] Starting review...");
 
@@ -421,11 +961,25 @@ export default function (pi: ExtensionAPI) {
             concurrency: optionalPosInt("Max concurrent file scans."),
             timeoutMinutes: optionalPosInt("Per-file timeout in minutes."),
             maxTools: optionalPosInt("Max tool call rounds per file."),
+            resume: optionalString("Resume a previous scan session by ID."),
+            maxGitProcesses: optionalPosInt("Maximum concurrent Git subprocesses."),
+            provider: optionalString("Override the configured LLM provider for this scan."),
+            rule: optionalString("Path to JSON file with system review rules."),
+            tools: optionalString("Path to JSON tools config file."),
+            maxTokens: optionalPosInt("Per-file prompt token ceiling (unset = template default)."),
+            maxTokensBudget: optionalPosInt(
+                "Cap total token usage for this scan (unset = unlimited).",
+            ),
+            output: optionalString("Write results to a UTF-8 file instead of stdout."),
             preview: optionalBool("Preview which files would be scanned without calling an LLM."),
+            runInBackground: optionalBool(
+                "Run in background and return a job ID immediately; poll with ocr_job_status.",
+            ),
         }),
         async execute(_toolCallId, params, signal, onUpdate, ctx) {
             try {
                 const emit = wrapUpdate(onUpdate);
+                lastOcrCtx = ctx;
 
                 const setupMsg = await ensureOcr(signal);
                 if (setupMsg) {
@@ -451,12 +1005,24 @@ export default function (pi: ExtensionAPI) {
                 push("--concurrency", params.concurrency);
                 push("--timeout", params.timeoutMinutes);
                 push("--max-tools", params.maxTools);
+                push("--resume", params.resume);
+                push("--max-git-procs", params.maxGitProcesses);
+                push("--provider", params.provider);
+                push("--rule", params.rule);
+                push("--tools", params.tools);
+                push("--max-tokens", params.maxTokens);
+                push("--max-tokens-budget", params.maxTokensBudget);
+                push("--output", params.output);
 
                 if (params.no_plan) args.push("--no-plan");
                 if (params.no_dedup) args.push("--no-dedup");
                 if (params.no_summary) args.push("--no-summary");
                 if (params.batch) args.push("--batch", params.batch);
                 if (params.preview) args.push("--preview");
+
+                if (params.runInBackground) {
+                    return startBackgroundJob("scan", args, { repo: params.repo, ctx, emit });
+                }
 
                 emit("[ocr] Starting scan...");
 
@@ -547,6 +1113,202 @@ export default function (pi: ExtensionAPI) {
             } catch (e: unknown) {
                 const err = e as Error;
                 if (err.name === "AbortError") return fail("Operation cancelled");
+                return fail(err.message ?? String(err));
+            }
+        },
+    });
+
+    // ---- ocr_job_status ----
+    pi.registerTool({
+        name: "ocr_job_status",
+        label: "OCR Job Status",
+        description:
+            "Poll an OCR background job started with runInBackground, or list all jobs. " +
+            "Returns status plus a capped stdout tail, never full logs.",
+        promptSnippet: "Check OCR background job status",
+        promptGuidelines: [
+            "Use ocr_job_status to poll jobs started with runInBackground",
+            "Omit id to list all jobs; pass tailLines to control the stdout tail (max 100)",
+            "After review: classify comments by priority — High (bugs, security, clear mistakes), Medium (reasonable concerns), Low (false positives, nits — discard silently)",
+        ],
+        parameters: Type.Object({
+            id: optionalString("Job ID; omit to list all jobs."),
+            tailLines: optionalPosInt("Stdout tail lines (default 40, max 100)."),
+        }),
+        async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+            try {
+                lastOcrCtx = ctx;
+                reapStaleJobs();
+                if (!params.id) {
+                    const jobs = listSidecars();
+                    if (jobs.length === 0) {
+                        return ok("No OCR background jobs.");
+                    }
+                    jobs.sort((a, b) => {
+                        const aRunning = a.status === "running" ? 0 : 1;
+                        const bRunning = b.status === "running" ? 0 : 1;
+                        if (aRunning !== bRunning) {
+                            return aRunning - bRunning;
+                        }
+                        return b.startedAt - a.startedAt;
+                    });
+                    const lines = jobs.map((s) => {
+                        const elapsed =
+                            s.status === "running"
+                                ? Date.now() - s.startedAt
+                                : (s.endedAt ?? Date.now()) - s.startedAt;
+                        let outBytes = 0;
+                        try {
+                            outBytes = fs.statSync(path.join(JOBS_DIR, `${s.id}.out.log`)).size;
+                        } catch {
+                            /* ignore */
+                        }
+                        return `${s.id} · ${s.kind} · ${s.status} · ${formatDuration(elapsed)} · ${outBytes} bytes`;
+                    });
+                    return ok(lines.join("\n"));
+                }
+                const raw = readSidecar(params.id);
+                if (!raw) {
+                    return fail(`Job ${params.id} not found.`);
+                }
+                const s = finalizeIfDead(raw);
+                if (s.status === "running") {
+                    let commit: string | undefined;
+                    let from: string | undefined;
+                    let to: string | undefined;
+                    let scanPath: string | undefined;
+                    for (let i = 0; i < s.args.length; i += 1) {
+                        if (s.args[i] === "--commit" && s.args[i + 1] !== undefined) {
+                            commit = s.args[i + 1];
+                        }
+                        if (s.args[i] === "--from" && s.args[i + 1] !== undefined) {
+                            from = s.args[i + 1];
+                        }
+                        if (s.args[i] === "--to" && s.args[i + 1] !== undefined) {
+                            to = s.args[i + 1];
+                        }
+                        if (s.args[i] === "--path" && s.args[i + 1] !== undefined) {
+                            scanPath = s.args[i + 1];
+                        }
+                    }
+                    try {
+                        updateOcrWidget(ctx, s.id, {
+                            kind: s.kind,
+                            title: jobTitle(s.kind, { commit, from, to, path: scanPath }),
+                            startedAt: s.startedAt,
+                        });
+                    } catch {
+                        /* ignore */
+                    }
+                } else {
+                    try {
+                        finishOcrWidget(ctx, s.id);
+                    } catch {
+                        /* ignore */
+                    }
+                }
+                const outLog = path.join(JOBS_DIR, `${s.id}.out.log`);
+                const errLog = path.join(JOBS_DIR, `${s.id}.err.log`);
+                let outBytes = 0;
+                let errBytes = 0;
+                try {
+                    outBytes = fs.statSync(outLog).size;
+                } catch {
+                    /* ignore */
+                }
+                try {
+                    errBytes = fs.statSync(errLog).size;
+                } catch {
+                    /* ignore */
+                }
+                const n = Math.min(params.tailLines ?? 40, 100);
+                const tail = stripAnsi(tailFile(outLog, n));
+                const elapsed =
+                    s.status === "running"
+                        ? Date.now() - s.startedAt
+                        : (s.endedAt ?? Date.now()) - s.startedAt;
+                const exit = s.exitCode ?? "unknown";
+                return ok(
+                    `job ${s.id} · ${s.kind} · ${s.status}\n` +
+                        `exit: ${exit}\n` +
+                        `elapsed: ${formatDuration(elapsed)}\n` +
+                        `stdout: ${outBytes} bytes (${s.id}.out.log)\n` +
+                        `stderr: ${errBytes} bytes (${s.id}.err.log)\n` +
+                        `--- tail (last ${n} lines) ---\n` +
+                        `${tail}`,
+                );
+            } catch (e: unknown) {
+                const err = e as Error;
+                return fail(err.message ?? String(err));
+            }
+        },
+    });
+
+    // ---- ocr_job_cancel ----
+    pi.registerTool({
+        name: "ocr_job_cancel",
+        label: "OCR Job Cancel",
+        description: "Stop a running OCR background job started with runInBackground.",
+        promptSnippet: "Cancel an OCR background job",
+        promptGuidelines: [
+            "Use ocr_job_cancel to stop a running background job",
+            "Pass the job id; already-finished jobs report their status without changes",
+        ],
+        parameters: Type.Object({
+            id: Type.String({ description: "Job ID to stop." }),
+        }),
+        async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+            try {
+                lastOcrCtx = ctx;
+                reapStaleJobs();
+                const s = readSidecar(params.id);
+                if (!s) {
+                    return fail(`Job ${params.id} not found.`);
+                }
+                if (s.status !== "running") {
+                    try {
+                        finishOcrWidget(ctx, s.id);
+                    } catch {
+                        /* ignore */
+                    }
+                    return ok(`Job ${s.id} already ${s.status}.`);
+                }
+                if (!isAlive(s.pid)) {
+                    const final = finalizeIfDead(s);
+                    try {
+                        finishOcrWidget(ctx, final.id);
+                    } catch {
+                        /* ignore */
+                    }
+                    return ok(`Job ${final.id} already ${final.status}.`);
+                }
+                try {
+                    if (s.pid !== null) {
+                        process.kill(s.pid, "SIGTERM");
+                    }
+                } catch {
+                    const final = finalizeIfDead({ ...s, pid: null });
+                    try {
+                        finishOcrWidget(ctx, final.id);
+                    } catch {
+                        /* ignore */
+                    }
+                    return ok(`Job ${final.id} already ${final.status}.`);
+                }
+                const cancelled: OcrJobSidecar = { ...s, status: "cancelled", endedAt: Date.now() };
+                try {
+                    writeSidecar(cancelled);
+                } catch {
+                    /* ignore */
+                }
+                try {
+                    finishOcrWidget(ctx, s.id);
+                } catch {
+                    /* ignore */
+                }
+                return ok(`Job ${s.id} cancelled.`);
+            } catch (e: unknown) {
+                const err = e as Error;
                 return fail(err.message ?? String(err));
             }
         },

@@ -4,8 +4,8 @@ A pi extension that registers a single `subagent` tool with two agents:
 
 | Agent | Tools | Model | Purpose |
 |-------|-------|-------|---------|
-| **scout** | read, grep, find, ls, web_search, web_fetch | 9router/plan-reason (`$SCOUT_MODEL` / `subagents.json`) | Fast codebase recon + lightweight web research |
-| **worker** | read, write, edit, safe_bash | muse-spark-1.2-contributor (`$WORKER_MODEL` / `subagents.json`) | Code changes |
+| **scout** | read, grep, find, ls, web_search, web_fetch | via `/subagents:settings` (default `$SCOUT_MODEL`) | Fast codebase recon + lightweight web research |
+| **worker** | read, write, edit, safe_bash | via `/subagents:settings` (default `$WORKER_MODEL`) | Code changes |
 | — | git_status, git_diff, git_log, etc. | — | Git operations (via git-toolkit) |
 | — | query_sqlite, query_mysql | — | Database queries (via db-viewer) |
 
@@ -67,7 +67,7 @@ The markdown body becomes the agent's system prompt.
 
 ### 2. Register agents via the shared cross-extension API module
 
-Pi loads extensions via jiti, which creates separate module instances. The preferred way to register agents is via the shared cross-extension API module at `agent/extensions/shared/cross-extension-api.ts`:
+Pi loads extensions via jiti, which creates separate module instances. Register via the shared cross-extension API module at `agent/extensions/shared/cross-extension-api.ts`:
 
 ```typescript
 import { registerExtensionApi } from "../shared/cross-extension-api.js";
@@ -75,8 +75,6 @@ import type { AgentConfig } from "../subagents/src/types.js";
 
 registerExtensionApi<{ registerAgent: (config: AgentConfig) => void; unregisterAgent: (name: string) => void }>("subagents", { registerAgent, unregisterAgent });
 ```
-
-> **Note**: The old `api-registry.ts` at `subagents/src/api-registry.ts` is deprecated and re-exports from the shared module. New code should import from `../shared/cross-extension-api.js` directly.
 
 The `globalThis.__pi_subagents` bridge pattern below is still viable for runtime interop when module imports are not available (e.g., dynamically loaded script contexts):
 

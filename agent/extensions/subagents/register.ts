@@ -31,6 +31,7 @@ export const ChainItem = Type.Object({
     task: Type.String({
         description: "Task with optional {previous} placeholder for prior output",
     }),
+    title: Type.Optional(Type.String({ description: "Short label, max 5 words, for progress UI" })),
     cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
 });
 
@@ -43,6 +44,7 @@ const CollectSchema = StringEnum(["all", "first"] as const, {
 const TaskItem = Type.Object({
     agent: Type.String({ description: "Name of the agent to invoke" }),
     task: Type.String({ description: "Task description" }),
+    title: Type.Optional(Type.String({ description: "Short label, max 5 words, for progress UI" })),
     cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
 });
 
@@ -50,6 +52,7 @@ const HybridSinglePhase = Type.Object({
     mode: Type.Literal("single", { description: "Single-agent phase" }),
     agent: Type.String({ description: "Name of the agent to invoke" }),
     task: Type.String({ description: "Task with optional {previous} placeholder" }),
+    title: Type.Optional(Type.String({ description: "Short label, max 5 words, for progress UI" })),
     cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
 });
 
@@ -77,17 +80,13 @@ export const AgentScopeSchema = StringEnum(["user", "project", "both"] as const,
 export const SubagentParams = Type.Object({
     agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (SINGLE mode)" })),
     task: Type.Optional(Type.String({ description: "Task description (SINGLE mode)" })),
+    title: Type.Optional(
+        Type.String({ description: "Short label, max 5 words, for progress UI (SINGLE mode)" }),
+    ),
     tasks: Type.Optional(
-        Type.Array(
-            Type.Object({
-                agent: Type.String({ description: "Name of the agent to invoke" }),
-                task: Type.String({ description: "Task description" }),
-                cwd: Type.Optional(
-                    Type.String({ description: "Working directory for the agent process" }),
-                ),
-            }),
-            { description: "PARALLEL mode: array of {agent, task} objects" },
-        ),
+        Type.Array(TaskItem, {
+            description: "PARALLEL mode: array of {agent, task} objects",
+        }),
     ),
     chain: Type.Optional(
         Type.Array(ChainItem, {
@@ -523,6 +522,7 @@ export default function registerSubagent(pi: ExtensionAPI) {
             "For multiple independent subagent tasks, use parallel mode with tasks[] array",
             "For multi-phase workflows (scout → implement → verify), use hybrid mode with hybrid[] array — phases execute sequentially, each phase feeds the next via {previous}.",
             "Subagents have NO context from the current conversation — include ALL necessary context in the task description",
+            "Provide a short title (max 5 words) per task for the progress widget; omit it and the UI falls back to the first 5 words of task",
         ],
         parameters: SubagentParams,
         execute: executeWithEvents,

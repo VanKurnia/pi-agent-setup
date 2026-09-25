@@ -18,14 +18,33 @@ const MAX_ROWS = 6;
 const TICK_MS = 150;
 
 /** Minimal ANSI palette — widget strings render verbatim, no theme access here. */
-const ANSI = { reset: "\x1b[0m", bold: "1", dim: "2", cyan: "36", green: "32", red: "31" };
+const ANSI = {
+    reset: "\x1b[0m",
+    bold: "1",
+    dim: "2",
+    cyan: "36",
+    green: "32",
+    red: "31",
+    yellow: "33",
+    blue: "34",
+};
 const styled = (code: string, text: string): string => `\x1b[${code}m${text}${ANSI.reset}`;
+const DOT = styled(ANSI.dim, "·");
 
 interface RowSnapshot {
     agent: string;
     status: string;
     firstSeen: number;
     exitCode: number;
+    title: string;
+}
+
+function toTitle(task: string): string {
+    if (!task) return "";
+    const words = task.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+    if (words.length === 0) return "";
+    const head = words.slice(0, 5).join(" ");
+    return words.length > 5 ? `${head}…` : head;
 }
 
 const live = new Map<string, RowSnapshot[]>();
@@ -56,6 +75,7 @@ function snapshot(r: AgentResult, firstSeen: number): RowSnapshot {
         status: r.progress?.status ?? "running",
         firstSeen,
         exitCode: r.exitCode ?? -1,
+        title: toTitle(r.title || r.task || ""),
     };
 }
 
@@ -68,7 +88,18 @@ function renderRow(row: RowSnapshot, now: number): string {
               : row.exitCode === 0
                 ? ["✓", ANSI.green]
                 : ["✗", ANSI.red];
-    return `${styled(color, icon)} ${row.agent} · ${styled(ANSI.dim, formatDuration(Math.max(0, now - row.firstSeen)))}`;
+    const duration = styledDuration(Math.max(0, now - row.firstSeen));
+    const agent = styled(ANSI.yellow, row.agent);
+    if (!row.title) return `${styled(color, icon)} ${agent} ${DOT} ${duration}`;
+    return `${styled(color, icon)} ${agent} ${DOT} ${row.title} ${DOT} ${duration}`;
+}
+
+/** Duration with yellow numbers and blue units (e.g. 16.9s, 42ms, 1m5s). */
+function styledDuration(ms: number): string {
+    return formatDuration(ms).replace(
+        /(\d+(?:\.\d+)?)(ms|s|m)/g,
+        (_, num, unit) => `${styled(ANSI.yellow, num)}${styled(ANSI.blue, unit)}`,
+    );
 }
 
 function paint(ctx: any): void {
@@ -88,7 +119,7 @@ function paint(ctx: any): void {
     const shown = rows.slice(0, MAX_ROWS);
     const hasMore = rows.length > MAX_ROWS;
     const lines = [
-        styled(ANSI.bold, `subagents · ${running} running`),
+        `${styled(`${ANSI.bold};${ANSI.yellow}`, "subagents")} ${DOT} ${styled(`${ANSI.bold};${ANSI.yellow}`, String(running))} ${styled(`${ANSI.bold};${ANSI.green}`, "running")}`,
         ...shown.map((r, i) => {
             const branch = !hasMore && i === shown.length - 1 ? "└─" : "├─";
             return `${branch} ${renderRow(r, now)}`;

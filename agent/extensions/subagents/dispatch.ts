@@ -151,6 +151,7 @@ export function buildSubagentExecute(maxConcurrency: number, settings?: Settings
                 onUpdate,
                 agentScope,
                 agents,
+                params.title,
             );
         } else {
             const available = agents.map((a) => a.name).join(", ") || "none";

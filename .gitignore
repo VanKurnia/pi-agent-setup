@@ -84,3 +84,4 @@ agent/db-config.json
 # Husky user hooks are tracked (.husky/_ internals stay ignored)
 !.husky/
 .husky/_/
+agent/session-mgr-settings.json
