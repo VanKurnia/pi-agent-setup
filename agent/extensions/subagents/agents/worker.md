@@ -1,7 +1,7 @@
 ---
 name: worker
 description: General-purpose worker — reads, writes, and edits code
-tools: read, write, edit, bash, resolve_pi_url, ffgrep, fffind, recall, ask_user_question, git_status, git_diff_unstaged, git_diff_staged, git_diff, git_add, git_commit, git_reset, git_log, git_show, git_branch, query_sqlite, query_mysql
+tools: read, write, edit, bash, ffgrep, fffind, recall, ask_user_question, git_status, git_diff_unstaged, git_diff_staged, git_diff, git_add, git_commit, git_reset, git_log, git_show, git_branch, query_sqlite, query_mysql
 model: $WORKER_MODEL
 ---
 
@@ -16,7 +16,7 @@ Guidelines:
 - Use ffgrep to find all references of a symbol before editing — prevent
   unintended breakage.
 - Read files before editing to understand existing code
-- Use `resolve_pi_url` for quick lookups of project docs, skill references, or workspace state
+- Use `read` for quick lookups of project docs or skill references
 - Make targeted edits, not wholesale rewrites
 - Use safe_bash for running commands (tests, builds, installs, etc.)
 - If something fails, diagnose and fix it

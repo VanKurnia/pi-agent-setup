@@ -69,7 +69,9 @@ done
 # ── 1. Stage ALL untracked files (user data) out of the old checkout ──
 # NOTE: no --exclude-standard — git-ignored managed files (.env,
 # auth.json, subagents.json, sessions/) are user data and must survive.
-# Only node_modules is skipped (rebuilt by npm-ci-all.sh).
+# Only node_modules is skipped (rebuilt by npm-ci-all.sh): excluded at the
+# git level so dep trees are neither walked per-file nor counted; the loop
+# guard below stays as fallback.
 PRESERVE="$(mktemp -d)"
 trap 'rm -f "${STABLE_CLEANUP:-}"; [[ -d "${PRESERVE:-}" ]] && echo "Staged user data kept at: $PRESERVE"' EXIT
 if [[ -d "$PI_DIR/.git" ]]; then
@@ -80,11 +82,12 @@ if [[ -d "$PI_DIR/.git" ]]; then
   fi
   say "Staging untracked user data..."
   while IFS= read -r -d '' f; do
-    [[ "$f" == */node_modules/* ]] && continue
+    # Root node_modules/ has no leading slash segment, so it needs its own arm.
+    [[ "$f" == node_modules/* || "$f" == */node_modules/* ]] && continue
     mkdir -p "$PRESERVE/$(dirname "$f")"
     cp -a "$PI_DIR/$f" "$PRESERVE/$f"
-  done < <(git -C "$PI_DIR" ls-files --others -z)
-  COUNT="$(git -C "$PI_DIR" ls-files --others -z | tr -dc '\0' | wc -c)"
+  done < <(git -C "$PI_DIR" ls-files --others -z --exclude='node_modules')
+  COUNT="$(git -C "$PI_DIR" ls-files --others -z --exclude='node_modules' | tr -dc '\0' | wc -c)"
   ok "$COUNT untracked path(s) staged (excluding node_modules)"
 elif [[ -e "$PI_DIR" && -n "$(ls -A "$PI_DIR" 2>/dev/null)" ]]; then
   err "$PI_DIR exists but is not a git checkout — refusing to replace it."

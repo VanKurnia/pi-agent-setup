@@ -1,21 +1,10 @@
 {
-  "$schema": "pi-extension-deps-v1",
-  "description": "Extension dependency manifest — documents event ordering and cross-extension contracts.",
-  "optional": [
-    "pi-x-ide"
-  ],
-  "order": {
-    "before_agent_start": [
-      "pi-x-ide"
-    ],
-    "session_start": [
-      "custom-header",
-      "internal-url-resolver",
-      "filechanges",
-      "pi-zentui"
-    ],
-    "tool_call": [
-      "filechanges"
-    ]
-  }
+    "$schema": "pi-extension-deps-v1",
+    "description": "Extension dependency manifest — documents event ordering and cross-extension contracts.",
+    "optional": ["pi-x-ide"],
+    "order": {
+        "before_agent_start": ["pi-x-ide"],
+        "session_start": ["custom-header", "filechanges", "pi-zentui"],
+        "tool_call": ["filechanges"]
+    }
 }

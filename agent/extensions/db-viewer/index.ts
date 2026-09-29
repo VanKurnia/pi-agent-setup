@@ -2,21 +2,12 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { DatabaseSync } from "node:sqlite";
 import { isQuerySafe } from "../shared/query-safe.js";
-import { readDbConfig, formatRowsToMarkdown, findDbConnectionByValue } from "../shared/db.js";
+import { formatRowsToMarkdown } from "../shared/db.js";
 import { createToolResultComponent } from "../shared/markdown.js";
 
 function resolveMaxRows(raw: number | undefined): number {
     if (raw === undefined || !Number.isFinite(raw)) return 200;
     return Math.min(1000, Math.max(1, Math.floor(raw)));
-}
-
-function getDbPiUrl(dbPath: string, connStr: string): string {
-    const config = readDbConfig();
-    if (!config) return "";
-    const conn = findDbConnectionByValue(config, dbPath, connStr);
-    if (!conn) return "";
-    const name = conn.name || "db";
-    return `\n\n> 💡 **${name}** — [\`pi://db/connections\`](pi://db/connections) · [\`pi://db/tables\`](pi://db/tables) · [\`pi://db/<table\>/schema\`](pi://db/tables/schema)`;
 }
 
 export default function dbViewerExtension(pi: ExtensionAPI) {
@@ -60,9 +51,8 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
                     total > maxRows
                         ? `\n\n_…truncated to ${maxRows} of ${total} rows — narrow the query or raise maxRows._`
                         : "";
-                const piUrl = getDbPiUrl(params.dbPath, "");
                 const text =
-                    formatRowsToMarkdown(displayRows as Record<string, unknown>[]) + notice + piUrl;
+                    formatRowsToMarkdown(displayRows as Record<string, unknown>[]) + notice;
                 return {
                     content: [{ type: "text", text }],
                     details: { rowsCount: total, rows: displayRows },
@@ -144,9 +134,8 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
                     total > maxRows
                         ? `\n\n_…truncated to ${maxRows} of ${total} rows — narrow the query or raise maxRows._`
                         : "";
-                const piUrl = getDbPiUrl("", params.connectionString);
                 const text =
-                    formatRowsToMarkdown(displayRows as Record<string, unknown>[]) + notice + piUrl;
+                    formatRowsToMarkdown(displayRows as Record<string, unknown>[]) + notice;
                 return {
                     content: [{ type: "text", text }],
                     details: { rowsCount: total, rows: displayRows },
@@ -275,15 +264,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
                     schemaReport += "\n";
                 }
 
-                const linkBar =
-                    "\n\n---\n> 💡 Navigate: " +
-                    tables
-                        .map(
-                            (t: any) =>
-                                `[\`pi://db/${t[tableKey]}\`](pi://db/${t[tableKey]}) · [\`pi://db/${t[tableKey]}/schema\`](pi://db/${t[tableKey]}/schema)`,
-                        )
-                        .join(" | ");
-                ctx.ui.setEditorText(schemaReport + linkBar);
+                ctx.ui.setEditorText(schemaReport);
                 ctx.ui.notify("MySQL Schema loaded to editor", "info");
             } catch (error: any) {
                 ctx.ui.notify(`MySQL Error: ${error.message}`, "error");

@@ -73,11 +73,12 @@ say "Installing dependencies..."
 bash "$PI_ROOT/.script/npm-ci-all.sh" --install \
   || warn "Some manifests failed to install (non-fatal — continuing to config bootstrap)"
 
-# Typecheck all extensions in one pass (non-fatal: baseline has pre-existing errors)
-say "Typechecking extensions..."
-npm -C "$PI_ROOT" run typecheck --silent >/dev/null 2>&1 \
+# Typecheck all extensions in one pass (non-fatal: baseline has pre-existing errors).
+# tsc prints nothing while working, so errors stream live below when they land.
+say "Typechecking extensions (no output until errors arrive — this takes a while)..."
+npm -C "$PI_ROOT" run typecheck --silent \
   && ok "Typecheck clean" \
-  || warn "Typecheck reports errors (non-fatal — run 'npm run typecheck' for details)"
+  || warn "Typecheck reports errors above (non-fatal — run 'npm run typecheck' for details)"
 
 # Ensure local config files exist
 say "Checking local config..."
@@ -159,6 +160,7 @@ else
 fi
 
 # pi-speeed post-install fix (HOME on Windows) — shared helper, non-fatal
+say "Patching pi-speeed Windows HOME resolution..."
 bash "$PI_ROOT/.script/patch-speeed-home.sh" "$PI_ROOT"
 
 # Health check
@@ -166,11 +168,14 @@ say "Health check..."
 if command -v pi >/dev/null 2>&1 && pi --version >/dev/null 2>&1; then
   VERSION=$(pi --version 2>&1 | head -1)
   ok "Pi CLI works: $VERSION"
-elif npx pi --version >/dev/null 2>&1; then
-  VERSION=$(npx pi --version 2>&1 | head -1)
-  ok "Pi CLI works via npx: $VERSION"
 else
-  warn "Pi binary not responding - run 'npx pi --help' to debug"
+  say "Pi CLI not on PATH, trying npx (first run may download — please wait)..."
+  if npx pi --version >/dev/null 2>&1; then
+    VERSION=$(npx pi --version 2>&1 | head -1)
+    ok "Pi CLI works via npx: $VERSION"
+  else
+    warn "Pi binary not responding - run 'npx pi --help' to debug"
+  fi
 fi
 
 # Summary

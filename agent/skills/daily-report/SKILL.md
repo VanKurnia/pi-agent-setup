@@ -120,15 +120,20 @@ Contoh dengan section opsional:
 
 ## Alur Kerja Agent
 
-1. **Identifikasi user dan aktivitas hari ini** — Sebelum bertanya, agent wajib:
-   - Membaca `current user` via `git config user.name` dan `git config user.email` (global dan repo `C:/laragon/www/hrisv2`).
-   - Menjalankan `git log --all --author="<user>" --since="today" --oneline` dan `git status` untuk menemukan branch yang memiliki aktivitas hari ini (commit, staged, unstaged, untracked).
-   - Menyusun daftar rekomendasi branch (mis. branch dengan commit hari ini oleh user tersebut, atau `current branch` jika ada perubahan belum commit).
-2. **Tanya branch dengan rekomendasi** — Ajukan `ask_user_question` yang berisi daftar branch rekomendasi hari ini sebagai `options` (beri label `(Recommended)` pada branch dengan aktivitas terbanyak hari ini). Aktifkan `multiSelect: true` agar pengguna dapat memilih beberapa branch sekaligus. Sertakan opsi `Lainnya` untuk input manual.
-3. **Ambil perubahan aktual dari branch terpilih** — Untuk setiap branch yang dipilih:
-   - Jalankan `git_status`, `git_diff_staged`, dan `git_diff_unstaged` untuk membaca `staged` dan `unstaged changes` (termasuk `untracked files` jika relevan).
-   - Jalankan `git log --oneline <branch> --not origin/main --author="<user>" --since="today"` dan `git diff --stat origin/main..branch` untuk membaca `committed changes` khusus user hari ini.
-   - Jika multiple branch, gabungkan hasil dari semua branch lalu sederhanakan menjadi poin-poin kecil yang padat, hilangkan duplikasi, dan kelompokkan per `project`/`module`.
+1. **Identifikasi user dan aktivitas hari ini (otomatis `C:/laragon/www/` termasuk submodule & worktree)** — Sebelum bertanya, agent wajib:
+   - Membaca `current user` via `git config user.name` dan `git config user.email` (global).
+   - Melakukan auto-detect semua project Git di `C:/laragon/www/` **secara rekursif**:
+     - Top-level: setiap subdirektori di `C:/laragon/www/` yang memiliki `.git` (file atau direktori, termasuk `worktree` dengan `gitdir:`).
+     - Submodule & worktree: untuk setiap repo yang ditemukan, cek `git submodule status` dan `git worktree list` serta path `mhi` / `.git/modules/*`; deteksi juga `C:/laragon/www/hrisv2/mhi` (submodule `mhi` dengan `gitdir: ../.git/modules/mhi`) dan `C:/laragon/www/hrisv2-mhi` (worktree) beserta submodule-nya `C:/laragon/www/hrisv2-mhi/mhi`. **Jangan abaikan parent**: jika submodule memiliki aktivitas hari ini, parent tetap dipertahankan sebagai entri terpisah dan ditandai memiliki `submodule pointer change`.
+     - Untuk setiap repo/submodule/worktree yang ditemukan, jalankan `git config user.name/email` (per repo), `git status --porcelain` (termasuk `M mhi` untuk parent yang menandakan `submodule pointer` berubah), `git diff --submodule --stat`, dan `git log --all --author="<user>" --since="today" --oneline` untuk menemukan branch dengan aktivitas hari ini (`commit`, `staged`, `unstaged`, `untracked`, termasuk perubahan pointer submodule).
+   - Menyusun daftar rekomendasi gabungan dalam format `project/branch` dengan prefix yang jelas (mis. `hrisv2/ivan-stage`, `hrisv2/mhi/main`, `hrisv2-mhi/mhi/feature-phinx`, `recruitment/main`) — beri prioritas pada branch dengan commit terbanyak hari ini dan `current branch` yang memiliki perubahan belum commit. **Abaikan parent dengan status `M mhi` (pointer submodule) jika commit submodule sudah tercakup** — parent hanya ditampilkan jika memiliki commit/staged/unstaged di luar pointer submodule atau diminta eksplisit.
+   - **Fallback:** Jika tidak ada project Git yang terdeteksi di `C:/laragon/www/` atau tidak ada aktivitas hari ini, lanjutkan ke langkah 2 dengan mode tanya manual (`ask_user_question` untuk `project dir` terlebih dahulu).
+2. **Tanya branch dengan rekomendasi** — Ajukan `ask_user_question` yang berisi daftar rekomendasi `project/branch` hari ini sebagai `options` (beri label `(Recommended)` pada entri dengan aktivitas terbanyak hari ini). Aktifkan `multiSelect: true` agar pengguna dapat memilih beberapa `project/branch` sekaligus. Jika fallback, tanyakan `project dir` terlebih dahulu, lalu branch di dalamnya. Sertakan opsi `Lainnya` untuk input manual.
+3. **Ambil perubahan aktual dari project/branch terpilih** — Untuk setiap `project/branch` yang dipilih:
+   - Tentukan `repo path` = `C:/laragon/www/<project>` (untuk submodule gunakan path lengkap mis. `C:/laragon/www/hrisv2/mhi` atau `C:/laragon/www/hrisv2-mhi/mhi`).
+   - Jalankan `git_status`, `git_diff_staged`, dan `git_diff_unstaged` untuk membaca `staged` dan `unstaged changes` (termasuk `untracked files`) pada repo tersebut. **Abaikan `M mhi` pointer change pada parent** jika commit submodule sudah tercakup dalam laporan — jangan tampilkan sebagai `In Progress` kecuali diminta eksplisit.
+   - Jalankan `git log --oneline <branch> --not origin/main --author="<user>" --since="today"` dan `git diff --stat origin/main..branch` untuk membaca `committed changes` khusus user hari ini pada repo tersebut. Jika yang dipilih adalah parent dan submodule-nya juga dipilih, gabungkan keduanya dan beri label terpisah (`HRIS` untuk parent, `MHI` untuk submodule), tetapi hilangkan duplikasi pointer.
+   - Jika multiple project/branch, gabungkan hasil dari semua repo/branch lalu sederhanakan menjadi poin-poin kecil yang padat, hilangkan duplikasi, dan kelompokkan per `project`/`module`.
 4. Merapikan bahasa menjadi Bahasa Indonesia formal tanpa mengubah istilah teknis menjadi Bahasa Indonesia.
 5. Memformat laporan sesuai template wajib `Progress` dan `Kendala`.
 6. Menambahkan `On Going Task` dan `Backlog` hanya jika pengguna menyertakan atau memintanya secara eksplisit atau jika `unstaged`/`staged` menunjukkan pekerjaan yang masih `In Progress`.

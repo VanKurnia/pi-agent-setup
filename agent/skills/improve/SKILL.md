@@ -4,13 +4,13 @@ description: Survey any codebase as a senior advisor and produce prioritized, se
 license: MIT
 disable-model-invocation: true
 metadata:
-  author: shadcn
-  version: "1.0.0"
+    author: shadcn
+    version: "1.0.0"
 ---
 
 # Improve
 
-You are a **senior advisor, not an implementer**. Your job is to deeply understand a codebase, find the highest-value improvement opportunities, and write implementation plans good enough that a *different, less capable model with zero context from this session* can execute, test, and maintain them.
+You are a **senior advisor, not an implementer**. Your job is to deeply understand a codebase, find the highest-value improvement opportunities, and write implementation plans good enough that a _different, less capable model with zero context from this session_ can execute, test, and maintain them.
 
 The economics of this skill: an expensive, high-ceiling model does the part where intelligence compounds (understanding, judging, specifying). Cheaper models do the execution. The plan is the product — its quality determines whether the executor succeeds.
 
@@ -32,8 +32,8 @@ Map the territory before judging it:
 
 - Read `README`, `CLAUDE.md`/`AGENTS.md`, `CONTRIBUTING`, root config files (`package.json`, `pyproject.toml`, `go.mod`, etc.), CI config, and the directory structure.
 - Identify: language(s), framework(s), package manager, **how to build / test / lint / typecheck** (exact commands — these go into every plan as verification gates), test coverage shape, deployment target.
-- Note repo conventions: code style, naming, folder layout, error-handling and state-management patterns. Plans must tell the executor to *match* these, with examples.
-- **Ingest intent & design docs where present** — they record decided tradeoffs and product direction the code itself can't tell you. Glob for ADRs (`docs/adr/`, `docs/adrs/`, `docs/decisions/`), PRDs / specs, `CONTEXT.md` (shared domain vocabulary), `DESIGN.md` (design-system spec), and `PRODUCT.md` (product brief). Strictly additive: read what exists, no-op when absent. Carry what you learn forward — into Vet (a tradeoff recorded in an ADR is by-design, not a finding), Direction (ground suggestions in stated product intent), and the plans themselves (match the documented vocabulary and design system). Reading these docs lets this skill compose with repos that already maintain them. (`resolve_pi_url` with `pi://skill/<name>` reads *installed skill definitions* only — project docs like ADRs and PRDs live in the repo, so read those from disk, not via `pi://` URLs.)
+- Note repo conventions: code style, naming, folder layout, error-handling and state-management patterns. Plans must tell the executor to _match_ these, with examples.
+- **Ingest intent & design docs where present** — they record decided tradeoffs and product direction the code itself can't tell you. Glob for ADRs (`docs/adr/`, `docs/adrs/`, `docs/decisions/`), PRDs / specs, `CONTEXT.md` (shared domain vocabulary), `DESIGN.md` (design-system spec), and `PRODUCT.md` (product brief). Strictly additive: read what exists, no-op when absent. Carry what you learn forward — into Vet (a tradeoff recorded in an ADR is by-design, not a finding), Direction (ground suggestions in stated product intent), and the plans themselves (match the documented vocabulary and design system). Reading these docs lets this skill compose with repos that already maintain them. (Skill definitions live on disk under the skills directory — project docs like ADRs and PRDs live in the repo, so read those from disk.)
 - **CBM structural recon:** Before diving into files, run `get_architecture`
   for high-level orientation (hotspots, entry points, packages, layers).
   Run `search_graph` with domain keywords to find key symbols and their
@@ -72,15 +72,15 @@ For repos of any real size, fan out with parallel read-only subagents (`scout` f
 
 Audit depth follows the **effort level** (default `standard`; the user sets it with a `quick` / `deep` keyword anywhere in the invocation):
 
-| | `quick` | `standard` (default) | `deep` |
-|---|---|---|---|
-| Coverage | Recon hotspots only — highest-churn, highest-criticality code | Hotspot-weighted, key packages | Whole repo, every package |
-| Subagents | 0–1 (sweep directly when feasible) | ≤4 concurrent | ≤9 concurrent, one per category (cluster related categories when scouting budget is tight) |
-| Breadth | "medium" | "very thorough" for correctness + security, "medium" rest | "very thorough" everywhere |
-| Categories | correctness, security, tests | all nine | all nine |
-| Findings | top ~6, HIGH-confidence only | full table | full table incl. LOW-confidence "investigate" items |
+|            | `quick`                                                       | `standard` (default)                                      | `deep`                                                                                     |
+| ---------- | ------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Coverage   | Recon hotspots only — highest-churn, highest-criticality code | Hotspot-weighted, key packages                            | Whole repo, every package                                                                  |
+| Subagents  | 0–1 (sweep directly when feasible)                            | ≤4 concurrent                                             | ≤9 concurrent, one per category (cluster related categories when scouting budget is tight) |
+| Breadth    | "medium"                                                      | "very thorough" for correctness + security, "medium" rest | "very thorough" everywhere                                                                 |
+| Categories | correctness, security, tests                                  | all nine                                                  | all nine                                                                                   |
+| Findings   | top ~6, HIGH-confidence only                                  | full table                                                | full table incl. LOW-confidence "investigate" items                                        |
 
-Whatever the level, say in the final report what was *not* audited. On a large monorepo even `deep` scopes subagents to packages, not the root.
+Whatever the level, say in the final report what was _not_ audited. On a large monorepo even `deep` scopes subagents to packages, not the root.
 
 Every finding needs: evidence (`file:line` references), impact, effort estimate (S/M/L), risk of the fix itself, and confidence. No vibes-only findings.
 
@@ -91,9 +91,9 @@ manual scanning would miss. `query_graph` is outside the scout tool allowlist,
 so never instruct subagents to call it; scouts cover the same ground with
 `search_graph` / `search_code`.
 
-*Cypher properties `transitive_loop_depth` and `linear_scan_in_loop`
+_Cypher properties `transitive_loop_depth` and `linear_scan_in_loop`
 verified against actual graph schema via `get_graph_schema` — both exist
-on Function and Method nodes.*
+on Function and Method nodes._
 
 ### Phase 3 — Vet, prioritize, confirm
 
