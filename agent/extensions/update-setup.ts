@@ -14,16 +14,24 @@ const BASH_CANDIDATES = [
     "/usr/bin/bash",
 ];
 
+// .script/update.sh does the whole update (fresh clone + installs);
+// this extension only finds bash, runs it, and renders the output.
+const SCRIPT_ABS = (piDir: string) => join(piDir, ".script", "update.sh");
+const piDir = () => join(homedir(), process.env.PI_CONFIG_DIR || ".pi");
+
+const stripAnsi = (str: string) => str.replace(/[\u001b\u009b][[()#;?]*.?[0-9]*[a-zA-Z]/g, "");
+
 function findBash(): string | null {
     // 1. Try pi's configured shellPath from settings.json first
-    const piConfigDir = process.env.PI_CONFIG_DIR || ".pi";
-    const settingsPath = resolve(homedir(), piConfigDir, "agent", "settings.json");
+    const settingsPath = resolve(piDir(), "agent", "settings.json");
     try {
         const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
         if (settings.shellPath && existsSync(settings.shellPath)) {
             return settings.shellPath;
         }
-    } catch { /* settings may not exist */ }
+    } catch {
+        /* settings may not exist */
+    }
 
     // 2. Fallback to hardcoded candidates
     for (const candidate of BASH_CANDIDATES) {
@@ -37,291 +45,111 @@ function findBash(): string | null {
     return null;
 }
 
+// Shared preflight for both surfaces: locate checkout, script, and bash.
+function prepare(): { dir: string; bash: string } | { error: string } {
+    const dir = piDir();
+    const script = SCRIPT_ABS(dir);
+    if (!existsSync(script)) return { error: `.script/update.sh not found at ${script}` };
+    const bash = findBash();
+    if (!bash) return { error: "Could not find bash (tried PATH, Git Bash)" };
+    return { dir, bash };
+}
+
+// Run .script/update.sh once; stream every output line to onData.
+// Stderr lines arrive pre-indented by feed; consumers treat all lines alike.
+function runScript(
+    bashExe: string,
+    dir: string,
+    onData: (line: string) => void,
+): Promise<number | null> {
+    return new Promise((resolvePromise) => {
+        let resolved = false;
+        const done = (code: number | null) => {
+            if (!resolved) {
+                resolved = true;
+                resolvePromise(code);
+            }
+        };
+        const feed = (raw: string, isStderr: boolean) => {
+            for (const line of stripAnsi(raw).split("\n")) {
+                const trimmed = line.trim();
+                if (trimmed) onData(isStderr ? `  ${trimmed}` : trimmed);
+            }
+        };
+        const child = spawn(bashExe, [SCRIPT_ABS(dir), dir], { cwd: dir, windowsHide: true });
+        child.stdout?.on("data", (d: Buffer) => feed(d.toString(), false));
+        child.stderr?.on("data", (d: Buffer) => feed(d.toString(), true));
+        child.on("error", (e: Error) => {
+            onData(`Failed to start: ${e.message}`);
+            done(-1);
+        });
+        // Resolve on close (not exit): exit fires before stdio drains,
+        // which could drop trailing lines and race ctx.reload().
+        child.on("close", done);
+    });
+}
+
 async function runUpdate(): Promise<string> {
-    const piConfigDir = process.env.PI_CONFIG_DIR || ".pi";
-    const piDir = join(homedir(), piConfigDir);
-    const updateScript = join(piDir, "update.sh");
-    const lines: string[] = [];
-    const stripAnsi = (str: string) => str.replace(/[\u001b\u009b][[()#;?]*.?[0-9]*[a-zA-Z]/g, "");
+    const ready = prepare();
+    if ("error" in ready) return ready.error;
+    const { dir, bash: bashExe } = ready;
 
-    if (!existsSync(updateScript)) {
-        return `update.sh not found at ${updateScript}`;
-    }
-
-    const bashExe = findBash();
-    if (!bashExe) return "Could not find bash (tried PATH, Git Bash)";
-
-    // git pull
-    lines.push("Pulling latest changes...");
-    const pullCode = await new Promise<number | null>((resolve) => {
-        let resolved = false;
-        const child = spawn(bashExe, ["-c", `cd "${piDir}" && git pull`], { windowsHide: true });
-        child.stdout!.on("data", (d: Buffer) => {
-            const t = stripAnsi(d.toString()).trim();
-            if (t) lines.push(t);
-        });
-        child.stderr!.on("data", (d: Buffer) => {
-            const t = stripAnsi(d.toString()).trim();
-            if (t) lines.push(t);
-        });
-        child.on("error", (e) => {
-            lines.push(`git pull failed: ${e.message}`);
-            if (!resolved) {
-                resolved = true;
-                resolve(-1);
-            }
-        });
-        child.on("exit", (c) => {
-            if (!resolved) {
-                resolved = true;
-                resolve(c);
-            }
-        });
-        child.on("close", (c) => {
-            if (!resolved) {
-                resolved = true;
-                resolve(c);
-            }
-        });
-    });
-    if (pullCode !== 0) lines.push("git pull had issues (continuing)");
-    else lines.push("git pull successful");
-
-    // update.sh
-    lines.push("Running update.sh...");
-    const exitCode = await new Promise<number | null>((resolve) => {
-        let resolved = false;
-        const child = spawn(bashExe, ["update.sh"], { cwd: piDir, windowsHide: true });
-        child.stdout!.on("data", (d: Buffer) => {
-            const t = stripAnsi(d.toString()).trim();
-            if (t) lines.push(t);
-        });
-        child.stderr!.on("data", (d: Buffer) => {
-            const t = stripAnsi(d.toString()).trim();
-            if (t) lines.push(t);
-        });
-        child.on("error", (e) => {
-            lines.push(`Failed: ${e.message}`);
-            if (!resolved) {
-                resolved = true;
-                resolve(-1);
-            }
-        });
-        child.on("exit", (c) => {
-            if (!resolved) {
-                resolved = true;
-                resolve(c);
-            }
-        });
-        child.on("close", (c) => {
-            if (!resolved) {
-                resolved = true;
-                resolve(c);
-            }
-        });
-    });
-
+    const lines: string[] = ["Running .script/update.sh..."];
+    const exitCode = await runScript(bashExe, dir, (line) => lines.push(line));
     if (exitCode === null) lines.push("Script terminated by signal");
     else if (exitCode !== 0) lines.push(`Script exited with code ${exitCode}`);
     else lines.push("Update completed successfully");
-
     return lines.join("\n");
 }
 
 export default function (pi: ExtensionAPI) {
     registerExtensionApi("update-setup", { runUpdate });
     pi.registerCommand("update-setup", {
-        description: "Install extensions and dependencies for the .pi workspace",
+        description: "Fresh-clone update of the .pi workspace (.script/update.sh)",
         async handler(_args: string, ctx: ExtensionCommandContext) {
-            const piConfigDir = process.env.PI_CONFIG_DIR || ".pi";
-            const piDir = join(homedir(), piConfigDir);
-            const updateScript = join(piDir, "update.sh");
-
-            if (!existsSync(updateScript)) {
-                ctx.ui.notify(`update.sh not found at ${updateScript}`, "error");
+            const ready = prepare();
+            if ("error" in ready) {
+                ctx.ui.notify(ready.error, "error");
                 return;
             }
-
-            const bashExe = findBash();
-            if (!bashExe) {
-                ctx.ui.notify("Could not find bash (tried PATH, Git Bash)", "error");
-                return;
-            }
+            const { dir, bash: bashExe } = ready;
 
             // Show the last N meaningful lines as a "rolling window"
             const MAX_VISIBLE_LINES = 16;
-            const allLines: string[] = [];
             const WIDGET_ID = "update-setup-output";
-            let lastScreen: string[] | null = null;
-
-            // Strip ANSI escape codes
-            const stripAnsi = (str: string) =>
-                str.replace(/[\u001b\u009b][[()#;?]*.?[0-9]*[a-zA-Z]/g, "");
-
+            const allLines: string[] = ["⚙️  Starting workspace update..."];
+            let lastKey: string | null = null;
             const updateWidget = () => {
-                // Take the last MAX_VISIBLE_LINES
-                const start = Math.max(0, allLines.length - MAX_VISIBLE_LINES);
-                const visible = allLines.slice(start);
-                // Only call setWidget if the visible portion actually changed
+                const visible = allLines.slice(Math.max(0, allLines.length - MAX_VISIBLE_LINES));
                 const key = visible.join("\n");
-                if (key !== lastScreen?.join("\n")) {
-                    lastScreen = visible;
+                if (key !== lastKey) {
+                    lastKey = key;
                     ctx.ui.setWidget(WIDGET_ID, visible);
                 }
             };
-
-            ctx.ui.setWidget(WIDGET_ID, ["⚙️  Starting workspace update..."]);
-
-            const processChunk = (raw: string) => {
-                try {
-                    const cleaned = stripAnsi(raw);
-                    const lines = cleaned.split("\n");
-                    for (const line of lines) {
-                        const trimmed = line.trim();
-                        if (trimmed) allLines.push(trimmed);
-                    }
-                    updateWidget();
-                } catch (e: any) {
-                    allLines.push(`[parse error: ${e.message}]`);
-                    updateWidget();
-                }
-            };
-
-            // ── Step 1: git pull ──
-            allLines.push("📡 Pulling latest changes...");
             updateWidget();
 
-            const gitPullCode: number | null = await new Promise((resolve) => {
-                const gitChild = spawn(bashExe, ["-c", `cd "${piDir}" && git pull`], {
-                    windowsHide: true,
-                });
-                let resolved = false;
-
-                gitChild.stdout!.on("data", (data: Buffer) => processChunk(data.toString()));
-                gitChild.stderr!.on("data", (data: Buffer) => {
-                    try {
-                        const cleaned = stripAnsi(data.toString());
-                        const lines = cleaned.split("\n");
-                        for (const line of lines) {
-                            const trimmed = line.trim();
-                            if (trimmed) allLines.push(`  ${trimmed}`);
-                        }
-                        updateWidget();
-                    } catch {
-                        // ignore
-                    }
-                });
-
-                gitChild.on("error", (err: Error) => {
-                    allLines.push(`  git pull failed to start: ${err.message}`);
-                    updateWidget();
-                    if (!resolved) {
-                        resolved = true;
-                        resolve(-1);
-                    }
-                });
-                gitChild.on("exit", (code) => {
-                    if (!resolved) {
-                        resolved = true;
-                        resolve(code);
-                    }
-                });
-                gitChild.on("close", (code) => {
-                    if (!resolved) {
-                        resolved = true;
-                        resolve(code);
-                    }
-                });
+            const exitCode = await runScript(bashExe, dir, (line) => {
+                allLines.push(line);
+                updateWidget();
             });
-
-            if (gitPullCode !== 0) {
-                allLines.push("⚠️  git pull had issues (continuing anyway)");
-                updateWidget();
-            } else {
-                allLines.push("✅ git pull successful");
-                updateWidget();
-            }
 
             allLines.push("");
-            allLines.push("⚙️  Running update.sh...");
-            updateWidget();
-
-            // ── Step 2: update.sh ──
-
-            // Run bash from piDir with just the filename
-            const child = spawn(bashExe, ["update.sh"], {
-                cwd: piDir,
-                windowsHide: true,
-            });
-
-            child.stdout!.on("data", (data: Buffer) => {
-                processChunk(data.toString());
-            });
-
-            child.stderr!.on("data", (data: Buffer) => {
-                try {
-                    const cleaned = stripAnsi(data.toString());
-                    const lines = cleaned.split("\n");
-                    for (const line of lines) {
-                        const trimmed = line.trim();
-                        if (trimmed) allLines.push(`  ${trimmed}`);
-                    }
-                    updateWidget();
-                } catch {
-                    // ignore
-                }
-            });
-
-            const exitCode: number | null = await new Promise((resolve) => {
-                let resolved = false;
-                child.on("error", (err: Error) => {
-                    allLines.push(`Failed to start: ${err.message}`);
-                    updateWidget();
-                    if (!resolved) {
-                        resolved = true;
-                        resolve(-1);
-                    }
-                });
-                child.on("exit", (code) => {
-                    if (!resolved) {
-                        resolved = true;
-                        resolve(code);
-                    }
-                });
-                child.on("close", (code) => {
-                    if (!resolved) {
-                        resolved = true;
-                        resolve(code);
-                    }
-                });
-            });
-
-            // Append final status
-            allLines.push("");
-            if (exitCode === null) {
-                allLines.push("⚠️  Script was terminated by a signal");
-            } else if (exitCode !== 0) {
+            if (exitCode === null) allLines.push("⚠️  Script was terminated by a signal");
+            else if (exitCode !== 0)
                 allLines.push(`⚠️  Update script exited with code ${exitCode}`);
-            } else {
-                allLines.push("✅ Update script completed successfully");
-            }
+            else allLines.push("✅ Update script completed successfully");
             updateWidget();
 
             if (exitCode !== 0) {
                 ctx.ui.notify(`⚠️  Update completed with exit code ${exitCode}`, "warning");
             } else {
                 ctx.ui.notify("✅ Update completed successfully", "info");
-
-                // After successful update, check for common missing config
-                const envFile = join(piDir, ".env");
-                const authFile = join(piDir, "agent", "auth.json");
-
-                if (!existsSync(envFile)) {
+                if (!existsSync(join(dir, ".env"))) {
                     allLines.push("⚠️  .env not found — copy .env.example to .env and edit it");
                     updateWidget();
                 }
-
-                if (!existsSync(authFile)) {
+                if (!existsSync(join(dir, "agent", "auth.json"))) {
                     allLines.push("⚠️  No auth.json found — run /login inside pi to authenticate");
                     updateWidget();
                 }

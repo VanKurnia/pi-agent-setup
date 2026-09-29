@@ -19,6 +19,11 @@
       "enabled": true,
       "kind": "generic",
       "outputMode": "summary"
+    },
+    "powershell": {
+      "enabled": true,
+      "kind": "generic",
+      "outputMode": "preview"
     }
   },
   "enableNativeUserMessageBox": true,

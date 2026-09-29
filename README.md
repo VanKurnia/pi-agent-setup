@@ -49,7 +49,7 @@ bash install.sh
 
 `install.sh` is idempotent: it fetches the latest version, stashes any local changes, and reinstalls dependencies while preserving your existing config files.
 
-> **Note:** The older `update.sh` still exists alongside `install.sh` for backwards compatibility. `install.sh` is the recommended entry point for both fresh and upgrade scenarios.
+> **Note:** `install.sh` is the entry point for fresh machines; `/update-setup` (via `.script/update.sh`) is the updater for existing checkouts.
 
 ### Post-install
 
@@ -65,7 +65,7 @@ bash install.sh
 | `bash` not found | Install [Git for Windows](https://git-scm.com/download/win). Pi auto-detects Git Bash. |
 | Extension not loading | Run `bash install.sh` to reinstall deps. Check `agent/auth.json` exists. |
 | Icons look broken | Install a Nerd Font and set it as your terminal font. |
-| `install.sh` / `update.sh` fails | Run in Git Bash (Windows) or bash (Linux/macOS). The `~` path doesn't expand in cmd/PowerShell. |
+| `install.sh` / `.script/update.sh` fails | Run in Git Bash (Windows) or bash (Linux/macOS). The `~` path doesn't expand in cmd/PowerShell. |
 
 ## Pi URL Ecosystem (`pi://`)
 
@@ -142,7 +142,7 @@ Pi connects to these external tools and services (not counting Pi packages):
 | `plan-artifact` | Browser UI for `.plans/` markdown with commenting and syntax highlighting |
 | `subagents` | Subagent orchestration for delegating tasks (`subagent` tool, `/reload-agents`, `/subagents:settings`) |
 | `thinking-fold` | Collapsible thinking blocks with per-model behavior (`/thinking-fold-settings`) |
-| `update-setup` | Runs `update.sh` inside pi with live output widget (`/update-setup`) |
+| `update-setup` | Runs `.script/update.sh` inside pi with live output widget (`/update-setup`) |
 
 ### External Packages
 

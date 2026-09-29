@@ -841,7 +841,7 @@ export default function (pi: ExtensionAPI) {
             output: optionalString("Write results to a UTF-8 file instead of stdout."),
             preview: optionalBool("List files that would be reviewed without calling an LLM."),
             runInBackground: optionalBool(
-                "Run in background and return a job ID immediately; poll with ocr_job_status.",
+                "Background execution (default true): returns a job ID immediately, poll with ocr_job_status. Pass false to block and wait (quick previews only).",
             ),
         }),
         async execute(_toolCallId, params, signal, onUpdate, ctx) {
@@ -889,7 +889,7 @@ export default function (pi: ExtensionAPI) {
                 if (params.preview) args.push("--preview");
                 if (params.noFilter) args.push("--no-filter");
 
-                if (params.runInBackground) {
+                if (params.runInBackground !== false) {
                     return startBackgroundJob("review", args, { repo: params.repo, ctx, emit });
                 }
 
@@ -973,7 +973,7 @@ export default function (pi: ExtensionAPI) {
             output: optionalString("Write results to a UTF-8 file instead of stdout."),
             preview: optionalBool("Preview which files would be scanned without calling an LLM."),
             runInBackground: optionalBool(
-                "Run in background and return a job ID immediately; poll with ocr_job_status.",
+                "Background execution (default true): returns a job ID immediately, poll with ocr_job_status. Pass false to block and wait (quick previews only).",
             ),
         }),
         async execute(_toolCallId, params, signal, onUpdate, ctx) {
@@ -1020,7 +1020,7 @@ export default function (pi: ExtensionAPI) {
                 if (params.batch) args.push("--batch", params.batch);
                 if (params.preview) args.push("--preview");
 
-                if (params.runInBackground) {
+                if (params.runInBackground !== false) {
                     return startBackgroundJob("scan", args, { repo: params.repo, ctx, emit });
                 }
 

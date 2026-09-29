@@ -39,12 +39,8 @@ require_cmd npm
 if [[ -d "$PI_ROOT/.git" ]]; then
   say "Updating existing repo..."
 
-  # Warn and stash local changes before hard reset
-  if ! git -C "$PI_ROOT" diff --quiet || ! git -C "$PI_ROOT" diff --cached --quiet; then
-    warn "Local changes detected — stashing before update"
-    git -C "$PI_ROOT" stash push -m "pre-install-$(date +%s)" --quiet
-  fi
-
+  # Tracked local edits are discarded by design (untracked user data is
+  # never touched by reset) — same semantics as .script/update.sh.
   git -C "$PI_ROOT" fetch origin "$BRANCH" --quiet
   git -C "$PI_ROOT" reset --hard "origin/$BRANCH" --quiet
 else
@@ -71,22 +67,17 @@ elif [[ -d "$PI_ROOT/extensions" && -d "$PI_ROOT/agent/extensions" && -n "$(ls -
   warn "If you have custom extensions in extensions/, move them manually."
 fi
 
-# Install root deps
-say "Installing root dependencies..."
-npm -C "$PI_ROOT" install --prefer-offline --no-audit --no-fund --silent
+# Install every project dir (npm ci where locked, npm install elsewhere).
+# Non-fatal: config bootstrap below must run even if one manifest fails.
+say "Installing dependencies..."
+bash "$PI_ROOT/.script/npm-ci-all.sh" --install \
+  || warn "Some manifests failed to install (non-fatal — continuing to config bootstrap)"
 
-# Install agent npm extensions
-say "Installing agent npm extensions..."
-npm -C "$PI_ROOT/agent/npm" install --prefer-offline --no-audit --no-fund --silent
-
-# Build TypeScript extensions
-say "Building TypeScript extensions..."
-for ext_dir in "$PI_ROOT/agent/extensions"/*/; do
-  [[ -f "$ext_dir/package.json" ]] || continue
-  say "  Building $(basename "$ext_dir")..."
-  (cd "$ext_dir" && npm install --prefer-offline --no-audit --no-fund --silent 2>/dev/null \
-    && npx tsc --noEmit 2>/dev/null) || warn "Build failed for $(basename "$ext_dir") (non-fatal)"
-done
+# Typecheck all extensions in one pass (non-fatal: baseline has pre-existing errors)
+say "Typechecking extensions..."
+npm -C "$PI_ROOT" run typecheck --silent >/dev/null 2>&1 \
+  && ok "Typecheck clean" \
+  || warn "Typecheck reports errors (non-fatal — run 'npm run typecheck' for details)"
 
 # Ensure local config files exist
 say "Checking local config..."
@@ -167,30 +158,8 @@ else
   ok "agent/db-config.json exists"
 fi
 
-# pi-speeed post-install fix (HOME on Windows)
-SPEEDD_SRC="$PI_ROOT/agent/npm/node_modules/pi-speeed/src"
-if [[ -d "$SPEEDD_SRC" ]]; then
-  node -e "
-    const fs = require('fs');
-    const path = require('path');
-    const dir = process.argv[1];
-    for (const file of ['config.ts', 'stats.ts']) {
-      const fp = path.join(dir, file);
-      if (!fs.existsSync(fp)) continue;
-      let src = fs.readFileSync(fp, 'utf8');
-      if (!src.includes('process.env.HOME')) continue;
-      if (!src.includes('homedir')) {
-        src = src.replace(
-          /(import.*from ['\"]node:path['\"];?)/,
-          '\$1\nimport { homedir } from \"node:os\";'
-        );
-      }
-      src = src.replace(/process\.env\.HOME\s*\?\?\s*\"\"/g, 'homedir()');
-      src = src.replace(/process\.env\.HOME\s*\|\|\s*\"\"/g, 'homedir()');
-      fs.writeFileSync(fp, src);
-    }
-  " "$SPEEDD_SRC" 2>/dev/null && ok "Patched pi-speeed HOME resolution" || warn "pi-speeed patch failed (non-fatal)"
-fi
+# pi-speeed post-install fix (HOME on Windows) — shared helper, non-fatal
+bash "$PI_ROOT/.script/patch-speeed-home.sh" "$PI_ROOT"
 
 # Health check
 say "Health check..."

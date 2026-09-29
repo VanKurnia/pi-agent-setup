@@ -48,6 +48,11 @@ function toTitle(task: string): string {
 }
 
 const live = new Map<string, RowSnapshot[]>();
+// Finished invocations ignore late progress: throttled trailing updates can
+// fire after finish and would otherwise resurrect the row forever.
+// A Set is insertion-ordered, so the oldest id is always first.
+const finished = new Set<string>();
+const MAX_FINISHED = 128;
 let lastCtx: any;
 let timer: ReturnType<typeof setInterval> | undefined;
 
@@ -135,6 +140,7 @@ function paint(ctx: any): void {
 
 /** Record fresh progress for one tool-call invocation and repaint. */
 export function updateSubagentWidget(ctx: any, toolCallId: string, results: unknown): void {
+    if (finished.has(toolCallId)) return;
     if (!Array.isArray(results) || results.length === 0) return;
     const now = Date.now();
     const prev = live.get(toolCallId) ?? [];
@@ -149,6 +155,13 @@ export function updateSubagentWidget(ctx: any, toolCallId: string, results: unkn
 
 /** Drop one invocation's rows; clears the widget when nothing runs. */
 export function finishSubagentWidget(ctx: any, toolCallId: string): void {
+    if (!finished.has(toolCallId)) {
+        finished.add(toolCallId);
+        if (finished.size > MAX_FINISHED) {
+            const oldest = finished.values().next().value;
+            if (oldest !== undefined) finished.delete(oldest);
+        }
+    }
     if (!live.has(toolCallId)) return;
     live.delete(toolCallId);
     if (live.size === 0) stopTimer();

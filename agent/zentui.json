@@ -205,6 +205,10 @@
         "thought": false,
         "tokens": false
       }
+    },
+    "thinkingSteps": {
+      "enabled": false,
+      "mode": "tree"
     }
   }
 }

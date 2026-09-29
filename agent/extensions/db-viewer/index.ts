@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import { DatabaseSync } from "node:sqlite";
 import { isQuerySafe } from "../shared/query-safe.js";
 import { readDbConfig, formatRowsToMarkdown, findDbConnectionByValue } from "../shared/db.js";
+import { createToolResultComponent } from "../shared/markdown.js";
 
 function resolveMaxRows(raw: number | undefined): number {
     if (raw === undefined || !Number.isFinite(raw)) return 200;
@@ -79,6 +80,9 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
                     } catch (e) {}
                 }
             }
+        },
+        renderResult(result, options, _theme, context) {
+            return createToolResultComponent(result, options, context);
         },
     });
 
@@ -160,6 +164,9 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
                     } catch (e) {}
                 }
             }
+        },
+        renderResult(result, options, _theme, context) {
+            return createToolResultComponent(result, options, context);
         },
     });
 

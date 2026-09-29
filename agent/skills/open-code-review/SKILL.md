@@ -64,7 +64,7 @@ Choose the right tool based on what the user asked for:
 | Review and fix safe issues | `ocr_review` first, then apply fixes |
 | Audit whole files without a diff | `ocr_scan` with `path` |
 | Scan the entire repository | `ocr_scan` (no args) |
-| Long review/scan without blocking | `ocr_review`/`ocr_scan` with `runInBackground: true` → job ID; poll `ocr_job_status` |
+| Long review/scan without blocking | `ocr_review`/`ocr_scan` background by default → job ID; poll `ocr_job_status` (`runInBackground: false` to block) |
 | Poll a finished/running job | `ocr_job_status` (`id` optional = list; `tailLines` capped at 100) |
 | Stop a job | `ocr_job_cancel` with `id` (required) |
 | Add business or requirement context | `ocr_review` with `background` or `background_file`; `ocr_scan` with `background` |
@@ -79,7 +79,7 @@ Choose the right tool based on what the user asked for:
   user to configure OCR's LLM provider (see Troubleshooting). Never invent or
   hardcode API keys.
 - On non-zero exit, do not retry blindly — consult Troubleshooting first.
-- For long runs prefer `runInBackground: true`, then poll — never ask for full logs; the status tail is the default view. Max 3 concurrent jobs.
+- For long runs run in background unless `runInBackground: false`; sync is for quick previews only — never ask for full logs; the status tail is the default view. Max 3 concurrent jobs.
 - A live `ocr` widget shows running jobs above the editor (same style as the subagents widget); it clears as jobs finish. Headless runs have no widget — poll instead.
 
 Native-tool to CLI flag mapping (most common):
