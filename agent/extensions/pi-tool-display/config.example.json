@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "debug": false,
   "registerToolOverrides": {
     "read": true,
     "grep": true,
@@ -9,10 +9,19 @@
     "edit": true,
     "write": true
   },
-  "customToolOverrides": {},
+  "customToolOverrides": {
+    "ide_find_symbol": {
+      "enabled": false,
+      "kind": "generic",
+      "outputMode": "summary"
+    },
+    "custom_mcp_gateway": {
+      "enabled": false,
+      "kind": "mcp",
+      "outputMode": "summary"
+    }
+  },
   "enableNativeUserMessageBox": true,
-  "collapseAfterTurn": false,
-  "boxedToolCalls": true,
   "readOutputMode": "hidden",
   "searchOutputMode": "hidden",
   "mcpOutputMode": "hidden",
