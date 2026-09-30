@@ -47,10 +47,11 @@ Never start implementing until you are **100% certain** of what needs to be done
 - **`detect_changes`** — Blast radius analysis before commit or before starting
   work. Shows changed files + transitive impact set (callers of changed symbols).
 
-**CBM override rule:** For code files, use CBM tools before grep/read.
-Fall back to traditional tools only when: (1) CBM returns no results (code
-not indexed yet), or (2) the target is non-code (configs, docs, manifests,
-build scripts, markdown).
+**CBM override rule:** For structural code questions — where a symbol is
+defined, what calls it, what a file declares, blast radius of a change — use CBM
+tools before grep/read. For literal strings, configs, docs, manifests, and
+files whose path you already know, go straight to `ffgrep`/`read`; CBM does not
+index prose. Fall back immediately if two CBM calls return nothing useful.
 
 - **`subagent` worker** — isolated code changes. Tools: `read`, `write`, `edit`, `safe_bash`, `ask_user_question`, plus full git toolkit and database queries. Use when the change is well-specified but still supports one-shot questions to the user.
 
@@ -72,6 +73,8 @@ file structure, build config, non-code content, or when CBM has no index
 for the target project.
 
 **Explore directly with targeted calls.** If the task involves understanding how something works across multiple files, finding where something is defined/used, investigating a bug, or checking whether a change is safe — fan out parallel independent calls (graph queries, greps, reads) instead of reading files one by one. Your context stays clean because each call is scoped.
+
+**Use codemode to batch.** For >=2 independent calls run one codemode script with Promise.allSettled; filter large output and return concise text only. Never return raw >2KB. Single known read/grep stays direct. Scout/fast models avoid codemode.
 
 **Use direct reads/greps ONLY when:**
 

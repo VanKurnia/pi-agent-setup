@@ -382,10 +382,10 @@ export default function ninerouter(pi: ExtensionAPI) {
         name: "ninerouter_web_search",
         label: "9router Web Search",
         description:
-            "Search the web through your configured 9router instance. Sends the query to 9router and its upstream web-search provider or combo.",
-        promptSnippet: "Search the web using 9router web search routes.",
+            "Fallback web search through your 9router instance. Use when web_search fails, times out, or returns nothing useful. Not the default search tool.",
+        promptSnippet: "Fallback web search via 9router when web_search fails",
         promptGuidelines: [
-            "Use ninerouter_web_search when current or external web information is needed and the user has not requested a different web-search tool.",
+            "Fallback path only: try web_search first. If it errors, times out, or returns nothing useful, retry the same query once with ninerouter_web_search before giving up.",
             "The route parameter is optional; omit it to use the configured 9router default search route.",
         ],
         parameters: Type.Object({
@@ -529,10 +529,10 @@ export default function ninerouter(pi: ExtensionAPI) {
         name: "ninerouter_web_fetch",
         label: "9router Web Fetch",
         description:
-            "Fetch and extract a URL through your configured 9router instance. Sends the URL to 9router and its upstream web-fetch provider or combo.",
-        promptSnippet: "Fetch/extract URL content using 9router web fetch routes.",
+            "Fallback URL fetch/extract through your 9router instance. Use when web_fetch or batch_web_fetch fails on a URL. Not the default fetch tool.",
+        promptSnippet: "Fallback URL fetch via 9router when web_fetch fails",
         promptGuidelines: [
-            "Use ninerouter_web_fetch when the user asks to read, fetch, extract, or summarize a specific URL through 9router.",
+            "Fallback path only: try web_fetch or batch_web_fetch first. If a URL errors, is blocked, times out, or extracts empty, retry that URL once with ninerouter_web_fetch before giving up.",
             "The route parameter is optional; omit it to use the configured 9router default fetch route.",
         ],
         parameters: Type.Object({

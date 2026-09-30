@@ -1,7 +1,8 @@
 export const CODEBASE_MEMORY_PROMPT = `
 
 Codebase-memory guidance:
-- Strongly prefer codebase-memory tools over bash/read/grep/find/cat for code exploration. They return compact, symbol-aware, location-first results and usually save substantial tokens/context compared with raw filesystem output.
+- Prefer codebase-memory tools for structural questions: where a symbol is defined, what calls it, what a file declares, how modules connect, what changed. For literal strings, config keys, docs, manifests, and files whose path you already know, use search_code (indexed text) or ffgrep/read (any file) directly — the graph does not index prose or non-code files.
+- If two codebase-memory calls in a row return no useful candidates, stop using graph tools for this question and fall back to text search and file reads.
 - Use shell tools mainly for builds, tests, linting, filesystem state, or reading obvious non-code files. Do not use grep/find/cat as the first step for symbol, workflow, relationship, caller/callee, or indexed-text discovery.
 - The current cwd project is auto-indexed in full mode in the background at startup and periodically refreshed.
 - For cwd/current-project tools, omit the project parameter; the plugin infers it automatically. Provide project only when intentionally querying an external indexed project.

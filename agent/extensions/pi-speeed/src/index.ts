@@ -1,79 +1,35 @@
-import type {
-    ExtensionAPI,
-    ExtensionCommandContext,
-    ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type Config, loadConfig, saveConfig } from "./config";
-import {
-    chooseOccurrenceText,
-    clearUi,
-    type OccurrenceText,
-    renderFooterTokS,
-    renderStyledFooterTokS,
-    renderStyledWorkingTokS,
-    updateStatus,
-} from "./display";
-import { recordCompletedMessageSpeed } from "./history";
-import { applyRunCatIndicator, type RunCatState } from "./runcat";
+import { clearUi, renderStyledWorkingTokS } from "./display";
 import { openSettings } from "./settings";
 import { SpeedAnimator } from "./speed-animation";
 import { SpeedTracker } from "./speed-tracker";
-import { flushStats, loadStats, scheduleStatsSave, summarizeStats } from "./stats";
-import { showReadOnlyPanel } from "./ui";
 
 export default function (pi: ExtensionAPI) {
     let config: Config = loadConfig();
     let lastRenderedAt = 0;
-    let occurrence: OccurrenceText = { label: null, workingPrefix: null };
-    let aggregateStats = loadStats();
-    const runcatState: RunCatState = { intervalMs: 0 };
     const speedTracker = new SpeedTracker(config);
     const liveSpeedAnimator = new SpeedAnimator(config.speedAnimationMs);
-    const footerSpeedAnimator = new SpeedAnimator(config.speedAnimationMs);
     let liveAnimationTimer: ReturnType<typeof setInterval> | undefined;
-    let footerAnimationTimer: ReturnType<typeof setInterval> | undefined;
-
-    function renderFooterStatus(ctx: ExtensionContext, speed = footerSpeedAnimator.value()) {
-        ensureOccurrence();
-        return ctx.hasUI
-            ? renderStyledFooterTokS(ctx.ui.theme, config, occurrence, speed)
-            : renderFooterTokS(config, occurrence, speed);
-    }
 
     function renderWorking(ctx: ExtensionContext, speed = speedTracker.liveTokS()) {
         if (!config.enabled || !ctx.hasUI) return;
-        ctx.ui.setWorkingMessage(renderStyledWorkingTokS(ctx.ui.theme, config, occurrence, speed));
-    }
-
-    function refreshRunCat(ctx: ExtensionContext, speed = speedTracker.lastTokS, force = true) {
-        if (!config.enabled) return;
-        applyRunCatIndicator(ctx, config, runcatState, speed, force);
+        ctx.ui.setWorkingMessage(renderStyledWorkingTokS(ctx.ui.theme, config, speed));
     }
 
     function applyConfig(ctx: ExtensionContext) {
         saveConfig(config);
         speedTracker.updateConfig(config);
         liveSpeedAnimator.updateDuration(config.speedAnimationMs);
-        footerSpeedAnimator.updateDuration(config.speedAnimationMs);
         if (!config.enabled) {
             stopLiveAnimation();
-            stopFooterAnimation();
             clearUi(ctx);
-            return;
         }
-        refreshRunCat(ctx);
-        updateStatus(ctx, config, renderFooterStatus(ctx));
-    }
-
-    function ensureOccurrence() {
-        if (occurrence.label === null || occurrence.workingPrefix === null)
-            occurrence = chooseOccurrenceText(config);
     }
 
     function renderLiveSpeed(ctx: ExtensionContext) {
         const speed = speedTracker.liveTokS();
         const displayedSpeed = liveSpeedAnimator.setTarget(speed);
-        applyRunCatIndicator(ctx, config, runcatState, speed);
         renderWorking(ctx, displayedSpeed);
     }
 
@@ -94,47 +50,20 @@ export default function (pi: ExtensionAPI) {
         }, config.renderIntervalMs);
     }
 
-    function stopFooterAnimation() {
-        if (!footerAnimationTimer) return;
-        clearInterval(footerAnimationTimer);
-        footerAnimationTimer = undefined;
-    }
-
-    function startFooterAnimation(ctx: ExtensionContext) {
-        if (footerAnimationTimer || !ctx.hasUI) return;
-        footerAnimationTimer = setInterval(() => {
-            if (!config.enabled) {
-                stopFooterAnimation();
-                return;
-            }
-            updateStatus(ctx, config, renderFooterStatus(ctx));
-            if (!footerSpeedAnimator.isAnimating()) stopFooterAnimation();
-        }, config.renderIntervalMs);
-    }
-
     function resetWorkingUi(ctx: ExtensionContext) {
-        ensureOccurrence();
-        refreshRunCat(ctx, null);
         liveSpeedAnimator.reset(speedTracker.lastTokS);
         renderWorking(ctx, speedTracker.lastTokS);
     }
 
-    pi.on("session_start", async (_event, ctx) => {
+    pi.on("session_start", async () => {
         stopLiveAnimation();
-        stopFooterAnimation();
         config = loadConfig();
         speedTracker.updateConfig(config);
         liveSpeedAnimator.updateDuration(config.speedAnimationMs);
-        footerSpeedAnimator.updateDuration(config.speedAnimationMs);
-        speedTracker.resetSession();
-        footerSpeedAnimator.reset(null);
-        refreshRunCat(ctx);
-        if (config.enabled && ctx.hasUI) updateStatus(ctx, config, renderFooterStatus(ctx));
     });
 
     pi.on("agent_start", async (_event, ctx) => {
         if (!config.enabled) return;
-        occurrence = chooseOccurrenceText(config);
         resetWorkingUi(ctx);
     });
 
@@ -160,7 +89,6 @@ export default function (pi: ExtensionAPI) {
             speedTracker.recordDelta(ev.delta, ev.partial?.usage?.output);
         }
 
-        ensureOccurrence();
         if (ev.type === "start") resetWorkingUi(ctx);
 
         const now = Date.now();
@@ -170,35 +98,9 @@ export default function (pi: ExtensionAPI) {
         renderLiveSpeed(ctx);
     });
 
-    pi.on("message_end", async (event, ctx) => {
-        if (!config.enabled || event.message.role !== "assistant" || !speedTracker.isStreaming)
-            return;
-
-        const completed = speedTracker.finishMessage(
-            event.message.usage?.output ?? 0,
-            event.message.stopReason,
-        );
-        if (!completed) return;
-
-        recordCompletedMessageSpeed(
-            pi,
-            config,
-            aggregateStats,
-            completed,
-            {
-                endedAt: Date.now(),
-                model: event.message.model,
-                provider: event.message.provider,
-                api: event.message.api,
-                responseId: event.message.responseId,
-                stopReason: event.message.stopReason,
-            },
-            scheduleStatsSave,
-        );
-        footerSpeedAnimator.setTarget(speedTracker.sessionAvgTokS());
-        updateStatus(ctx, config, renderFooterStatus(ctx));
-        startFooterAnimation(ctx);
-        refreshRunCat(ctx);
+    pi.on("message_end", async (event) => {
+        if (!config.enabled || event.message.role !== "assistant") return;
+        speedTracker.finishMessage(event.message.usage?.output ?? 0);
     });
 
     pi.on("turn_end", async () => {
@@ -209,45 +111,23 @@ export default function (pi: ExtensionAPI) {
     pi.on("agent_end", async (_event, ctx) => {
         speedTracker.stopMessage();
         stopLiveAnimation();
-        refreshRunCat(ctx);
         if (ctx.hasUI) ctx.ui.setWorkingMessage();
-        if (!config.enabled && ctx.hasUI) clearUi(ctx);
-        occurrence = { label: null, workingPrefix: null };
-        flushStats();
     });
 
     pi.on("session_shutdown", async (_event, ctx) => {
         stopLiveAnimation();
-        stopFooterAnimation();
         clearUi(ctx);
-        flushStats();
     });
 
-    async function handleConfigCommand(args: string, ctx: ExtensionCommandContext) {
-        const [cmd] = args.trim().split(/\s+/).filter(Boolean);
-        if (!cmd || cmd === "settings") {
+    pi.registerCommand("pi-speeed", {
+        description: "Open pi-speeed settings",
+        handler: async (_args, ctx) => {
             await openSettings(
                 ctx,
                 () => config,
                 (next) => (config = next),
                 () => applyConfig(ctx),
             );
-            return;
-        }
-        if (cmd === "stats") {
-            flushStats();
-            aggregateStats = loadStats();
-            await showReadOnlyPanel(ctx, "pi-speeed stats", summarizeStats(aggregateStats));
-            return;
-        }
-        ctx.ui.notify(
-            "Use /pi-speeed for settings or /pi-speeed stats for aggregate stats.",
-            "error",
-        );
-    }
-
-    pi.registerCommand("pi-speeed", {
-        description: "Open pi-speeed settings; use /pi-speeed stats for aggregate speed stats",
-        handler: handleConfigCommand,
+        },
     });
 }

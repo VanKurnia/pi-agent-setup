@@ -159,9 +159,12 @@ else
   ok "agent/db-config.json exists"
 fi
 
-# pi-speeed post-install fix (HOME on Windows) — shared helper, non-fatal
+# Post-install patches — shared helpers, non-fatal, must run after every install
 say "Patching pi-speeed Windows HOME resolution..."
 bash "$PI_ROOT/.script/patch-speeed-home.sh" "$PI_ROOT"
+
+say "Patching extension host-dependency declarations..."
+bash "$PI_ROOT/.script/patch-host-deps.sh" "$PI_ROOT"
 
 # Health check
 say "Health check..."

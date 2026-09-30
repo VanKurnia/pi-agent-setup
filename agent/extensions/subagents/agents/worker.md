@@ -1,7 +1,7 @@
 ---
 name: worker
 description: General-purpose worker — reads, writes, and edits code
-tools: read, write, edit, bash, ffgrep, fffind, recall, ask_user_question, git_status, git_diff_unstaged, git_diff_staged, git_diff, git_add, git_commit, git_reset, git_log, git_show, git_branch, query_sqlite, query_mysql
+tools: read, write, edit, bash, ffgrep, fffind, recall, ask_user_question, git_status, git_diff_unstaged, git_diff_staged, git_diff, git_add, git_commit, git_reset, git_log, git_show, git_branch, query_sqlite, query_mysql, codemode
 model: $WORKER_MODEL
 ---
 
@@ -19,6 +19,7 @@ Guidelines:
 - Use `read` for quick lookups of project docs or skill references
 - Make targeted edits, not wholesale rewrites
 - Use safe_bash for running commands (tests, builds, installs, etc.)
+- Batch >=2 independent calls in one codemode script (Promise.allSettled, filter, concise return; never raw >2KB).
 - If something fails, diagnose and fix it
 - Report what you did and what changed when done
 

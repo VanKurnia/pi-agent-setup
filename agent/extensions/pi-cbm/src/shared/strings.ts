@@ -3,35 +3,35 @@ import { dirname, isAbsolute } from "node:path";
 import { isRecord } from "./object.js";
 
 export function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export function normalizeForMatch(value: string): string {
-  return value.replaceAll("\\", "/").toLowerCase();
+    return value.replaceAll("\\", "/").toLowerCase();
 }
 
 export function errorText(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (isRecord(value) && typeof value.error === "string") return value.error;
-  return JSON.stringify(value);
+    if (typeof value === "string") return value;
+    if (value instanceof Error) return value.message;
+    if (isRecord(value) && typeof value.error === "string") return value.error;
+    return JSON.stringify(value);
 }
 
 export function normalizePathForDisplay(path: string): string {
-  if (!isAbsolute(path)) return path;
-  const home = homedir();
-  if (path === home) return "~";
-  if (path.startsWith(`${home}/`)) return `~/${path.slice(home.length + 1)}`;
-  return path;
+    if (!isAbsolute(path)) return path;
+    const home = homedir();
+    if (path === home) return "~";
+    if (path.startsWith(`${home}/`)) return `~/${path.slice(home.length + 1)}`;
+    return path;
 }
 
 export function basename(path: string): string {
-  const parent = dirname(path);
-  return parent === path ? path : path.slice(parent.length + 1);
+    const parent = dirname(path);
+    return parent === path ? path : path.slice(parent.length + 1);
 }
 
 export function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+    if (bytes < 1024) return `${bytes}B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
-

@@ -9,6 +9,7 @@ Run them from the repo root. All scripts require `bash` + `npm` on `PATH`
 | [`npm-ci-all.sh`](#npm-ci-allsh) | Recursively run `npm ci` in every project dir |
 | [`update.sh`](#updatesh) | Fresh-clone updater for the workspace (used by `/update-setup`) |
 | [`patch-speeed-home.sh`](#patch-speeed-homesh) | Re-apply pi-speeed Windows HOME fix (used by `install.sh`, `update.sh`) |
+| [`patch-host-deps.sh`](#patch-host-depssh) | Move host-provided packages from `dependencies` to `peerDependencies` in installed extensions (used by `install.sh`, `update.sh`) |
 
 ---
 
@@ -113,5 +114,38 @@ Re-applies the pi-speeed `process.env.HOME` → `os.homedir()` fix.
 ```bash
 .script/patch-speeed-home.sh [PI_ROOT]   # default: $HOME/.pi
 ```
+
+Non-fatal by contract: always exits 0, prints `✓`/`⚠` itself.
+
+---
+
+## `patch-host-deps.sh`
+
+Silences pi's startup warning about extension packages that declare
+host-provided packages in `dependencies`:
+
+```
+Host-provided extension packages must be declared in peerDependencies with a "*"
+range, not dependencies: @earendil-works/pi-tui, @sinclair/typebox.
+```
+
+pi injects its own copies of those packages as virtual modules
+(`HOST_PROVIDED_EXTENSION_PACKAGES` in the host's `resource-loader.js`), so an
+installed copy can only cause duplicate runtime modules. Some published
+extensions still declare them the wrong way — `pi-smart-fetch@0.3.17` (latest, and
+unfixed on `master`) is the current offender — and `npm ci` restores the pristine
+manifest, so the rewrite runs after every install:
+
+```bash
+.script/patch-host-deps.sh [PI_ROOT]   # default: $HOME/.pi
+```
+
+Scans `$PI_ROOT/agent/npm/node_modules` (top-level and `@scope/*` packages) and,
+per offending manifest, deletes the host package from `dependencies`, adds it to
+`peerDependencies` as `"*"`, and rewrites the file as 2-space JSON. Idempotent.
+
+`node_modules` copies of those packages are left on disk on purpose: npm
+reinstalls them from unchanged registry metadata anyway, and every such specifier
+resolves to the host's bundles, so the copies are inert.
 
 Non-fatal by contract: always exits 0, prints `✓`/`⚠` itself.

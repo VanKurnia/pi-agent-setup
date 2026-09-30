@@ -1,22 +1,9 @@
 import type { Config } from "./config";
 import { TokenSpeedEngine } from "./engine";
 
-export type CompletedMessageSpeed = {
-    outputTokens: number;
-    durationMs: number;
-    /** Sanitized tokens-per-second for the completed assistant message. */
-    tokS: number | null;
-};
-
-function isSuccessfulStop(stopReason: string | undefined) {
-    return stopReason !== "error" && stopReason !== "aborted";
-}
-
 export class SpeedTracker {
     private readonly engine: TokenSpeedEngine;
     private lastStableTokS: number | null = null;
-    private sessionOutputTokens = 0;
-    private sessionDurationMs = 0;
 
     constructor(config: Config) {
         this.engine = new TokenSpeedEngine(config);
@@ -32,11 +19,6 @@ export class SpeedTracker {
 
     get lastTokS() {
         return this.lastStableTokS;
-    }
-
-    resetSession() {
-        this.sessionOutputTokens = 0;
-        this.sessionDurationMs = 0;
     }
 
     startMessage() {
@@ -56,35 +38,11 @@ export class SpeedTracker {
         return speed > 0 ? speed : this.lastStableTokS;
     }
 
-    sessionAvgTokS() {
-        return this.sessionDurationMs > 0
-            ? this.sessionOutputTokens / (this.sessionDurationMs / 1000)
-            : null;
-    }
-
-    finishMessage(
-        outputTokens: number,
-        stopReason: string | undefined,
-    ): CompletedMessageSpeed | null {
-        if (!this.engine.isStreaming) return null;
+    finishMessage(outputTokens: number) {
+        if (!this.engine.isStreaming) return;
 
         this.engine.reconcileTotal(outputTokens);
-        const durationMs = this.engine.elapsedMs;
-        const tokens = this.engine.tokenCount;
-        const rawAvgTokS = durationMs > 0 ? tokens / (durationMs / 1000) : null;
-        const tokS = this.engine.sanitizeTokS(rawAvgTokS, durationMs);
-        this.lastStableTokS = tokS;
+        this.lastStableTokS = this.engine.sanitizeTokS(this.engine.avgTokS, this.engine.elapsedMs);
         this.engine.stop();
-
-        if (tokS !== null && isSuccessfulStop(stopReason)) {
-            this.sessionOutputTokens += tokens;
-            this.sessionDurationMs += durationMs;
-        }
-
-        return {
-            outputTokens: tokens,
-            durationMs,
-            tokS,
-        };
     }
 }

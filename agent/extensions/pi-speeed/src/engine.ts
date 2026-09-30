@@ -40,10 +40,6 @@ export class TokenSpeedEngine {
         return this._isStreaming;
     }
 
-    get tokenCount() {
-        return this._tokenCount;
-    }
-
     get elapsedMs() {
         if (this._startTime === 0) return 0;
         if (this._isStreaming) return Date.now() - this._startTime;

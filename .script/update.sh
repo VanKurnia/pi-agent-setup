@@ -12,7 +12,8 @@
 #        upstream commit can never tangle local state; rename also
 #        survives Windows file locks that recursive delete may not)
 #     4. Copy staged user data back, sync settings packages,
-#        `npm-ci-all.sh --install`, re-apply the pi-speeed patch,
+#        `npm-ci-all.sh --install`, re-apply the post-install
+#        patches (pi-speeed HOME, host-dependency declarations),
 #        remove the old checkout last
 #
 #   Run from anywhere. `/update-setup` spawns it with cwd=$PI_DIR.
@@ -140,11 +141,16 @@ else
   exit 1
 fi
 
-# ── 7. Re-apply pi-speeed HOME patch (npm ci reinstalls it pristine) ──
+# ── 7. Re-apply post-install patches (npm ci reinstalls deps pristine) ──
 if [[ -f "$PI_DIR/.script/patch-speeed-home.sh" ]]; then
   bash "$PI_DIR/.script/patch-speeed-home.sh" "$PI_DIR"
 else
   warn ".script/patch-speeed-home.sh missing in fresh clone (skipped)"
+fi
+if [[ -f "$PI_DIR/.script/patch-host-deps.sh" ]]; then
+  bash "$PI_DIR/.script/patch-host-deps.sh" "$PI_DIR"
+else
+  warn ".script/patch-host-deps.sh missing in fresh clone (skipped)"
 fi
 
 # ── 8. Old checkout removal LAST — every destructive step now precedes it ──
