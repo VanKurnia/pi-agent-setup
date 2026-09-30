@@ -110,7 +110,35 @@ only when the theme object identity changes; both guards reset in `resetPistyleR
 
 **Rule** — nothing in the render path may do I/O or allocate per call. pi-style itself follows this.
 
-## 10. Process mistakes worth not repeating
+## 10. Cutting ANSI text by raw length corrupts the box
+
+**Symptom** — a bash card shows a garbage glyph (`<?>`) next to the literal `… (truncated)`, and
+that line's right border sits one or more columns off the rest of the box.
+
+**Root cause** — the line clamp cut by *raw string length* (`line.slice(0, 2000)`). When the cut
+lands inside an SGR sequence, the half-written escape stays in the string: terminals render it as
+garbage, and the width parser either swallows the following text or miscounts it, so the box fill
+overshoots or falls short. Reproduced deterministically: a mostly-escape line rendered **4 columns
+wide in a 60-column box**.
+
+**Fix** — `clampRenderLine` (`shared/render-budget.ts`) now truncates through `safeTruncateToWidth`,
+which is escape-aware; `bash.ts`'s duplicate `clampLineLength` was deleted in favour of it. Rule:
+never slice, pad or measure ANSI text with `length`/`slice` — go through the render-budget helpers.
+
+**Verify without the TUI** — compile the port and render components with a stub theme:
+
+```bash
+cd ~/.pi && mkdir -p .tmp-repro && printf '{"type":"module"}' > .tmp-repro/package.json
+npx tsc agent/extensions/pi-tool-display/src/pistyle/features/tools/boxed/bash.ts \
+  --outDir .tmp-repro --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck
+```
+
+Then import `bashTool` (and `boxLine` / `clampRenderLine` / `safeWrapTextWithAnsi`) from
+`.tmp-repro`, pass a theme stub whose `fg` emits real truecolor escapes, render at several widths
+and assert every line's `visibleWidth` equals the box width and that no line contains a stray
+`\x1b` after stripping complete sequences. Delete `.tmp-repro` when done.
+
+## 11. Process mistakes worth not repeating
 
 - **Repo-wide gates were red before the work started** (`pi-cbm` has a committed `TS6133` error and
   `no-undef` failures in fixtures). Two executor runs stopped on them. Gate **scoped** to

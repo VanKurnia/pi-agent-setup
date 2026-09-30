@@ -18,7 +18,7 @@ import {
 	shortenPath,
 	themeCacheKey,
 } from "../../../shared/box.js";
-import { safeTruncateToWidth, truncateAtCodePointBoundary } from "../../../shared/render-budget.js";
+import { clampRenderLine, safeTruncateToWidth } from "../../../shared/render-budget.js";
 import { parseSimpleBashCommand } from "./command-shape.js";
 import {
 	classifyGhCommand,
@@ -71,7 +71,6 @@ import {
 	noteExecutionStart,
 } from "./shared.js";
 
-const MAX_LINE_CHARS = 2000;
 const ESC = "\x1b";
 const BASH_TOOL_NOTICE_PATTERN = /^\[Showing (?:last|lines)\b.*\. Full output: .+\]$/;
 const BG_ANSI_PATTERN = new RegExp(`${ESC}\\[4[0-9;]*m`, "g");
@@ -174,11 +173,6 @@ function highlightBashLine(line: string, theme: BoxTheme): string {
 			return styled;
 		})
 		.join("");
-}
-
-function clampLineLength(line: string, max: number = MAX_LINE_CHARS): string {
-	if (line.length <= max) return line;
-	return `${truncateAtCodePointBoundary(line, max)}… (truncated)`;
 }
 
 function countNewlines(text: string, from: number, to: number): number {
@@ -556,7 +550,7 @@ function createBashResultPreview(
 				}
 
 				const tail = replaceTabs(text.slice(scanFrom)).replace(/\r/g, "");
-				const shownLines = tail ? tail.split("\n").map((l) => clampLineLength(l)) : [];
+				const shownLines = tail ? tail.split("\n").map((l) => clampRenderLine(l)) : [];
 
 				if (shownLines.length === 0) {
 					cacheKey = cacheId;
@@ -598,7 +592,7 @@ function createBashResultPreview(
 					: cfg.dimOutput
 						? formatToolOutputLine(theme, l)
 						: formatToolOutputLine(theme, l, "text");
-			const renderRawLine = (line: string) => safeTruncateToWidth(clampLineLength(line), bodyWidth, "…");
+			const renderRawLine = (line: string) => safeTruncateToWidth(clampRenderLine(line), bodyWidth, "…");
 
 			if (cfg.maxExpandedLines > 0 && totalLines > cfg.maxExpandedLines) {
 				const truncated = rawLines.slice(-cfg.maxExpandedLines).map((line) => applyColor(renderRawLine(line)));

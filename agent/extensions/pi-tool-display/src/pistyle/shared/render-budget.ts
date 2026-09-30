@@ -67,7 +67,9 @@ export function truncateAtCodePointBoundary(text: string, maxChars: number): str
 
 export function clampRenderLine(line: string, maxChars = MAX_RENDER_LINE_CHARS): string {
 	if (line.length <= maxChars) return line;
-	return truncateAtCodePointBoundary(line, maxChars) + RENDER_TRUNCATION_SUFFIX;
+	// Escape-aware cut: slicing raw text can land inside an SGR sequence, which
+	// renders as garbage and corrupts the measured line width.
+	return safeTruncateToWidth(line, maxChars, RENDER_TRUNCATION_SUFFIX);
 }
 
 function isPrintableAsciiCode(code: number): boolean {
