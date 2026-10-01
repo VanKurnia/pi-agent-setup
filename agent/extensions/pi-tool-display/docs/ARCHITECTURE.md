@@ -18,6 +18,7 @@ agent/extensions/pi-tool-display/
     pistyle-bridge.ts          THIS fork: config/theme mapping + tool routing into pi-style
     pistyle-tool-patch.ts      THIS fork: ToolExecutionComponent renderer-selection patch
     db-query-card.ts           THIS fork: boxed card for db-viewer's query tools
+    subagent-card.ts           THIS fork: boxed card for the subagent tool
     pistyle/                   vendored pi-style 0.2.11 (see below)
   tool-display-api-consumer.js/.d.ts   upstream adapter for other extensions
 ```
@@ -54,6 +55,7 @@ pistyle-bridge.renderPistyleToolCall / renderPistyleToolResult
         ├── read | write | edit | bash   → pi-style dispatcher (dedicated boxed card)
         ├── powershell                   → alias → bash card
         ├── query_sqlite | query_mysql   → db-query-card.ts (fork card, see below)
+        ├── subagent                     → subagent-card.ts (fork card, see below)
         └── everything else              → pi-style boxed fallback card
                     │
                     ▼
@@ -63,6 +65,28 @@ pistyle-bridge.renderPistyleToolCall / renderPistyleToolResult
 
 With the flag **off**, the patch returns pi's original renderer, i.e. upstream `pi-tool-display`
 compact rows. Nothing in the compact path depends on `src/pistyle/`.
+
+## subagent card (fork addition)
+
+`subagent` routes to `src/subagent-card.ts`. Its own renderer (per-agent progress rows) is bypassed
+by the patch, and the fallback card printed only the call args plus the literal content string
+`(running...)` — the whole progress payload in `details.results` was dropped, so a running subagent
+told the user nothing about what it was doing.
+
+- Call card: `➔ Subagent · parallel · scout, worker` header, then one line per requested agent/task
+  (title, then the task's first 5 lines; expanded shows all).
+- Result card: one row per agent — status glyph, name, title, `N tools · N tok · elapsed` — then that
+  agent's recent tool calls (6 collapsed, all expanded), the live `▸ current tool` line while running,
+  its latest prose line, and any error. Settled runs append the concatenated output under a rule, and
+  the footer shows `elapsed · ok/total agents · tokens`. The running footer is the fork's standard
+  `󰐊 Running · <elapsed>`.
+- Budget: collapsed lines are capped by a card-local `COLLAPSED_RUN_LINES` (24), **not**
+  `previewLines` (8) — with the shared preview budget a two-agent run truncated before the output
+  section and the card advertised `… more lines omitted` instead of showing the run.
+- `passthroughTools` is the generic escape hatch for tools whose own renderers should survive; it is
+  unused in this repo because this card gives the richer result (box chrome *and* the payload).
+
+Routing lives in `pistyle-bridge.ts` next to the db-viewer card, for the same re-port reason.
 
 ## db-viewer query card (fork addition)
 
@@ -146,6 +170,7 @@ interceptor) and any environment where the patch cannot install.
 | Key | Where | Effect |
 | --- | --- | --- |
 | `boxedToolCalls` | `types.ts`, `config-store.ts`, `config-modal.ts`, `presets.ts` | selects pi-style cards vs compact rows |
+| `passthroughTools` | `types.ts`, `config-store.ts`, `presets.ts`, `pistyle-bridge.ts` | escape hatch: listed tools skip the boxed path and keep their own renderers (default `[]`, unused here — `subagent` has a dedicated card) |
 | `collapseAfterTurn` | same files, plus `pistyle-bridge.ts` | mapped into pi-style's session config; **only effective in pi-style mode** |
 
 Mapping into pi-style's own session config (`pistyle-bridge.ts`):

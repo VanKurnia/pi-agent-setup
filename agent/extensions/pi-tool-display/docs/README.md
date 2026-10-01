@@ -12,6 +12,11 @@ selector borders.
 | compact (default) | `boxedToolCalls: false` | upstream `pi-tool-display` rows (no box) |
 | pi-style cards | `boxedToolCalls: true` | vendored pi-style boxed cards for **every** tool |
 
+Exception: a tool listed in `passthroughTools` (JSON-only escape hatch, default `[]`, unused in this
+repo) skips the boxed path entirely and keeps its own `renderCall`/`renderResult`. For the `subagent`
+tool the fork instead ships a dedicated card (`subagent-card.ts`) that draws the same payload inside
+the box chrome — per-agent rows, live tool calls, metrics and the settled output.
+
 Toggle in-session: `/tool-display` → *pi-style boxed tool cards*, or edit
 `agent/extensions/pi-tool-display/config.json` and `/reload`.
 

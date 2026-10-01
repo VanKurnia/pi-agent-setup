@@ -1,14 +1,20 @@
 import { ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
-import { renderPistyleToolCall, renderPistyleToolResult } from "./pistyle-bridge.js";
+import {
+    keepsOwnRenderer,
+    renderPistyleToolCall,
+    renderPistyleToolResult,
+} from "./pistyle-bridge.js";
 import type { ToolDisplayConfig } from "./types.js";
 
 /**
  * Pi resolves a tool block's renderers through ToolExecutionComponent, so the
  * boxed presentation is installed at that resolution point - the same layer
  * pi-style patches. It reaches tools this extension cannot register for: tools
- * owned by other extensions and tools with no renderer at all. The patch is
- * additive and restored on dispose; if Pi's internals move, install() reports
- * false and the extension falls back to its registered renderers.
+ * owned by other extensions and tools with no renderer at all. Tools named in
+ * `passthroughTools` are exempt: they keep their own renderers (and therefore
+ * their own framing). The patch is additive and restored on dispose; if Pi's
+ * internals move, install() reports false and the extension falls back to its
+ * registered renderers.
  */
 type ConfigGetter = () => ToolDisplayConfig;
 type RendererLike = (...args: unknown[]) => unknown;
@@ -60,7 +66,7 @@ function patchedSelector(
 
         return (...rendererArgs: unknown[]) => {
             const config = getConfig();
-            if (!config.boxedToolCalls) {
+            if (!config.boxedToolCalls || keepsOwnRenderer(toolName, config)) {
                 return typeof originalRenderer === "function"
                     ? Reflect.apply(originalRenderer, this, rendererArgs)
                     : undefined;

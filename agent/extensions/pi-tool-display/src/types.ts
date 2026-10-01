@@ -51,6 +51,8 @@ export interface ToolDisplayConfig {
     enableNativeUserMessageBox: boolean;
     collapseAfterTurn: boolean;
     boxedToolCalls: boolean;
+    /** Tool names that keep their own renderers instead of the pi-style boxed cards. */
+    passthroughTools: string[];
     readOutputMode: ReadOutputMode;
     searchOutputMode: SearchOutputMode;
     mcpOutputMode: McpOutputMode;
@@ -82,6 +84,7 @@ export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
     enableNativeUserMessageBox: true,
     collapseAfterTurn: false,
     boxedToolCalls: false,
+    passthroughTools: [],
     readOutputMode: "hidden",
     searchOutputMode: "hidden",
     mcpOutputMode: "hidden",

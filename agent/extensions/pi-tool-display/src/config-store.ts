@@ -49,6 +49,20 @@ function toBoolean(value: unknown, fallback: boolean): boolean {
     return typeof value === "boolean" ? value : fallback;
 }
 
+/** Trimmed, de-duplicated tool names; anything else falls back to the default list. */
+function toToolNameList(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        return [...DEFAULT_TOOL_DISPLAY_CONFIG.passthroughTools];
+    }
+    const names = new Set<string>();
+    for (const entry of value) {
+        if (typeof entry !== "string") continue;
+        const name = entry.trim();
+        if (name) names.add(name);
+    }
+    return [...names];
+}
+
 function toReadOutputMode(value: unknown): ToolDisplayConfig["readOutputMode"] {
     return READ_OUTPUT_MODES.includes(value as ToolDisplayConfig["readOutputMode"])
         ? (value as ToolDisplayConfig["readOutputMode"])
@@ -105,6 +119,7 @@ function cloneDefaultConfig(): ToolDisplayConfig {
         customToolOverrides: cloneCustomToolOverrides(
             DEFAULT_TOOL_DISPLAY_CONFIG.customToolOverrides,
         ),
+        passthroughTools: [...DEFAULT_TOOL_DISPLAY_CONFIG.passthroughTools],
     };
 }
 
@@ -236,6 +251,7 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
             source.boxedToolCalls,
             DEFAULT_TOOL_DISPLAY_CONFIG.boxedToolCalls,
         ),
+        passthroughTools: toToolNameList(source.passthroughTools),
         readOutputMode: toReadOutputMode(source.readOutputMode),
         searchOutputMode: toSearchOutputMode(source.searchOutputMode),
         mcpOutputMode: toMcpOutputMode(source.mcpOutputMode),

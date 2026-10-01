@@ -17,6 +17,7 @@ import {
     renderFallbackResult,
 } from "./pistyle/features/tools/boxed/fallback.js";
 import { isDbQueryTool, renderDbQueryCall, renderDbQueryResult } from "./db-query-card.js";
+import { isSubagentTool, renderSubagentCall, renderSubagentResult } from "./subagent-card.js";
 import { resetBashTreeRegistry } from "./pistyle/features/tools/boxed/bash.js";
 import { resetBatchRegistry } from "./pistyle/features/tools/boxed/batch.js";
 import { resetGrepRegistry } from "./pistyle/features/tools/boxed/grep.js";
@@ -25,6 +26,14 @@ import type { ToolDisplayConfig } from "./types.js";
 
 /** Tools with a dedicated pi-style boxed renderer; powershell shares bash's arguments. */
 const DEDICATED_TOOLS = new Set(["read", "write", "edit", "bash"]);
+
+/**
+ * Tools that keep their own renderers in pi-style mode: their `renderCall`/`renderResult`
+ * (e.g. `subagent`'s live progress rows) stay visible instead of the boxed cards.
+ */
+export function keepsOwnRenderer(toolName: unknown, config: ToolDisplayConfig): boolean {
+    return typeof toolName === "string" && config.passthroughTools.includes(toolName);
+}
 
 /** Resolves the dedicated renderer name for a tool, or undefined for the boxed fallback card. */
 function dedicatedToolName(toolName: unknown): string | undefined {
@@ -117,6 +126,10 @@ export function renderPistyleToolCall(
     if (isDbQueryTool(toolName)) {
         return renderDbQueryCall(toolName, args, boxTheme, boxedContext);
     }
+    // subagent gets the fork-owned card (per-agent rows, live tool calls).
+    if (isSubagentTool(toolName)) {
+        return renderSubagentCall(toolName, args, boxTheme, boxedContext);
+    }
     const name = dedicatedToolName(toolName);
     if (!name) {
         return renderFallbackCall(toolName, args, boxTheme, boxedContext);
@@ -140,6 +153,9 @@ export function renderPistyleToolResult(
     const boxedResult = result as BoxedResult;
     if (isDbQueryTool(toolName)) {
         return renderDbQueryResult(boxedResult, boxedOptions, boxTheme, boxedContext);
+    }
+    if (isSubagentTool(toolName)) {
+        return renderSubagentResult(boxedResult, boxedOptions, boxTheme, boxedContext);
     }
     const name = dedicatedToolName(toolName);
     if (!name) {
