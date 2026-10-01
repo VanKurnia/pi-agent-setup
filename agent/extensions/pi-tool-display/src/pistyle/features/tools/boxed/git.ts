@@ -15,6 +15,7 @@ import type { Component } from "@earendil-works/pi-tui";
 import {
     type BoxTheme,
     boxBlankLine,
+    boxFrameColor,
     boxLabeledBorder,
     boxWidth,
     dimLine,
@@ -1997,15 +1998,16 @@ interface DiffFileBox {
 export function renderGitDiffResult(
     theme: BoxTheme,
     parsed: GitDiffParsed,
-    options: { expanded: boolean },
+    options: { expanded: boolean; isPartial: boolean },
     context: BoxedToolContext,
 ): Component {
     const expanded = Boolean(options.expanded);
 
     // Cheap cache key capturing everything that affects output — theme, show vs
-    // diff, expansion, file count/totals, and per-file identity (path, body
-    // length, counts, binary/status) — computed WITHOUT building rows or
-    // components; the expensive build runs only on cache misses.
+    // diff, expansion, partial-vs-settled status, error state, file count/totals,
+    // and per-file identity (path, body length, counts, binary/status) — computed
+    // WITHOUT building rows or components; the expensive build runs only on cache
+    // misses.
     let totalAdditions = 0;
     let totalRemovals = 0;
     const sigParts: string[] = [];
@@ -2026,12 +2028,14 @@ export function renderGitDiffResult(
             theme,
             String(parsed.show),
             String(expanded),
+            String(options.isPartial),
+            String(context.isError),
             parsed.files.length,
             totalAdditions,
             totalRemovals,
             sig,
         ),
-        () => buildGitDiffResultComponent(theme, parsed, expanded, context),
+        () => buildGitDiffResultComponent(theme, parsed, expanded, options.isPartial, context),
     );
 }
 
@@ -2040,6 +2044,7 @@ function buildGitDiffResultComponent(
     theme: BoxTheme,
     parsed: GitDiffParsed,
     expanded: boolean,
+    isPartial: boolean,
     context: BoxedToolContext,
 ): Component {
     const elapsedMs = getStateElapsedMs(context.state);
@@ -2066,6 +2071,8 @@ function buildGitDiffResultComponent(
                 showDivider: false,
                 skipLeadingBlank: true,
                 footerLines: emptyFooter ? [emptyFooter] : [],
+                isError: context.isError,
+                isPartial,
             }),
         });
     } else {
@@ -2080,6 +2087,8 @@ function buildGitDiffResultComponent(
                             showDivider: false,
                             skipLeadingBlank: true,
                             footerLines: footer ? [footer] : [],
+                            isError: context.isError,
+                            isPartial,
                         },
                     ),
                 });
@@ -2107,6 +2116,8 @@ function buildGitDiffResultComponent(
                     skipLeadingBlank: true,
                     footerLines: footer ? [footer] : [],
                     ...(expandHint ? { expandHint } : {}),
+                    isError: context.isError,
+                    isPartial,
                 }),
             });
         }
@@ -2124,12 +2135,23 @@ function buildGitDiffResultComponent(
         render(width: number): string[] {
             if (cacheWidth === width && cacheLines) return cacheLines;
             const renderedWidth = boxWidth(width);
+            // One frame identity per file box: the top border is drawn here, the
+            // body/bottom by the file's result component, so both must agree.
+            const frameColor = boxFrameColor(context.isError, isPartial);
             const lines: string[] = [];
             for (const box of fileBoxes) {
                 lines.push(
-                    boxLabeledBorder(theme, "╭", "╮", box.topLabel, undefined, renderedWidth),
+                    boxLabeledBorder(
+                        theme,
+                        "╭",
+                        "╮",
+                        box.topLabel,
+                        undefined,
+                        renderedWidth,
+                        frameColor,
+                    ),
                 );
-                lines.push(boxBlankLine(theme, renderedWidth));
+                lines.push(boxBlankLine(theme, renderedWidth, frameColor));
                 lines.push(...box.resultComponent.render(width));
             }
             cacheWidth = width;

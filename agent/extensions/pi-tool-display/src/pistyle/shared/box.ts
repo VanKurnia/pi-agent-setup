@@ -34,6 +34,12 @@ import {
 } from "./render-budget.js";
 import { getThemeExtra } from "./theme-extras.js";
 
+/** Nerd Font glyphs for the running state: the title marker and the live footer
+ *  label. Same font requirement as pi-style's `batchOpenGlyph`. The title glyph
+ *  is also the running marker in batch panels and gh status rows. */
+export const RUNNING_TITLE_GLYPH = "󱦟";
+const RUNNING_STATUS_GLYPH = "󰐊";
+
 /** Minimal structural view of Pi's Theme as used by the boxed renderers. */
 export interface BoxTheme {
     fg(color: string, text: string): string;
@@ -78,14 +84,14 @@ export interface BoxedRenderOptions {
     isError?: boolean;
     isPartial?: boolean;
     isPending?: boolean;
-    /** Execution has started but the tool is still running (title `◌` instead of `✓`). */
+    /** Execution has started but the tool is still running (title `󱦟` instead of `✓`). */
     running?: boolean;
     /** A result renderer already produced a continuation for this call, so the call
      *  leaves the box open instead of closing it with a pending label. */
     resultSeen?: boolean;
     pendingText?: string;
     /** Verbatim bottom-border label for the pending/running card (overrides the
-     *  `… ${pendingText}` default, e.g. a live `◌ Running · 12.4s` status). */
+     *  `… ${pendingText}` default, e.g. a live `󰐊 Running · 12.4s` status). */
     pendingLabel?: string;
     state?: Record<string, unknown>;
     /** Wall-clock elapsed override (used when metrics are not in result.details). */
@@ -445,7 +451,7 @@ function formatBoxedStatusIcon(theme: BoxTheme, isError?: boolean): string {
 
 /**
  * Colored `➔ Name` prefix for tool titles: the arrow keeps the identity color,
- * the tool name uses the accent blue. The status glyph (✓/◌/✗) is appended
+ * the tool name uses the accent blue. The status glyph (✓/󱦟/✗) is appended
  * separately by formatBoxedToolTitle.
  */
 export function formatToolTitlePrefix(theme: BoxTheme, name: string): string {
@@ -456,9 +462,9 @@ export function formatToolTitlePrefix(theme: BoxTheme, name: string): string {
 export type BoxedTitleStatus = "running" | "pending";
 
 /**
- * Boxed tool title: `➔ Name ✓` when settled, `➔ Name ◌` while running, plain
+ * Boxed tool title: `➔ Name ✓` when settled, `➔ Name 󱦟` while running, plain
  * `➔ Name` while pending, and a fully error-colored `➔ Name ✗` on failure.
- * The ✓/◌ glyphs are never shown before the tool settles, so a card that is
+ * The ✓/󱦟 glyphs are never shown before the tool settles, so a card that is
  * still executing never reads as finished.
  */
 export function formatBoxedToolTitle(
@@ -473,7 +479,7 @@ export function formatBoxedToolTitle(
     const coloredTitle = isError
         ? theme.fg("error", `➔ ${name} ✗`)
         : status === "running"
-          ? `${formatToolTitlePrefix(theme, name)} ${theme.fg("text", "◌")}`
+          ? `${formatToolTitlePrefix(theme, name)} ${theme.fg("text", RUNNING_TITLE_GLYPH)}`
           : status === "pending"
             ? formatToolTitlePrefix(theme, name)
             : `${formatToolTitlePrefix(theme, name)} ${formatBoxedStatusIcon(theme, false)}`;
@@ -482,7 +488,7 @@ export function formatBoxedToolTitle(
 
 /** Live running status label for pending/running cards and streaming footers. */
 export function formatBoxedRunningStatus(theme: BoxTheme, elapsedMs: number | undefined): string {
-    const label = theme.fg("success", "◌ Running");
+    const label = theme.fg("success", `${RUNNING_STATUS_GLYPH} Running`);
     if (elapsedMs === undefined) return label;
     return `${label}${theme.fg("dim", " · ")}${formatMetricParts(theme, (elapsedMs / 1000).toFixed(2), "s")}`;
 }
@@ -500,6 +506,21 @@ function boxText(_theme: BoxTheme, text: string, color?: string): string {
 }
 function boxFrameText(_theme: BoxTheme, text: string, color?: string): string {
     return color ? _theme.fg(color, text) : dimLine(text);
+}
+
+/** Frame identity for one tool block: red once the block failed, green once it
+ *  settled successfully, dim while it is still pending, running or streaming.
+ *  Settling is reported by `isPartial`/`isPending` — `running` stays true after
+ *  a call settles, so it must never gate this. Positional on purpose: the frame
+ *  paths must not allocate per render. */
+export function boxFrameColor(
+    isError?: boolean,
+    isPartial?: boolean,
+    isPending?: boolean,
+): string | undefined {
+    if (isError) return "error";
+    if (isPartial || isPending) return undefined;
+    return "success";
 }
 
 export function boxBorder(theme: BoxTheme, left: string, right: string, width: number): string {
@@ -809,8 +830,8 @@ export function renderBoxedToolCall(
                     : options.headerDetail;
             const headerLabel = headerDetail ? `${title} · ${headerDetail}` : title;
             const renderedWidth = boxWidth(width);
-            // A failed call renders its whole frame in the error color.
-            const frameColor = options.isError ? "error" : undefined;
+            // A settled call renders its whole frame in the status color.
+            const frameColor = boxFrameColor(options.isError, options.isPartial, options.isPending);
             const lines = [
                 boxLabeledBorder(
                     theme,
@@ -894,7 +915,7 @@ export function renderCompactBoxedToolCall(
             const bodyLines = options.bodyLines
                 ? options.bodyLines(boxInnerWidth(renderedWidth))
                 : [];
-            const frameColor = options.isError ? "error" : undefined;
+            const frameColor = boxFrameColor(options.isError, options.isPartial, options.isPending);
             const lines = [
                 boxLabeledBorder(
                     theme,
@@ -1008,8 +1029,8 @@ export function renderBoxedToolResult(
             // rows instead of one "line" whose embedded rows break the frame.
             const outputFragments = outputLines.flatMap((line) => line.split("\n"));
             const footerText = (options.footerLines ?? []).join(" · ");
-            // A failed result renders its whole frame in the error color.
-            const frameColor = options.isError ? "error" : undefined;
+            // A settled result renders its whole frame in the status color.
+            const frameColor = boxFrameColor(options.isError, options.isPartial);
             const dividerText =
                 typeof options.dividerLabel === "function"
                     ? options.dividerLabel(renderedWidth)

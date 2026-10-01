@@ -16,6 +16,7 @@ import {
     renderFallbackCall,
     renderFallbackResult,
 } from "./pistyle/features/tools/boxed/fallback.js";
+import { isDbQueryTool, renderDbQueryCall, renderDbQueryResult } from "./db-query-card.js";
 import { resetBashTreeRegistry } from "./pistyle/features/tools/boxed/bash.js";
 import { resetBatchRegistry } from "./pistyle/features/tools/boxed/batch.js";
 import { resetGrepRegistry } from "./pistyle/features/tools/boxed/grep.js";
@@ -112,6 +113,10 @@ export function renderPistyleToolCall(
     primeTheme(theme);
     const boxTheme = theme as BoxTheme;
     const boxedContext = context as BoxedToolContext;
+    // db-viewer's query tools get the fork-owned card (redacted target, SQL preview).
+    if (isDbQueryTool(toolName)) {
+        return renderDbQueryCall(toolName, args, boxTheme, boxedContext);
+    }
     const name = dedicatedToolName(toolName);
     if (!name) {
         return renderFallbackCall(toolName, args, boxTheme, boxedContext);
@@ -133,6 +138,9 @@ export function renderPistyleToolResult(
     const boxedContext = context as BoxedToolContext;
     const boxedOptions = options as BoxedResultOptions;
     const boxedResult = result as BoxedResult;
+    if (isDbQueryTool(toolName)) {
+        return renderDbQueryResult(boxedResult, boxedOptions, boxTheme, boxedContext);
+    }
     const name = dedicatedToolName(toolName);
     if (!name) {
         return renderFallbackResult(toolName, boxedResult, boxedOptions, boxTheme, boxedContext);

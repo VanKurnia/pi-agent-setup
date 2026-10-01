@@ -36,6 +36,7 @@ import {
     dimLine,
     formatMetricParts,
     formatToolTitlePrefix,
+    RUNNING_TITLE_GLYPH,
     themeCacheKey,
 } from "../../../shared/box.js";
 import { safeTruncateToWidth } from "../../../shared/render-budget.js";
@@ -333,7 +334,7 @@ function formatBatchHeader(theme: BoxTheme, batch: BatchState, status: BatchStat
         return `${theme.fg("text", bold(theme, `${glyph} ${label}`))}${elapsed}`;
     }
     if (status.done > 0)
-        return `${theme.fg("text", bold(theme, `◌ ${label}`))}${theme.fg("dim", ` · ${status.done}/${status.total}`)}`;
+        return `${theme.fg("text", bold(theme, `${RUNNING_TITLE_GLYPH} ${label}`))}${theme.fg("dim", ` · ${status.done}/${status.total}`)}`;
     return bold(theme, formatToolTitlePrefix(theme, label));
 }
 
@@ -341,7 +342,7 @@ function memberGlyph(theme: BoxTheme, member: BatchMember, show: boolean): strin
     if (!show) return "";
     if (member.isError) return theme.fg("error", "✗");
     if (member.status === "done") return theme.fg("success", "✓");
-    return theme.fg("text", "◌");
+    return theme.fg("text", RUNNING_TITLE_GLYPH);
 }
 
 function renderErrorLines(theme: BoxTheme, errorText: string, width: number): string[] {
@@ -432,7 +433,10 @@ function renderMemberSubtree(
         return out;
     }
     if (member.status !== "done" || member.outputEntries === undefined) {
-        const glyph = member.status === "done" ? theme.fg("success", "✓") : theme.fg("text", "◌");
+        const glyph =
+            member.status === "done"
+                ? theme.fg("success", "✓")
+                : theme.fg("text", RUNNING_TITLE_GLYPH);
         const line = `${BATCH_TREE_INDENT}${dimLine(isLastMember ? "└─" : "├─")} ${glyph} ${theme.fg("text", member.pathLabel ?? member.detail)}`;
         out.push(safeTruncateToWidth(line, safeWidth, "…"));
         return out;

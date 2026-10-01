@@ -17,6 +17,7 @@ agent/extensions/pi-tool-display/
     config-store.ts, config-modal.ts, presets.ts, types.ts   config schema/persistence/UI
     pistyle-bridge.ts          THIS fork: config/theme mapping + tool routing into pi-style
     pistyle-tool-patch.ts      THIS fork: ToolExecutionComponent renderer-selection patch
+    db-query-card.ts           THIS fork: boxed card for db-viewer's query tools
     pistyle/                   vendored pi-style 0.2.11 (see below)
   tool-display-api-consumer.js/.d.ts   upstream adapter for other extensions
 ```
@@ -31,10 +32,12 @@ src/pistyle/
   shared/                 box, ansi, elapsed, render-budget, split-diff, theme-extras
 ```
 
-Two fork deltas exist (see `FORK.md`): six dead declarations removed for this repo's
-`noUnusedLocals`, and the card background pinned to the tokyo-night base (`#1a1b26`,
-`TOOL_CARD_BG_HEX` / `applyCardBackground` in `shared/box.ts`; `split-diff.ts` blends diff rows
-from the same base) instead of pi's status-driven fill. Everything else is pi-style source unmodified.
+`src/pistyle/**` carries the fork deltas listed in `FORK.md`: the six dead declarations removed for
+this repo's `noUnusedLocals`, the card background pinned to the tokyo-night base (`#1a1b26`,
+`TOOL_CARD_BG_HEX` / `applyCardBackground` in `shared/box.ts`; `split-diff.ts` blends diff rows from
+the same base) instead of pi's status-driven fill, the status-colored frames and running glyphs, and
+the git/gh status plumbing. Everything else is pi-style source unmodified, and a re-port has to
+re-apply that list (`MAINTENANCE.md`).
 
 ## Render flow (pi-style mode)
 
@@ -50,6 +53,7 @@ pistyle-bridge.renderPistyleToolCall / renderPistyleToolResult
         │  tool-name routing
         ├── read | write | edit | bash   → pi-style dispatcher (dedicated boxed card)
         ├── powershell                   → alias → bash card
+        ├── query_sqlite | query_mysql   → db-query-card.ts (fork card, see below)
         └── everything else              → pi-style boxed fallback card
                     │
                     ▼
@@ -59,6 +63,26 @@ pistyle-bridge.renderPistyleToolCall / renderPistyleToolResult
 
 With the flag **off**, the patch returns pi's original renderer, i.e. upstream `pi-tool-display`
 compact rows. Nothing in the compact path depends on `src/pistyle/`.
+
+## db-viewer query card (fork addition)
+
+`query_sqlite` / `query_mysql` (db-viewer) route to `src/db-query-card.ts` instead of the fallback
+card. Two reasons: the fallback *call* card prints every argument — including the credentials inside
+`connectionString` — and db-viewer's own `renderResult` (a markdown box table) is bypassed by the
+patch, so the table look would be lost.
+
+- Call card: `➔ Query MySQL · <target>` header, SQL lines (5 collapsed / all expanded), `Max rows`
+  when the argument is set. `redactConnectionTarget()` masks the password
+  (`mysql://user:***@host/db`) and leaves URIs without one untouched; the authority splits on its
+  **last** `@`, so a raw `@` inside a password cannot leak the tail as the host.
+- Result card: `Rows` divider, pi's Markdown renderer for the table (10-line collapse, mirrored from
+  `agent/extensions/shared/markdown.ts` so this fork stays self-contained), and an `elapsed · N rows`
+  footer instead of the word count. The body is a plain line-builder: the Markdown renders per paint,
+  the same cost db-viewer's own renderer pays today.
+
+Routing lives in `pistyle-bridge.ts`, not in the vendored dispatcher registry: a pi-style re-port
+replaces `src/pistyle/features/tools/boxed/index.ts` wholesale, and the bridge is documented as
+re-port-independent (`MAINTENANCE.md`).
 
 ## Expansion
 
@@ -70,11 +94,23 @@ the fallback card prints all arguments and the summary cards show a single path/
 
 ## Colors
 
-Status is carried by the title glyph (`✓` success / `✗` error / `◌` running), the frame, and the
-running label (green). The tool name uses the theme accent (blue). Measured values use the metric
-identity colors — value in `warning` yellow, unit in `accent` blue (`formatMetricParts` /
-`formatElapsedMetric` in `shared/box.ts`) — and the result divider label is `warning` yellow. The
-elapsed ticker refreshes every 100 ms, so the running value ticks in milliseconds.
+Status is carried by the title glyph (`✓` success / `✗` error / `󱦟` running) and by the frame
+color: `boxFrameColor` in `shared/box.ts` renders a settled box fully in the theme `success` green,
+a failed one in `error` red, and keeps the frame dim while the call is pending, running or streaming
+(`isPartial`/`isPending` gate it — `running` stays true after a call settles). The frame tracks the
+*tool result*, not a payload's own conclusion: a `gh run view` card can be green while its log shows
+a failed job, whose `✗` glyph carries that state. The git per-file frames use the same helper for
+their top border and body. The running label (`󰐊 Running · 12.4s`, see `formatBoxedRunningStatus`) is
+green and ticks in the footer. Both running glyphs are Nerd Font icons — `RUNNING_TITLE_GLYPH`
+(U+F199F, exported for the batch and gh rows) and the module-local footer glyph U+F040A — and
+width-1, so the frame alignment math is unchanged; they do sit outside `render-budget.ts`'s
+simple-glyph set, so lines carrying them are measured by grapheme segmentation. The title glyph also
+marks running batch panels/members (`batch.ts`) and gh run statuses (`gh.ts`; cancelled/skipped stay
+a dim `-`). The tool name
+uses the theme accent (blue). Measured values use the metric identity colors — value in `warning`
+yellow, unit in `accent` blue (`formatMetricParts` / `formatElapsedMetric` in `shared/box.ts`) — and
+the result divider label is `warning` yellow. The elapsed ticker refreshes every 100 ms, so the
+running value ticks in milliseconds.
 
 ## Why the renderer-selection patch exists
 
@@ -103,7 +139,7 @@ interceptor) and any environment where the patch cannot install.
   Called on `session_start` and `session_shutdown`.
 - pi-style keeps per-call registries keyed by `toolCallId`; pi-style's own coordinator also resets
   them on message boundaries — **not ported** (see open items in `MAINTENANCE.md`).
-- pi-style's elapsed ticker is a single shared 1s interval, active only while a tool runs.
+- pi-style's elapsed ticker is a single shared 100 ms interval, active only while a tool runs.
 
 ## Config surface added by this fork
 
@@ -124,7 +160,11 @@ Mapping into pi-style's own session config (`pistyle-bridge.ts`):
 ## Performance contract
 
 Steady-state per render, per visible tool block, this fork adds: 4 integer comparisons (config
-guard), 1 identity comparison (theme guard), 3 property writes (`neutralizeToolContainer`), plus the
-pre-existing `getConfig()` allocation that upstream's own renderers also pay. No filesystem I/O
+guard), 1 identity comparison (theme guard), 2-3 boolean comparisons (frame color,
+`boxFrameColor`), 3 property writes (`neutralizeToolContainer`), plus the pre-existing `getConfig()`
+allocation that upstream's own renderers also pay. Lines carrying a running glyph (titles, live
+footers, batch rows) leave `render-budget.ts`'s simple-glyph fast path for grapheme segmentation —
+the price of the PUA icons, restorable by adding their codepoints to `isSimpleWidthOneGlyphCode`.
+No filesystem I/O
 (pi's `Theme` exposes `name`/`sourcePath`, so pi-style's theme-extras cache takes its fast path),
 no timers, no allocation in the guarded paths. Keep it that way: do not add per-render I/O.

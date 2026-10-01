@@ -18,6 +18,7 @@ import {
     dimLine,
     formatElapsedMetric,
     renderBoxedToolResult,
+    RUNNING_TITLE_GLYPH,
 } from "../../../shared/box.js";
 import { safeTruncateToWidth } from "../../../shared/render-budget.js";
 import { parseSimpleBashCommand } from "./command-shape.js";
@@ -766,21 +767,21 @@ function ghStateColor(state: string): string {
 }
 
 /** Colored run glyph from a status/conclusion pair (✓ success, ✗ failure,
- *  ◌ in-progress/queued, dim for skipped/cancelled). */
+ *  󱦟 in-progress/queued, dim `-` for skipped/cancelled/neutral). */
 function runGlyph(theme: BoxTheme, status: string, conclusion?: string): string {
     if (status === "completed") {
         if (conclusion === "success") return theme.fg("toolDiffAdded", "✓");
         if (conclusion === "failure") return theme.fg("error", "✗");
-        return theme.fg("dim", "◌"); // cancelled / skipped / neutral
+        return theme.fg("dim", "-"); // cancelled / skipped / neutral
     }
-    return theme.fg("warning", "◌"); // in_progress / queued / waiting
+    return theme.fg("warning", RUNNING_TITLE_GLYPH); // in_progress / queued / waiting
 }
 
 /** Colored run glyph from a raw ✓/✗/◌ token (run-view jobs). */
 function runStateGlyph(theme: BoxTheme, glyph: string): string {
     if (glyph === "✓") return theme.fg("toolDiffAdded", "✓");
     if (glyph === "✗") return theme.fg("error", "✗");
-    return theme.fg("warning", "◌");
+    return theme.fg("warning", RUNNING_TITLE_GLYPH);
 }
 
 /** Check-state color (pass/fail/pending/skipping/…). */
@@ -1075,7 +1076,7 @@ const GH_RUN_JOB_BUDGET_EXPANDED = 200;
 export function renderGhRunJobResult(
     theme: BoxTheme,
     parsed: GhRunJobParsed,
-    options: { expanded: boolean },
+    options: { expanded: boolean; isPartial: boolean },
     context: BoxedToolContext,
 ): Component {
     const expanded = Boolean(options.expanded);
@@ -1095,6 +1096,8 @@ export function renderGhRunJobResult(
             dividerLabel: `Log · ${parsed.jobId}`,
             footerLines: footer ? [footer] : [],
             renderLineBudget: budget,
+            isError: context.isError,
+            isPartial: options.isPartial,
         },
     );
 }

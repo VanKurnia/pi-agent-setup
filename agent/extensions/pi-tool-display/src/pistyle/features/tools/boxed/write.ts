@@ -35,7 +35,7 @@ import {
 /** Right-side bottom-border hint shown when the compact preview is truncated. */
 const WRITE_EXPAND_HINT = "Ctrl+O for more";
 
-/** Partial-pass result: the compact call keeps its `◌ Running` card. */
+/** Partial-pass result: the compact call keeps its `󰐊 Running` card. */
 const EMPTY_WRITE_RESULT: Component = Object.freeze({
     invalidate() {},
     render() {
@@ -74,7 +74,7 @@ function renderWritePreviewBox(
     options: {
         state?: Record<string, unknown>;
         isError: boolean;
-        isPending: boolean;
+        isPartial: boolean;
         running?: boolean;
         expanded: boolean;
     },
@@ -87,7 +87,8 @@ function renderWritePreviewBox(
     return renderCompactBoxedToolCall(theme, "Write", detailLine, {
         ...(options.state ? { state: options.state } : {}),
         isError: options.isError,
-        isPending: options.isPending,
+        isPartial: options.isPartial,
+        isPending: options.isPartial,
         running: Boolean(options.running),
         tint: true, // the write preview is a framed box — it owns its status tint
         bodyLines: () => {
@@ -100,7 +101,7 @@ function renderWritePreviewBox(
                 : `… ${omitted} more lines`;
             return [...shown, theme.fg("muted", note)];
         },
-        ...(options.expanded || options.isPending || !truncated
+        ...(options.expanded || options.isPartial || !truncated
             ? {}
             : { bottomRightLabel: WRITE_EXPAND_HINT }),
     });
@@ -121,10 +122,10 @@ export const writeTool: BoxedToolDefinition = {
         }
         return renderWritePreviewBox(theme, detailLine, String(args?.content ?? ""), {
             state: context.state,
-            isError: Boolean(context.isError),
-            isPending: Boolean(context.isPartial),
-            running: Boolean(context.executionStarted),
-            expanded: Boolean(context.expanded),
+            isError: context.isError,
+            isPartial: context.isPartial,
+            running: context.executionStarted,
+            expanded: context.expanded,
         });
     },
     result(result, options, theme, context) {
@@ -149,7 +150,7 @@ export const writeTool: BoxedToolDefinition = {
         }
 
         // While the result is still streaming, don't stamp a metrics footer into
-        // the shared state: the compact call keeps its `◌ Running` card and only
+        // the shared state: the compact call keeps its `󰐊 Running` card and only
         // closes with `elapsed · words` once the tool settles.
         if (options.isPartial) return EMPTY_WRITE_RESULT;
 
