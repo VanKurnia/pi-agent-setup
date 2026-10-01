@@ -11,7 +11,7 @@ import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Markdown, Text, type Component } from "@earendil-works/pi-tui";
 import {
     type BoxTheme,
-    formatMetricParts,
+    formatElapsedMetric,
     getTextOutput,
     renderBoxedToolCall,
     renderBoxedToolResult,
@@ -160,9 +160,7 @@ function countTableRows(text: string): number | undefined {
 function dbFooter(theme: BoxTheme, context: BoxedToolContext, rows: number | undefined): string {
     const elapsedMs = stateElapsedMs(context);
     const elapsed =
-        elapsedMs === undefined
-            ? theme.fg("dim", "--")
-            : formatMetricParts(theme, (elapsedMs / 1000).toFixed(2), "s");
+        elapsedMs === undefined ? theme.fg("dim", "--") : formatElapsedMetric(theme, elapsedMs);
     if (rows === undefined) return elapsed;
     return `${elapsed}${theme.fg("dim", " · ")}${theme.fg("dim", `${rows} ${rows === 1 ? "row" : "rows"}`)}`;
 }

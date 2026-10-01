@@ -34,7 +34,7 @@ import { stripAnsi } from "../../../shared/ansi.js";
 import {
     type BoxTheme,
     dimLine,
-    formatMetricParts,
+    formatElapsedMetric,
     formatToolTitlePrefix,
     RUNNING_TITLE_GLYPH,
     themeCacheKey,
@@ -311,7 +311,7 @@ function batchStatus(batch: BatchState): BatchStatus {
 }
 
 function formatElapsed(theme: BoxTheme, elapsedMs: number): string {
-    return `${theme.fg("dim", " · ")}${formatMetricParts(theme, (elapsedMs / 1000).toFixed(2), "s")}`;
+    return `${theme.fg("dim", " · ")}${formatElapsedMetric(theme, elapsedMs)}`;
 }
 
 function bold(theme: BoxTheme, text: string): string {

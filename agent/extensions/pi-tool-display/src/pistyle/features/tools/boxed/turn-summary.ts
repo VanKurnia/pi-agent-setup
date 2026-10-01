@@ -39,7 +39,7 @@
 //   surface stays untouched when the turn is not collapsed.
 
 import type { Component } from "@earendil-works/pi-tui";
-import { type BoxTheme, formatMetricParts } from "../../../shared/box.js";
+import { type BoxTheme, formatElapsedMetric } from "../../../shared/box.js";
 import { safeTruncateToWidth } from "../../../shared/render-budget.js";
 import { countDiffStats, firstText } from "../../../shared/split-diff.js";
 import { pluralForm } from "./output-tree.js";
@@ -500,7 +500,7 @@ function formatTurnSummaryLine(theme: BoxTheme, turn: TurnState): string {
             ` · ${summary.failedCount} ${pluralForm("failure", summary.failedCount)}`,
         );
     if (summary.elapsedMs !== undefined)
-        line += `${theme.fg("dim", " · ")}${formatMetricParts(theme, (summary.elapsedMs / 1000).toFixed(2), "s")}`;
+        line += `${theme.fg("dim", " · ")}${formatElapsedMetric(theme, summary.elapsedMs)}`;
     return line;
 }
 

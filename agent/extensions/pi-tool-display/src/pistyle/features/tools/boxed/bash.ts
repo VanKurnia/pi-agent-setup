@@ -9,7 +9,7 @@ import {
     boxedToolWidthKey,
     formatBoxedRunningStatus,
     formatBoxedWords,
-    formatMetricParts,
+    formatElapsedMetric,
     formatToolOutputLine,
     getTextOutput,
     renderBoxedToolCall,
@@ -354,9 +354,7 @@ function bashFooter(
     isError: boolean,
 ): string {
     const elapsed =
-        elapsedMs === undefined
-            ? theme.fg("dim", "--")
-            : formatMetricParts(theme, (elapsedMs / 1000).toFixed(2), "s");
+        elapsedMs === undefined ? theme.fg("dim", "--") : formatElapsedMetric(theme, elapsedMs);
     const words = bodyText.trim() ? formatBoxedWords(theme, bodyText) : "";
 
     if (status?.kind === "timeout") {

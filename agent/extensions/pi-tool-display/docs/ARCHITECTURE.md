@@ -133,8 +133,9 @@ marks running batch panels/members (`batch.ts`) and gh run statuses (`gh.ts`; ca
 a dim `-`). The tool name
 uses the theme accent (blue). Measured values use the metric identity colors — value in `warning`
 yellow, unit in `accent` blue (`formatMetricParts` / `formatElapsedMetric` in `shared/box.ts`) — and
-the result divider label is `warning` yellow. The elapsed ticker refreshes every 100 ms, so the
-running value ticks in milliseconds.
+the result divider label is `warning` yellow. `formatElapsedParts` promotes elapsed units (ms → s → m
+→ h: `812ms`, `15.28s`, `2m5s`, `1h2m`) for every footer, metric row and running label. The elapsed
+ticker refreshes every 100 ms, so the running value ticks in milliseconds.
 
 ## Why the renderer-selection patch exists
 

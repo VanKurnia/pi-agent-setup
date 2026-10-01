@@ -31,14 +31,18 @@ function formatCompactCount(value: number): string {
     return `${Math.round(value / 1000000)}M`;
 }
 
-/** Elapsed metric split into value and unit so callers can color them apart. */
+/** Elapsed metric split into value and unit so callers can color them apart.
+ *  Units promote ms → s → m → h, so a long run never reads as `180.00s`. */
 export function formatElapsedParts(
     ms: number | undefined,
 ): { value: string; unit: string } | undefined {
     if (typeof ms !== "number" || !Number.isFinite(ms)) return undefined;
     if (ms < 1000) return { value: `${Math.round(ms)}`, unit: "ms" };
-    const s = ms / 1000;
-    return { value: s < 60 ? s.toFixed(2) : `${Math.round(s)}`, unit: "s" };
+    const totalSeconds = Math.floor(ms / 1000);
+    if (totalSeconds < 60) return { value: (ms / 1000).toFixed(2), unit: "s" };
+    const minutes = Math.floor(totalSeconds / 60);
+    if (minutes < 60) return { value: `${minutes}m${totalSeconds % 60}`, unit: "s" };
+    return { value: `${Math.floor(minutes / 60)}h${minutes % 60}`, unit: "m" };
 }
 
 export function formatElapsedMs(ms: number | undefined): string {

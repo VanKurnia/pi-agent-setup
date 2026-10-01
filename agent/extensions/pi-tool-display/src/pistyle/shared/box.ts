@@ -18,6 +18,7 @@ import { relative, resolve } from "node:path";
 import type { Component } from "@earendil-works/pi-tui";
 import { bgHex, fgHex, isHexColor, stripAnsi } from "./ansi.js";
 import {
+    formatElapsedMs,
     formatElapsedParts,
     formatToolMetrics,
     getElapsedMs,
@@ -490,7 +491,7 @@ export function formatBoxedToolTitle(
 export function formatBoxedRunningStatus(theme: BoxTheme, elapsedMs: number | undefined): string {
     const label = theme.fg("success", `${RUNNING_STATUS_GLYPH} Running`);
     if (elapsedMs === undefined) return label;
-    return `${label}${theme.fg("dim", " · ")}${formatMetricParts(theme, (elapsedMs / 1000).toFixed(2), "s")}`;
+    return `${label}${theme.fg("dim", " · ")}${formatElapsedMetric(theme, elapsedMs)}`;
 }
 
 /** Structural line — box frame, tree branch, divider, gutter — wrapped in
@@ -1082,8 +1083,7 @@ export function renderBoxedToolResult(
 
 export function formatBoxedWallTime(result: MetricResultLike | undefined): string {
     const elapsedMs = getElapsedMs(result);
-    if (elapsedMs === undefined) return "--";
-    return `${(elapsedMs / 1000).toFixed(2)}s`;
+    return elapsedMs === undefined ? "--" : formatElapsedMs(elapsedMs);
 }
 
 export function formatBoxedFooterFromValues(
@@ -1093,9 +1093,7 @@ export function formatBoxedFooterFromValues(
     extraParts: string[] = [],
 ): string {
     const elapsedPart =
-        elapsedMs === undefined
-            ? theme.fg("dim", "--")
-            : formatMetricParts(theme, (elapsedMs / 1000).toFixed(2), "s");
+        elapsedMs === undefined ? theme.fg("dim", "--") : formatElapsedMetric(theme, elapsedMs);
     const extraPartList = extraParts.filter(Boolean).map((part) => theme.fg("dim", part));
     const wordsPart = formatBoxedWords(theme, output);
     return [elapsedPart, ...extraPartList, wordsPart].join(theme.fg("dim", " · "));

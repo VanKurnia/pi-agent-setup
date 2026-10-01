@@ -14,7 +14,7 @@ import { Text, type Component } from "@earendil-works/pi-tui";
 import {
     type BoxTheme,
     formatBoxedRunningStatus,
-    formatMetricParts,
+    formatElapsedMetric,
     formatToolName,
     formatToolOutputLine,
     getTextOutput,
@@ -223,7 +223,7 @@ function rowMetrics(row: SubagentRow, theme: BoxTheme): string {
         parts.push(`${value} tok`);
     }
     if (durationMs !== undefined && durationMs > 0) {
-        parts.push(formatMetricParts(theme, (durationMs / 1000).toFixed(2), "s"));
+        parts.push(formatElapsedMetric(theme, durationMs));
     }
     return parts.join(theme.fg("dim", " · "));
 }
@@ -318,9 +318,7 @@ function footerLines(
     const elapsedMs = stateElapsedMs(context);
     const parts: string[] = [];
     parts.push(
-        elapsedMs === undefined
-            ? theme.fg("dim", "--")
-            : formatMetricParts(theme, (elapsedMs / 1000).toFixed(2), "s"),
+        elapsedMs === undefined ? theme.fg("dim", "--") : formatElapsedMetric(theme, elapsedMs),
     );
     parts.push(theme.fg("dim", `${ok}/${rows.length} agents`));
     const tokens = rows.reduce((sum, row) => sum + (asNumber(row.progress?.tokens) ?? 0), 0);

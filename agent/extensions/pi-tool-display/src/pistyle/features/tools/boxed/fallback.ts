@@ -6,7 +6,7 @@ import type { BoxTheme, MetricResultLike } from "../../../shared/box.js";
 import {
     formatBoxedRunningStatus,
     formatBoxedWords,
-    formatMetricParts,
+    formatElapsedMetric,
     formatToolName,
     formatToolOutputLine,
     formatToolParamLines,
@@ -121,9 +121,7 @@ function formatBoxedFooterWithElapsed(
     output: string,
 ): string {
     const elapsed =
-        elapsedMs === undefined
-            ? theme.fg("dim", "--")
-            : formatMetricParts(theme, (elapsedMs / 1000).toFixed(2), "s");
+        elapsedMs === undefined ? theme.fg("dim", "--") : formatElapsedMetric(theme, elapsedMs);
     const words = output.trim() ? formatBoxedWords(theme, output) : "";
     const parts = [elapsed];
     if (words) parts.push(words);
