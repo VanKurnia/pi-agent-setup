@@ -18,7 +18,11 @@ import { SettingsManager, THINKING_LEVELS } from "./src/settings.js";
 import { refreshAgents } from "./src/registry.js";
 import { buildSubagentExecute } from "./dispatch.js";
 import { renderSubagentToolCall, renderSubagentToolResult } from "./render.js";
-import { finishSubagentWidget, updateSubagentWidget } from "./src/widget.js";
+import {
+    finishSubagentWidget,
+    resetSubagentWidgetState,
+    updateSubagentWidget,
+} from "./src/widget.js";
 import {
     SUBAGENT_EVENTS,
     type SubagentCreatedEvent,
@@ -382,6 +386,13 @@ export default function registerSubagent(pi: ExtensionAPI) {
     });
 
     const execute = buildSubagentExecute(maxConcurrency, settings);
+
+    // Widget rows and the "already finished" guard are process-global, so a new
+    // session must start clean: a recycled toolCallId would otherwise suppress
+    // that run's rows (and aborted rows could linger above the editor).
+    pi.on("session_start", () => {
+        resetSubagentWidgetState();
+    });
 
     // Wire lifecycle events via pi.events
     const executeWithEvents = async (

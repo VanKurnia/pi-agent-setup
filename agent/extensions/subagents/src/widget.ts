@@ -188,3 +188,15 @@ export function finishSubagentWidget(ctx: any, toolCallId: string): void {
     if (live.size === 0) stopTimer();
     paint(ctx);
 }
+
+/**
+ * Reset every module-level field — called on `session_start` (register.ts).
+ * `live`, `finished` and the repaint timer outlive one conversation in a process
+ * that keeps the extension loaded, so a new session must not inherit them.
+ */
+export function resetSubagentWidgetState(): void {
+    live.clear();
+    finished.clear();
+    stopTimer();
+    lastCtx = undefined;
+}
