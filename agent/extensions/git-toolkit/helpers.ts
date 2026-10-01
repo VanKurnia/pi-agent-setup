@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 export function runGit(
     repoPath: string,
     args: string[],
-    options?: { signal?: AbortSignal }
+    options?: { signal?: AbortSignal },
 ): Promise<string> {
     return new Promise((resolve, reject) => {
         if (options?.signal?.aborted) {
@@ -26,15 +26,20 @@ export function runGit(
         };
         options?.signal?.addEventListener("abort", onAbort, { once: true });
 
-        proc.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
-        proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+        proc.stdout.on("data", (d: Buffer) => {
+            stdout += d.toString();
+        });
+        proc.stderr.on("data", (d: Buffer) => {
+            stderr += d.toString();
+        });
 
         proc.on("close", (code) => {
             if (done) return;
             done = true;
             options?.signal?.removeEventListener("abort", onAbort);
             if (code === 0) resolve(stdout.trim());
-            else reject(new Error(stderr.trim() || stdout.trim() || `git exited with code ${code}`));
+            else
+                reject(new Error(stderr.trim() || stdout.trim() || `git exited with code ${code}`));
         });
 
         proc.on("error", (err) => {
@@ -46,14 +51,14 @@ export function runGit(
     });
 }
 
-export function ok(text: string) {
-    return { content: [{ type: "text" as const, text }], details: {} };
+export function ok(text: string, details?: unknown) {
+    return { content: [{ type: "text" as const, text }], details: details ?? {} };
 }
 
-export function fail(message: string) {
+export function fail(message: string, details?: unknown) {
     return {
         content: [{ type: "text" as const, text: `Error: ${message}` }],
         isError: true as const,
-        details: {},
+        details: details ?? {},
     };
 }

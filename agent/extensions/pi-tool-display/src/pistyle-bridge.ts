@@ -17,6 +17,7 @@ import {
     renderFallbackResult,
 } from "./pistyle/features/tools/boxed/fallback.js";
 import { isDbQueryTool, renderDbQueryCall, renderDbQueryResult } from "./db-query-card.js";
+import { isOcrTool, renderOcrCall, renderOcrResult } from "./ocr-card.js";
 import { isSubagentTool, renderSubagentCall, renderSubagentResult } from "./subagent-card.js";
 import { resetBashTreeRegistry } from "./pistyle/features/tools/boxed/bash.js";
 import { resetBatchRegistry } from "./pistyle/features/tools/boxed/batch.js";
@@ -122,6 +123,10 @@ export function renderPistyleToolCall(
     if (isSubagentTool(toolName)) {
         return renderSubagentCall(args, boxTheme, boxedContext);
     }
+    // OCR review/scan get the fork-owned card (live actions, findings on settle).
+    if (isOcrTool(toolName)) {
+        return renderOcrCall(toolName, args, boxTheme, boxedContext);
+    }
     const name = dedicatedToolName(toolName);
     if (!name) {
         return renderFallbackCall(toolName, args, boxTheme, boxedContext);
@@ -148,6 +153,9 @@ export function renderPistyleToolResult(
     }
     if (isSubagentTool(toolName)) {
         return renderSubagentResult(boxedResult, boxedOptions, boxTheme, boxedContext);
+    }
+    if (isOcrTool(toolName)) {
+        return renderOcrResult(boxedResult, boxedOptions, boxTheme, boxedContext);
     }
     const name = dedicatedToolName(toolName);
     if (!name) {

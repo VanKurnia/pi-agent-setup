@@ -118,9 +118,8 @@ export const SubagentParams = Type.Object({
 
 export default function registerSubagent(pi: ExtensionAPI) {
     loadEnv();
+    // Settings load lazily on first access (tool invocation / wizard), not at boot.
     const settings = new SettingsManager();
-    settings.load();
-    const maxConcurrency = settings.maxConcurrent;
 
     pi.registerCommand("reload-agents", {
         description: "Re-discover agent files from ~/.pi/agent/agents/",
@@ -385,7 +384,7 @@ export default function registerSubagent(pi: ExtensionAPI) {
         },
     });
 
-    const execute = buildSubagentExecute(maxConcurrency, settings);
+    const execute = buildSubagentExecute(settings);
 
     // Widget rows and the "already finished" guard are process-global, so a new
     // session must start clean: a recycled toolCallId would otherwise suppress

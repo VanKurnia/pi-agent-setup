@@ -32,7 +32,7 @@ is compile + lint + a manual render pass.
   listed in `FORK.md` until `tsc` is clean. Today that is: the six dead-declaration removals, the
   card-background delta (`TOOL_CARD_BG_HEX` fill in `shared/box.ts` + the same base in
   `split-diff.ts`), the status-colored frames and running glyphs in `shared/box.ts` (plus the batch
-  and gh rows using them), the metric colors and elapsed unit promotion, the bash call expansion, the
+  and gh rows using them), the metric colors and elapsed unit promotion (per-pair unit coloring), the bash call expansion, the
   ANSI-safe line clamp and
   the git/gh status plumbing. Re-applying only the first two silently reverts the rest.
 - `pistyle-bridge.ts` and `pistyle-tool-patch.ts` are version-independent and must **not** be

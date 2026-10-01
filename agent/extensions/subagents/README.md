@@ -2,10 +2,12 @@
 
 A pi extension that registers a single `subagent` tool with two agents:
 
+`~/.pi/agent/subagents.json` is the single source of truth for per-agent model and thinking level — edit it via `/subagents:settings`. If the file is missing, the first `subagent` invocation creates it, seeded with the active session model. Agent `.md` frontmatter does not carry a model.
+
 | Agent | Tools | Model | Purpose |
 |-------|-------|-------|---------|
-| **scout** | read, grep, find, ls, web_search, web_fetch | via `/subagents:settings` (default `$SCOUT_MODEL`) | Fast codebase recon + lightweight web research |
-| **worker** | read, write, edit, safe_bash | via `/subagents:settings` (default `$WORKER_MODEL`) | Code changes |
+| **scout** | read, grep, find, ls, web_search, web_fetch | via `/subagents:settings` | Fast codebase recon + lightweight web research |
+| **worker** | read, write, edit, safe_bash | via `/subagents:settings` | Code changes |
 | — | git_status, git_diff, git_log, etc. | — | Git operations (via git-toolkit) |
 | — | query_sqlite, query_mysql | — | Database queries (via db-viewer) |
 

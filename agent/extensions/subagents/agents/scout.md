@@ -2,7 +2,6 @@
 name: scout
 description: Fast codebase recon + lightweight web research — explores files, finds patterns, maps architecture, and synthesizes web sources when needed
 tools: read, ffgrep, fffind, recall, bash, git_status, git_diff_unstaged, git_diff_staged, git_diff, git_log, git_show, git_branch, query_sqlite, query_mysql, web_search, web_fetch, batch_web_fetch, ninerouter_web_search, ninerouter_web_fetch
-model: $SCOUT_MODEL
 ---
 
 You are a scout agent. Quickly investigate a codebase and return structured findings.

@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -73,10 +73,12 @@ export function loadSettings(agentDir: string): SubagentsSettings {
         const raw = JSON.parse(readFileSync(settingsFile, "utf-8"));
         return sanitize(raw);
     } catch (err) {
-        // Warn, then fall back to defaults.
-        console.warn(
-            `[subagents] Failed to load ${settingsFile}: ${(err as Error)?.message ?? String(err)}; using defaults.`,
-        );
+        // A missing file is normal: it is created on the first subagent invocation.
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+            console.warn(
+                `[subagents] Failed to load ${settingsFile}: ${(err as Error)?.message ?? String(err)}; using defaults.`,
+            );
+        }
         return {};
     }
 }
@@ -108,18 +110,22 @@ export class SettingsManager {
     }
 
     get maxConcurrent(): number {
+        this.ensureLoaded();
         return this._maxConcurrent;
     }
 
     set maxConcurrent(n: number) {
+        this.ensureLoaded();
         this._maxConcurrent = Math.max(1, Math.min(n, MAX_CONCURRENT_CEILING));
     }
 
     getAgentModel(agentName: string): string | undefined {
+        this.ensureLoaded();
         return this._agentModels[agentName];
     }
 
     setAgentModel(agentName: string, modelId: string | undefined): void {
+        this.ensureLoaded();
         if (modelId) {
             this._agentModels[agentName] = modelId;
         } else {
@@ -128,14 +134,17 @@ export class SettingsManager {
     }
 
     getAllAgentModels(): Readonly<Record<string, string>> {
+        this.ensureLoaded();
         return this._agentModels;
     }
 
     getAgentThinking(agentName: string): ThinkingLevel | undefined {
+        this.ensureLoaded();
         return this._agentThinking[agentName];
     }
 
     setAgentThinking(agentName: string, level: ThinkingLevel | undefined): void {
+        this.ensureLoaded();
         if (level) {
             this._agentThinking[agentName] = level;
         } else {
@@ -144,7 +153,13 @@ export class SettingsManager {
     }
 
     getAllAgentThinking(): Readonly<Record<string, ThinkingLevel>> {
+        this.ensureLoaded();
         return this._agentThinking;
+    }
+
+    /** Read the config file once, on first access. Keeps extension boot free of disk I/O. */
+    private ensureLoaded(): void {
+        if (!this._loaded) this.load();
     }
 
     /** Load from disk (global config). Reads once; subsequent calls are cheap no-ops. */
@@ -173,8 +188,18 @@ export class SettingsManager {
         this.load();
     }
 
+    /**
+     * Write the config file when it is missing, seeded from the caller's defaults, then sync
+     * in-memory state. No-op when the file exists.
+     */
+    ensureSeeded(payload: SubagentsSettings): void {
+        if (existsSync(settingsPath(this.agentDir))) return;
+        if (saveSettings(payload, this.agentDir)) this.reload();
+    }
+
     /** Save global settings (writes only non-default fields). */
     save(): boolean {
+        this.ensureLoaded();
         const payload: SubagentsSettings = {};
         payload.maxConcurrent = this._maxConcurrent;
         if (Object.keys(this._agentModels).length > 0) {

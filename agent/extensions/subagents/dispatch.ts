@@ -1,9 +1,9 @@
 import { discoverAgents } from "./src/config.js";
 import { getAgents } from "./src/registry.js";
 import { executeChain, executeHybrid, executeParallel, executeSingle } from "./src/execute.js";
-import type { AgentScope } from "./src/types.js";
+import type { AgentConfig, AgentScope } from "./src/types.js";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { SettingsManager } from "./src/settings.js";
+import { DEFAULT_MAX_CONCURRENCY, type SettingsManager } from "./src/settings.js";
 
 /** Built-in thinking default per agent. Unlisted agents inherit the model default. */
 export function defaultThinkingForAgent(name: string): ThinkingLevel | undefined {
@@ -12,7 +12,41 @@ export function defaultThinkingForAgent(name: string): ThinkingLevel | undefined
     return undefined;
 }
 
-export function buildSubagentExecute(maxConcurrency: number, settings?: SettingsManager) {
+interface ActiveModel {
+    provider: string;
+    id: string;
+}
+
+/** The session model seeds the config; the tool context is untyped at this boundary. */
+function activeModelOf(ctx: any): ActiveModel | undefined {
+    const model = ctx?.model;
+    return typeof model?.provider === "string" && typeof model?.id === "string"
+        ? { provider: model.provider, id: model.id }
+        : undefined;
+}
+
+/** Point every discovered agent at the active session model when the config file is absent. */
+function seedSettings(
+    settings: SettingsManager,
+    agents: AgentConfig[],
+    activeModel: ActiveModel | undefined,
+): void {
+    if (!activeModel) return;
+    const agentModels: Record<string, string> = {};
+    const agentThinking: Record<string, ThinkingLevel> = {};
+    for (const a of agents) {
+        agentModels[a.name] = `${activeModel.provider}/${activeModel.id}`;
+        const thinking = defaultThinkingForAgent(a.name);
+        if (thinking) agentThinking[a.name] = thinking;
+    }
+    settings.ensureSeeded({
+        maxConcurrent: DEFAULT_MAX_CONCURRENCY,
+        agentModels,
+        agentThinking,
+    });
+}
+
+export function buildSubagentExecute(settings: SettingsManager) {
     return async (
         _toolCallId: string,
         params: any,
@@ -37,25 +71,16 @@ export function buildSubagentExecute(maxConcurrency: number, settings?: Settings
             agents = Array.from(agentMap.values());
         }
 
-        // Apply per-agent model and thinking overrides from settings
-        if (settings) {
-            settings.load();
-            const overrides = settings.getAllAgentModels();
-            const agentThinking = settings.getAllAgentThinking();
-            if (Object.keys(overrides).length > 0 || Object.keys(agentThinking).length > 0) {
-                agents = agents.map((a) => ({
-                    ...a,
-                    model: overrides[a.name] ?? a.model,
-                    thinkingLevel:
-                        agentThinking[a.name] ?? defaultThinkingForAgent(a.name) ?? a.thinkingLevel,
-                }));
-            } else {
-                agents = agents.map((a) => ({
-                    ...a,
-                    thinkingLevel: defaultThinkingForAgent(a.name) ?? a.thinkingLevel,
-                }));
-            }
-        }
+        // Apply per-agent model and thinking overrides; settings load lazily on first access.
+        seedSettings(settings, agents, activeModelOf(ctx));
+        const overrides = settings.getAllAgentModels();
+        const agentThinking = settings.getAllAgentThinking();
+        agents = agents.map((a) => ({
+            ...a,
+            model: overrides[a.name] ?? a.model,
+            thinkingLevel:
+                agentThinking[a.name] ?? defaultThinkingForAgent(a.name) ?? a.thinkingLevel,
+        }));
 
         // Confirm project agents if needed
         if (
@@ -107,7 +132,7 @@ export function buildSubagentExecute(maxConcurrency: number, settings?: Settings
 
         // Dispatch: hybrid, chain, parallel, single.
         // Read concurrency live: the wizard can change it after registration.
-        const effectiveConcurrency = settings?.maxConcurrent ?? maxConcurrency;
+        const effectiveConcurrency = settings.maxConcurrent;
         if (params.hybrid && params.hybrid.length > 0) {
             return executeHybrid(
                 params.hybrid,

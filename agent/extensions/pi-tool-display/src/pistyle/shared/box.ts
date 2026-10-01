@@ -19,7 +19,6 @@ import type { Component } from "@earendil-works/pi-tui";
 import { bgHex, fgHex, isHexColor, stripAnsi } from "./ansi.js";
 import {
     formatElapsedMs,
-    formatElapsedParts,
     formatToolMetrics,
     getElapsedMs,
     type MetricResultLike,
@@ -259,10 +258,21 @@ export function formatMetricParts(theme: BoxTheme, value: string, unit: string):
     return `${theme.fg("warning", value)}${theme.fg("accent", unit)}`;
 }
 
-/** Elapsed metric with the value in yellow and the unit in blue. */
+/** Number/unit pairs of a promoted elapsed metric (`812ms`, `15.28s`, `2m5s`,
+ *  `1h2m`); `ms` is listed before `s` so it wins the alternation. */
+const ELAPSED_METRIC_PAIR_RE = /(\d+(?:\.\d+)?)(ms|s|m|h)/g;
+
+/** Elapsed metric with every value in yellow and every unit in blue. The
+ *  promoted form splits into one value/unit pair per unit, so a compound
+ *  duration carries its earlier unit inside the plain value (`2m5` + `s`,
+ *  `1h2` + `m`) — coloring that pair alone leaves the leading unit yellow.
+ *  Recolor the promoted plain form pair by pair instead; the text is the same
+ *  one `formatElapsedParts` builds. */
 export function formatElapsedMetric(theme: BoxTheme, elapsedMs: number | undefined): string {
-    const parts = formatElapsedParts(elapsedMs);
-    return parts ? formatMetricParts(theme, parts.value, parts.unit) : "";
+    return formatElapsedMs(elapsedMs).replace(
+        ELAPSED_METRIC_PAIR_RE,
+        (_match, value: string, unit: string) => formatMetricParts(theme, value, unit),
+    );
 }
 
 export function formatBoxedWords(theme: BoxTheme, text: string): string {
