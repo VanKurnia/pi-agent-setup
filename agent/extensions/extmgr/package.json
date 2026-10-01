@@ -1,0 +1,11 @@
+{
+    "name": "@pi/extmgr",
+    "version": "0.3.0",
+    "description": "Toggle-only local extension manager (forked from pi-extmgr) — /extensions",
+    "pi": {
+        "extensions": [
+            "./index.ts"
+        ]
+    },
+    "dependencies": {}
+}

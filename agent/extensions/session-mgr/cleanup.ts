@@ -14,7 +14,7 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { normalizeDir, shortenHome } from "./helpers/paths.js";
 import { loadCleanupSettings, saveCleanupSettings } from "./helpers/cleanup-settings.js";
-import { showPicker } from "./helpers/picker.js";
+import { showPicker } from "../shared/picker.js";
 import {
     listSessionFiles,
     parseSessionHeader,

@@ -9,27 +9,10 @@
     "edit": true,
     "write": true
   },
-  "customToolOverrides": {
-    "ffgrep": {
-      "enabled": true,
-      "kind": "generic",
-      "outputMode": "summary"
-    },
-    "fffind": {
-      "enabled": true,
-      "kind": "generic",
-      "outputMode": "summary"
-    },
-    "powershell": {
-      "enabled": true,
-      "kind": "generic",
-      "outputMode": "preview"
-    }
-  },
+  "customToolOverrides": {},
   "enableNativeUserMessageBox": true,
   "readOutputMode": "summary",
   "searchOutputMode": "count",
-  "mcpOutputMode": "hidden",
   "previewLines": 8,
   "expandedPreviewMaxLines": 4000,
   "bashOutputMode": "opencode",
@@ -39,6 +22,5 @@
   "diffSplitMinWidth": 120,
   "diffCollapsedLines": 16,
   "diffWordWrap": true,
-  "showTruncationHints": false,
-  "showRtkCompactionHints": true
+  "showTruncationHints": false
 }

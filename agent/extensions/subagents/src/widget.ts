@@ -37,6 +37,8 @@ interface RowSnapshot {
     firstSeen: number;
     exitCode: number;
     title: string;
+    /** Elapsed ms frozen when a terminal status was first seen. Undefined while live. */
+    finishedMs?: number;
 }
 
 function toTitle(task: string): string {
@@ -74,14 +76,30 @@ function ensureTimer(): void {
     }, TICK_MS);
 }
 
-function snapshot(r: AgentResult, firstSeen: number): RowSnapshot {
-    return {
+function isLive(status: string): boolean {
+    return status === "running" || status === "pending";
+}
+
+function snapshot(r: AgentResult, firstSeen: number, prev?: RowSnapshot): RowSnapshot {
+    const status = r.progress?.status ?? "running";
+    const row: RowSnapshot = {
         agent: r.agent,
-        status: r.progress?.status ?? "running",
+        status,
         firstSeen,
         exitCode: r.exitCode ?? -1,
         title: toTitle(r.title || r.task || ""),
     };
+    // Freeze the clock on terminal rows. Elapsed is wall-clock only while a run
+    // is live; otherwise a finished row keeps counting for as long as any
+    // sibling row keeps the shared repaint timer alive. Prefer the duration the
+    // run itself reported, and capture it once so late throttled updates and
+    // repaints can never move the number again.
+    if (!isLive(status)) {
+        const reported = r.progress?.durationMs ?? 0;
+        row.finishedMs =
+            prev?.finishedMs ?? (reported > 0 ? reported : Math.max(0, Date.now() - firstSeen));
+    }
+    return row;
 }
 
 function renderRow(row: RowSnapshot, now: number): string {
@@ -93,7 +111,7 @@ function renderRow(row: RowSnapshot, now: number): string {
               : row.exitCode === 0
                 ? ["✓", ANSI.green]
                 : ["✗", ANSI.red];
-    const duration = styledDuration(Math.max(0, now - row.firstSeen));
+    const duration = styledDuration(row.finishedMs ?? Math.max(0, now - row.firstSeen));
     const agent = styled(ANSI.yellow, row.agent);
     if (!row.title) return `${styled(color, icon)} ${agent} ${DOT} ${duration}`;
     return `${styled(color, icon)} ${agent} ${DOT} ${row.title} ${DOT} ${duration}`;
@@ -120,7 +138,7 @@ function paint(ctx: any): void {
         return;
     }
     const now = Date.now();
-    const running = rows.filter((r) => r.status === "running" || r.status === "pending").length;
+    const running = rows.filter((r) => isLive(r.status)).length;
     const shown = rows.slice(0, MAX_ROWS);
     const hasMore = rows.length > MAX_ROWS;
     const lines = [
@@ -146,7 +164,10 @@ export function updateSubagentWidget(ctx: any, toolCallId: string, results: unkn
     const prev = live.get(toolCallId) ?? [];
     live.set(
         toolCallId,
-        (results as AgentResult[]).map((r, i) => snapshot(r, prev[i]?.firstSeen ?? now)),
+        (results as AgentResult[]).map((r, i) => {
+            const before = prev[i];
+            return snapshot(r, before?.firstSeen ?? now, before);
+        }),
     );
     lastCtx = ctx;
     ensureTimer();

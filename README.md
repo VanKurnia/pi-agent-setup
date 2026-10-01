@@ -101,6 +101,7 @@ Pi connects to these external tools and services (not counting Pi packages):
 | `browser-tools`     | Browser automation — 7 `browser_*` tools (start, nav, eval, pick, content, screenshot, cookies)                                                                                                                                    |
 | `custom-header`     | Customizable startup header                                                                                                                                                                                                        |
 | `db-viewer`         | Secure read-only SQLite/MySQL viewer (`query_sqlite`, `query_mysql`)                                                                                                                                                               |
+| `extmgr`            | Toggle-only local extension manager — list local extensions and enable/disable them (`/extensions`)                                                                                                                              |
 | `filechanges`       | Tracks diffs across edits (`/filechanges`, `/filechanges-accept`, `/filechanges-decline`)                                                                                                                                          |
 | `git-toolkit`       | 12 `git_*` tools (status, diff, log, commit, branch…)                                                                                                                                                                              |
 | `herdr-agent-state` | Agent-state sync for the herdr integration (managed file — do not edit)                                                                                                                                                            |
@@ -127,7 +128,6 @@ Pi connects to these external tools and services (not counting Pi packages):
 | `pi-speeed`           | Performance monitoring for pi agent sessions (npm companion to the local extension)                                 |
 | `pi-smart-fetch`      | Enhanced web-fetch tool                                                                                             |
 | `pi-smart-web-search` | Enhanced web-search tool                                                                                            |
-| `pi-extmgr`           | Extension management commands                                                                                       |
 | `pi-tool-display`     | TUI rendering — collapsed tool output, diff visualization, thinking labels.                                         |
 
 ### Skills

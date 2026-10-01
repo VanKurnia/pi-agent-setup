@@ -3,7 +3,7 @@ import { type SessionInfoEntry } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { promptForName } from "./helpers/picker.js";
+import { promptForName } from "../shared/picker.js";
 import { fileStamp, parseSessionHeader } from "./helpers/sessions.js";
 
 async function handleRclone(args: string, ctx: ExtensionCommandContext): Promise<void> {

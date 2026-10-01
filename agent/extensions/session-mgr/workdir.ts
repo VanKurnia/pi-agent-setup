@@ -27,7 +27,7 @@ import {
     sessionFolder,
 } from "./helpers/sessions.js";
 import { normalizeDir, shortenHome } from "./helpers/paths.js";
-import { showPicker } from "./helpers/picker.js";
+import { showPicker } from "../shared/picker.js";
 
 interface WorkdirEntry {
     cwd: string;
