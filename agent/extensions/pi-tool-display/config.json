@@ -13,7 +13,6 @@
   "enableNativeUserMessageBox": true,
   "collapseAfterTurn": false,
   "boxedToolCalls": true,
-  "passthroughTools": [],
   "readOutputMode": "hidden",
   "searchOutputMode": "hidden",
   "mcpOutputMode": "hidden",

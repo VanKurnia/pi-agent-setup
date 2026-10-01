@@ -76,15 +76,19 @@ told the user nothing about what it was doing.
 - Call card: `➔ Subagent · parallel · scout, worker` header, then one line per requested agent/task
   (title, then the task's first 5 lines; expanded shows all).
 - Result card: one row per agent — status glyph, name, title, `N tools · N tok · elapsed` — then that
-  agent's recent tool calls (6 collapsed, all expanded), the live `▸ current tool` line while running,
-  its latest prose line, and any error. Settled runs append the concatenated output under a rule, and
-  the footer shows `elapsed · ok/total agents · tokens`. The running footer is the fork's standard
-  `󰐊 Running · <elapsed>`.
+  agent's recent tool calls (6 collapsed; expanded lifts the per-agent cap and the output cap, though
+  the boxed-result helper still head/tail-truncates a body past ~40 lines), the live `▸ current tool`
+  line while running, its latest prose line, and any error. Settled runs append the concatenated output
+  under a rule, and the footer shows `elapsed · ok/total agents · tokens`. The running footer is the
+  fork's standard `󰐊 Running · <elapsed>` — until the first partial result paints, the call card reads
+  `… Waiting for output…`, because pi-style's first-partial pass is intentionally empty.
+- Status classification is shared with the subagents widget (`subagents/src/widget.ts`): only
+  `running`/`pending` come from the reported status, and a terminal row is judged by its exit code.
 - Budget: collapsed lines are capped by a card-local `COLLAPSED_RUN_LINES` (24), **not**
   `previewLines` (8) — with the shared preview budget a two-agent run truncated before the output
   section and the card advertised `… more lines omitted` instead of showing the run.
-- `passthroughTools` is the generic escape hatch for tools whose own renderers should survive; it is
-  unused in this repo because this card gives the richer result (box chrome *and* the payload).
+- A tool that needs its own presentation gets a card route in `pistyle-bridge.ts` (one line per
+  direction), next to the db-viewer and subagent cards.
 
 Routing lives in `pistyle-bridge.ts` next to the db-viewer card, for the same re-port reason.
 
@@ -171,7 +175,6 @@ interceptor) and any environment where the patch cannot install.
 | Key | Where | Effect |
 | --- | --- | --- |
 | `boxedToolCalls` | `types.ts`, `config-store.ts`, `config-modal.ts`, `presets.ts` | selects pi-style cards vs compact rows |
-| `passthroughTools` | `types.ts`, `config-store.ts`, `presets.ts`, `pistyle-bridge.ts` | escape hatch: listed tools skip the boxed path and keep their own renderers (default `[]`, unused here — `subagent` has a dedicated card) |
 | `collapseAfterTurn` | same files, plus `pistyle-bridge.ts` | mapped into pi-style's session config; **only effective in pi-style mode** |
 
 Mapping into pi-style's own session config (`pistyle-bridge.ts`):

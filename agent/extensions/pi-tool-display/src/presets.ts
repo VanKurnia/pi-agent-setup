@@ -63,15 +63,10 @@ function customToolOverridesEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): b
     });
 }
 
-function toolNameListsEqual(a: readonly string[], b: readonly string[]): boolean {
-    return a.length === b.length && a.every((name, index) => name === b[index]);
-}
-
 function configsEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
     return (
         toolOverrideOwnershipEqual(a, b) &&
         customToolOverridesEqual(a, b) &&
-        toolNameListsEqual(a.passthroughTools, b.passthroughTools) &&
         a.enableNativeUserMessageBox === b.enableNativeUserMessageBox &&
         a.collapseAfterTurn === b.collapseAfterTurn &&
         a.boxedToolCalls === b.boxedToolCalls &&

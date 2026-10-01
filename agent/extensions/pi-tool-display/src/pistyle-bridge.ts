@@ -27,14 +27,6 @@ import type { ToolDisplayConfig } from "./types.js";
 /** Tools with a dedicated pi-style boxed renderer; powershell shares bash's arguments. */
 const DEDICATED_TOOLS = new Set(["read", "write", "edit", "bash"]);
 
-/**
- * Tools that keep their own renderers in pi-style mode: their `renderCall`/`renderResult`
- * (e.g. `subagent`'s live progress rows) stay visible instead of the boxed cards.
- */
-export function keepsOwnRenderer(toolName: unknown, config: ToolDisplayConfig): boolean {
-    return typeof toolName === "string" && config.passthroughTools.includes(toolName);
-}
-
 /** Resolves the dedicated renderer name for a tool, or undefined for the boxed fallback card. */
 function dedicatedToolName(toolName: unknown): string | undefined {
     if (typeof toolName !== "string") {
@@ -128,7 +120,7 @@ export function renderPistyleToolCall(
     }
     // subagent gets the fork-owned card (per-agent rows, live tool calls).
     if (isSubagentTool(toolName)) {
-        return renderSubagentCall(toolName, args, boxTheme, boxedContext);
+        return renderSubagentCall(args, boxTheme, boxedContext);
     }
     const name = dedicatedToolName(toolName);
     if (!name) {

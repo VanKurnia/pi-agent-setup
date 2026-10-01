@@ -24,11 +24,7 @@ import {
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { resolvePiAgentDir } from "./agent-dir.js";
 
-import {
-    keepsOwnRenderer,
-    renderPistyleToolCall,
-    renderPistyleToolResult,
-} from "./pistyle-bridge.js";
+import { renderPistyleToolCall, renderPistyleToolResult } from "./pistyle-bridge.js";
 import { renderBashCall } from "./bash-display.js";
 import { logToolDisplayDebug } from "./debug-logger.js";
 import { registerCleanup } from "./disposable.js";
@@ -181,7 +177,7 @@ function wrapToolRenderersForPistyle(tool: RuntimeToolDefinition, getConfig: Con
 
     tool.renderCall = (args, theme, context) => {
         const config = getConfig();
-        if (config.boxedToolCalls && context && !keepsOwnRenderer(toolName, config)) {
+        if (config.boxedToolCalls && context) {
             return renderPistyleToolCall(toolName, args, theme, context, config);
         }
         return compactRenderCall?.(args, theme, context);
@@ -189,7 +185,7 @@ function wrapToolRenderersForPistyle(tool: RuntimeToolDefinition, getConfig: Con
 
     tool.renderResult = (result, options, theme, context) => {
         const config = getConfig();
-        if (config.boxedToolCalls && context && !keepsOwnRenderer(toolName, config)) {
+        if (config.boxedToolCalls && context) {
             return renderPistyleToolResult(toolName, result, options, theme, context, config);
         }
         return compactRenderResult?.(result, options, theme, context);

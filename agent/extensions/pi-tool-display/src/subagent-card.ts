@@ -14,6 +14,7 @@ import { Text, type Component } from "@earendil-works/pi-tui";
 import {
     type BoxTheme,
     formatBoxedRunningStatus,
+    formatCompactCount,
     formatElapsedMetric,
     formatToolName,
     formatToolOutputLine,
@@ -68,27 +69,16 @@ interface SubagentProgress {
     error?: unknown;
 }
 
-interface SubagentUsage {
-    turns?: unknown;
-    input?: unknown;
-    output?: unknown;
-    cost?: unknown;
-}
-
 interface SubagentRow {
     agent?: unknown;
     title?: unknown;
     task?: unknown;
     exitCode?: unknown;
-    output?: unknown;
     progress?: SubagentProgress;
-    usage?: SubagentUsage;
 }
 
 interface SubagentDetails {
-    mode?: unknown;
     results?: SubagentRow[];
-    agentScope?: unknown;
 }
 
 /** True for the `subagent` tool this card owns. */
@@ -104,13 +94,17 @@ function asNumber(value: unknown): number | undefined {
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-/** `details` arrives untyped through the renderer bridge; read it defensively. */
-function readDetails(result: BoxedToolResult | undefined): SubagentDetails | undefined {
+/** `details` arrives untyped through the renderer bridge, so every entry is narrowed before use. */
+function readDetails(result: BoxedToolResult | undefined): SubagentRow[] | undefined {
     const details = result?.details;
     if (!details || typeof details !== "object") return undefined;
     const results = (details as SubagentDetails).results;
-    if (!Array.isArray(results) || results.length === 0) return undefined;
-    return details as SubagentDetails;
+    if (!Array.isArray(results)) return undefined;
+    // Rows are dereferenced throughout this card, so non-objects are dropped here.
+    const rows = results.filter(
+        (row): row is SubagentRow => typeof row === "object" && row !== null,
+    );
+    return rows.length > 0 ? rows : undefined;
 }
 
 /** Single-line preview: newlines collapsed, cut to `max` characters. */
@@ -129,72 +123,80 @@ function taskPreviewLines(task: string, max: number): string[] {
         .filter((line) => line.length > 0);
 }
 
-function requestSummary(args: Record<string, unknown>): string {
-    if (Array.isArray(args.hybrid) && args.hybrid.length > 0) {
-        return `hybrid · ${args.hybrid.length} phases`;
-    }
-    if (Array.isArray(args.chain) && args.chain.length > 0) {
-        const agents = args.chain.map((step: { agent?: unknown }) => asString(step?.agent) ?? "?");
-        return `chain · ${agents.join(" → ")}`;
-    }
-    if (Array.isArray(args.tasks) && args.tasks.length > 0) {
-        const agents = args.tasks.map((task: { agent?: unknown }) => asString(task?.agent) ?? "?");
-        return `parallel · ${agents.join(", ")}`;
-    }
-    const agent = asString(args.agent);
-    return agent ? `single · ${agent}` : "single";
+/** One entry of the call card: a requested run, or a phase header in hybrid mode. */
+type CallItem =
+    | { kind: "request"; agent: string; label?: string; task?: string }
+    | { kind: "group"; label: string };
+
+function toRequest(raw: unknown): CallItem {
+    const item = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+    return {
+        kind: "request",
+        agent: asString(item.agent) ?? "?",
+        label: asString(item.title),
+        task: asString(item.task),
+    };
 }
 
-/** Row lines for the call card: one per requested agent/task. */
-function requestDetailLines(
-    args: Record<string, unknown>,
-    expanded: boolean,
-    theme: BoxTheme,
-): string[] {
+function agentNames(items: CallItem[]): string[] {
+    return items.flatMap((item) => (item.kind === "request" ? [item.agent] : []));
+}
+
+/** Flatten the call arguments into the runs being requested, plus a header summary. */
+function readCall(args: Record<string, unknown>): { summary: string; items: CallItem[] } {
+    const hybrid = Array.isArray(args.hybrid) ? args.hybrid : undefined;
+    if (hybrid?.length) {
+        const items: CallItem[] = [];
+        for (const phase of hybrid) {
+            if (phase?.mode === "single") {
+                items.push(toRequest(phase));
+            } else if (Array.isArray(phase?.tasks)) {
+                items.push({ kind: "group", label: `${phase.mode} · ${phase.tasks.length}` });
+                for (const task of phase.tasks) items.push(toRequest(task));
+            }
+        }
+        return { summary: `hybrid · ${hybrid.length} phases`, items };
+    }
+    const chain = Array.isArray(args.chain) ? args.chain : undefined;
+    if (chain?.length) {
+        const items = chain.map(toRequest);
+        return { summary: `chain · ${agentNames(items).join(" → ")}`, items };
+    }
+    const tasks = Array.isArray(args.tasks) ? args.tasks : undefined;
+    if (tasks?.length) {
+        const items = tasks.map(toRequest);
+        return { summary: `parallel · ${agentNames(items).join(", ")}`, items };
+    }
+    return { summary: `single · ${asString(args.agent) ?? "?"}`, items: [toRequest(args)] };
+}
+
+/** Body lines for the call card: one block per requested agent/task. */
+function requestDetailLines(items: CallItem[], expanded: boolean, theme: BoxTheme): string[] {
     const maxLines = expanded ? Number.MAX_SAFE_INTEGER : COLLAPSED_TASK_LINES;
     const lines: string[] = [];
-    const push = (agent: unknown, task: unknown, title: unknown): void => {
-        const name = asString(agent) ?? "?";
-        const label = asString(title);
-        const body = asString(task);
-        const head = `${theme.fg("accent", name)}${label ? theme.fg("dim", ` · ${label}`) : ""}`;
-        lines.push(head);
-        if (body) {
-            for (const line of taskPreviewLines(body, maxLines)) {
-                lines.push(`${theme.fg("muted", "  ")}${theme.fg("dim", line)}`);
-            }
+    for (const item of items) {
+        if (item.kind === "group") {
+            lines.push(theme.fg("dim", item.label));
+            continue;
         }
-    };
-
-    if (Array.isArray(args.hybrid)) {
-        for (const phase of args.hybrid) {
-            if (phase?.mode === "single") {
-                push(phase.agent, phase.task, phase.title);
-            } else if (Array.isArray(phase?.tasks)) {
-                lines.push(theme.fg("dim", `${phase.mode} · ${phase.tasks.length}`));
-                for (const task of phase.tasks) push(task?.agent, task?.task, task?.title);
-            }
+        lines.push(
+            `${theme.fg("accent", item.agent)}${item.label ? theme.fg("dim", ` · ${item.label}`) : ""}`,
+        );
+        for (const line of item.task ? taskPreviewLines(item.task, maxLines) : []) {
+            lines.push(`${theme.fg("muted", "  ")}${theme.fg("dim", line)}`);
         }
-    } else if (Array.isArray(args.chain)) {
-        for (const step of args.chain) push(step?.agent, step?.task, step?.title);
-    } else if (Array.isArray(args.tasks)) {
-        for (const task of args.tasks) push(task?.agent, task?.task, task?.title);
-    } else {
-        push(args.agent, args.task, args.title);
     }
     return lines;
 }
 
+/**
+ * Shared with the subagents widget (`subagents/src/widget.ts`): only `running`
+ * and `pending` come from the reported status, and a terminal row is judged by
+ * its exit code, so both surfaces classify the same payload identically.
+ */
 function rowStatus(row: SubagentRow): "running" | "pending" | "completed" | "failed" {
-    const status = asString(row.progress?.status);
-    if (
-        status === "running" ||
-        status === "pending" ||
-        status === "completed" ||
-        status === "failed"
-    ) {
-        return status;
-    }
+    const status = asString(row.progress?.status) ?? "running";
+    if (status === "running" || status === "pending") return status;
     return row.exitCode === 0 ? "completed" : "failed";
 }
 
@@ -211,20 +213,15 @@ function rowGlyph(row: SubagentRow, theme: BoxTheme): string {
     }
 }
 
-/** `12 tools · 3.4k tok · 41.2s` — the metrics line subagents renders in its own result. */
+/** Compact tool count, tokens and elapsed for one agent row. */
 function rowMetrics(row: SubagentRow, theme: BoxTheme): string {
     const parts: string[] = [];
     const tools = asNumber(row.progress?.toolCount);
     const tokens = asNumber(row.progress?.tokens);
     const durationMs = asNumber(row.progress?.durationMs);
-    if (tools !== undefined && tools > 0) parts.push(`${tools} tools`);
-    if (tokens !== undefined && tokens > 0) {
-        const value = tokens < 1000 ? String(tokens) : `${(tokens / 1000).toFixed(1)}k`;
-        parts.push(`${value} tok`);
-    }
-    if (durationMs !== undefined && durationMs > 0) {
-        parts.push(formatElapsedMetric(theme, durationMs));
-    }
+    if (tools) parts.push(`${tools} tools`);
+    if (tokens) parts.push(`${formatCompactCount(tokens)} tok`);
+    if (durationMs) parts.push(formatElapsedMetric(theme, durationMs));
     return parts.join(theme.fg("dim", " · "));
 }
 
@@ -258,13 +255,8 @@ function toolRowLines(row: SubagentRow, expanded: boolean, theme: BoxTheme): str
     return lines;
 }
 
-function agentBlockLines(
-    row: SubagentRow,
-    index: number,
-    expanded: boolean,
-    theme: BoxTheme,
-): string[] {
-    const agent = asString(row.agent) ?? `agent ${index + 1}`;
+function agentBlockLines(row: SubagentRow, expanded: boolean, theme: BoxTheme): string[] {
+    const agent = asString(row.agent) ?? "?";
     const label = asString(row.title) ?? asString(row.task);
     const head = `${rowGlyph(row, theme)} ${theme.fg("toolTitle", agent)}${label ? theme.fg("dim", ` · ${oneLine(label, 60)}`) : ""}`;
     const metrics = rowMetrics(row, theme);
@@ -282,19 +274,19 @@ function agentBlockLines(
 }
 
 export function renderSubagentCall(
-    _toolName: unknown,
     args: Record<string, unknown>,
     theme: BoxTheme,
     context: BoxedToolContext,
 ): Component {
     noteExecutionStart(context);
     noteBoxedCallState(context);
+    const { summary, items } = readCall(args);
     return renderBoxedToolCall(
         theme,
         formatToolName(SUBAGENT_TOOL_NAME),
-        requestDetailLines(args, context.expanded, theme),
+        requestDetailLines(items, context.expanded, theme),
         {
-            headerDetail: requestSummary(args),
+            headerDetail: summary,
             isError: context.isError,
             isPartial: context.isPartial,
             isPending: context.isPartial,
@@ -305,7 +297,7 @@ export function renderSubagentCall(
 }
 
 function footerLines(
-    details: SubagentDetails,
+    rows: SubagentRow[],
     isPartial: boolean,
     theme: BoxTheme,
     context: BoxedToolContext,
@@ -313,16 +305,14 @@ function footerLines(
     if (isPartial) {
         return [formatBoxedRunningStatus(theme, stateElapsedMs(context))];
     }
-    const rows = details.results ?? [];
-    const ok = rows.filter((row) => rowStatus(row) === "completed").length;
     const elapsedMs = stateElapsedMs(context);
-    const parts: string[] = [];
-    parts.push(
-        elapsedMs === undefined ? theme.fg("dim", "--") : formatElapsedMetric(theme, elapsedMs),
-    );
-    parts.push(theme.fg("dim", `${ok}/${rows.length} agents`));
+    const ok = rows.filter((row) => rowStatus(row) === "completed").length;
     const tokens = rows.reduce((sum, row) => sum + (asNumber(row.progress?.tokens) ?? 0), 0);
-    if (tokens > 0) parts.push(theme.fg("dim", `${tokens} tok`));
+    const parts = [
+        elapsedMs === undefined ? theme.fg("dim", "--") : formatElapsedMetric(theme, elapsedMs),
+        theme.fg("dim", `${ok}/${rows.length} agents`),
+    ];
+    if (tokens) parts.push(theme.fg("dim", `${formatCompactCount(tokens)} tok`));
     return [parts.join(theme.fg("dim", " · "))];
 }
 
@@ -341,11 +331,11 @@ export function renderSubagentResult(
     context: BoxedToolContext,
 ): Component {
     const firstResultPass = noteBoxedResultPhase(context, options.isPartial);
-    const details = readDetails(result);
+    const rows = readDetails(result);
     const output = getTextOutput(result);
-    if (!details) {
-        // No structured payload (e.g. the call was rejected before dispatch):
-        // fall back to the plain output so the card never renders empty.
+    if (!rows) {
+        // No structured payload: fall back to the plain output so the card never
+        // renders empty.
         const text = output.trim() || "No output received yet";
         return renderBoxedToolResult(theme, (width) => new Text(text, 0, 0).render(width), {
             dividerLabel: "Output",
@@ -357,17 +347,17 @@ export function renderSubagentResult(
     if (options.isPartial && firstResultPass) return EMPTY_RESULT;
 
     const budget = options.expanded ? getToolsRenderConfig().maxExpandedLines : COLLAPSED_RUN_LINES;
+    const hasOutput = output.trim().length > 0;
 
     const bodyLines = (contentWidth: number): string[] => {
-        const rows = details.results ?? [];
         const lines: string[] = [];
-        rows.forEach((row, index) => {
+        for (const [index, row] of rows.entries()) {
             if (index > 0) lines.push("");
-            lines.push(...agentBlockLines(row, index, options.expanded, theme));
-        });
+            lines.push(...agentBlockLines(row, options.expanded, theme));
+        }
 
         // Settled runs append the concatenated output underneath the rows.
-        if (!options.isPartial && output.trim()) {
+        if (!options.isPartial && hasOutput) {
             lines.push("");
             lines.push(theme.fg("muted", "─".repeat(Math.max(8, contentWidth))));
             const maxOutput = options.expanded ? budget : COLLAPSED_OUTPUT_LINES;
@@ -392,10 +382,9 @@ export function renderSubagentResult(
         return lines;
     };
 
-    const hasOutput = output.trim().length > 0;
     return renderBoxedToolResult(theme, bodyLines, {
         dividerLabel: options.isPartial ? "Agents" : "Run",
-        footerLines: footerLines(details, options.isPartial, theme, context),
+        footerLines: footerLines(rows, options.isPartial, theme, context),
         showDivider: options.isPartial ? hasOutput : true,
         isError: context.isError,
         isPartial: options.isPartial,
