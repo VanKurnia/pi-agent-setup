@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { Config } from "./config";
 
 type Theme = ExtensionContext["ui"]["theme"];
@@ -12,8 +12,20 @@ const BADGE_CLOSERS: Record<string, string> = {
 
 function styledSpeedText(theme: Theme, config: Config, speed: number | null) {
     const value = speed === null ? "--" : speed.toFixed(1);
-    const valueTone = speed === null ? "dim" : "accent";
+    const valueTone = speed === null ? "dim" : speedTone(speed);
     return `${theme.fg(valueTone, value)} ${theme.fg("dim", config.label)}`;
+}
+
+/** Speed tier colors: a slow stream reads red, a saturated one green. The tiers
+ *  are half-open, so a value landing on a boundary takes the faster tier
+ *  (15 → orange, 30 → yellow, 60 → blue, 100 → green). `syntaxNumber` is the
+ *  theme's orange; `success` is the fastest tier's tone. */
+function speedTone(speed: number): ThemeColor {
+    if (speed < 15) return "error";
+    if (speed < 30) return "syntaxNumber";
+    if (speed < 60) return "warning";
+    if (speed < 100) return "accent";
+    return "success";
 }
 
 function styledSpeedBadge(theme: Theme, config: Config, speed: number | null) {
