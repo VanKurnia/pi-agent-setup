@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Boot module graph flattened, 46 files -> 8.** Pi loads extensions through jiti, which measures
+  ~19 ms per module regardless of size; splitting 500 KB across 46 modules cost more than the code.
+  Measured with `PI_TIMING=1 pi --mode rpc`, median over 8+ boots:
+
+  | | files | extension load |
+  | --- | ---: | ---: |
+  | before | 46 | 2,161 ms |
+  | after | 8 | ~297 ms |
+
+  On a full boot this extension went from the slowest extension (1,939 ms, 17% of all extension load)
+  to 82 ms (2%), and total boot dropped from 6,180 ms to 4,265 ms.
+
+  Merges performed: `pistyle/shared/*` (6 -> 1), `pistyle/features/tools/boxed/*` (18 -> 1),
+  `user-message-box*` (5 -> 1), the three fork cards (3 -> `fork-cards.ts`), the support modules
+  (7 -> `support.ts`), and the core wiring (5 -> `wiring.ts`).
+
+  Byte size is unchanged (~515 KB boot-static) — this buys file count, not volume. Each merged file
+  keeps `// from: <original>` section markers; `.script/merge.mjs` and `.script/merge-finish.mjs`
+  regenerate a merge from a source list, and `.script/smoke-tool-display.mjs` exercises 11 render
+  paths (read/bash/edit/write/grep/ls/find/unknown/ocr/db/subagent) as a regression check.
+
+  Symbols renamed to avoid collisions introduced by the shared scope: the dispatcher is now
+  `renderBoxedToolForCall` / `renderBoxedToolForResult` (the shared box helpers of those names are
+  imported by several renderers), ls's `displayPath` -> `lsDisplayPath`, grep's `renderErrorLines` ->
+  `renderGrepErrorLines`, subagent's `readDetails` -> `readSubagentRows`. Duplicate definitions that
+  were byte-identical (`bold`, `pathLabel`, `MAX_HIGHLIGHT_DIFF_*`, `asString`, `asNumber`, `oneLine`,
+  `EMPTY_RESULT`, `COLLAPSED_RUN_LINES`, `ConfigGetter`) were collapsed to one.
+
+### Removed
+
+- Compact render path. `pistyle-tool-patch.ts` bypassed every renderer this extension registered
+  whenever `boxedToolCalls` was on, so the path was unreachable in practice while carrying ~190 KB.
+  Deleted `src/tool-overrides.ts`, `bash-display.ts`, `diff-renderer.ts`, `diff-presentation.ts`,
+  `line-width-safety.ts`, `pending-diff-preview.ts`, `write-display-utils.ts` and
+  `tool-display-api-consumer.{js,d.ts}` (no importer in this repo; the `pi-tool-display.api.v1`
+  global it wraps is still published).
+- `boxedToolCalls`. The pi-style boxed cards are now the only presentation; `pistyle-tool-patch.ts`
+  patches `getCallRenderer` / `getResultRenderer` unconditionally.
+- `capabilities.ts`. It existed only to guard compact-path config fields against detected
+  RTK/MCP tooling, so it had nothing left to guard.
+- Never-referenced declarations plus the cascade their removal orphaned: `BOX_WIDTH_CACHE`,
+  `TOOL_BODY_INDENT`, `TOOL_RIGHT_MARGIN`, `formatToolMetrics`, `formatBoxedFooterFromValues`,
+  `countDiffStats`, `firstText`, `buildMembers`, `currentRun`, `parseAnsiFgToRgb`, `wrapAnsi`,
+  `rgbToHex`, `boxBorder`, `renderToolCallHeader`, `renderLines`, and others.
+- The `turn-summary` registry writers (`beginAgentRun`, `registerTurnFromMessage`,
+  `rebuildTurnRegistryFromEntries`, `finishAgentRun`, `invalidateTurnMembers`,
+  `releaseTurnInvalidators`). They were commented "Live path" but never wired to Pi's
+  `agent_start` / `turn_end`, so the turn-summary card could never be populated.
+- `ZellijSettingsModal` in `zellij-modal.ts`; nothing constructed it.
+
+### Changed
+
+- `src/tool-decoration.ts` replaces `src/tool-overrides.ts`, keeping only what rendering does not
+  cover: model-facing MCP metadata (label, description, prompt snippet/guidelines, parameters,
+  prepareArguments), the `pi.registerTool` interception, and the `pi-tool-display.api.v1` global.
+  `decorateTool` now attaches renderers only when the caller supplies them via an adapter, instead
+  of synthesising compact read/edit/mcp renderers.
+- Config schema reduced to the five fields the boxed path reads: `enabled`,
+  `enableNativeUserMessageBox`, `collapseAfterTurn`, `previewLines`, `expandedPreviewMaxLines`.
+  Dropped: `boxedToolCalls`, `registerToolOverrides`, `customToolOverrides`,
+  `read`/`search`/`mcpOutputMode`, `bashOutputMode`, `bashCollapsedLines`, `diffViewMode`,
+  `diffIndicatorMode`, `diffSplitMinWidth`, `diffCollapsedLines`, `diffWordWrap`,
+  `showTruncationHints`, `showRtkCompactionHints`. `normalizeToolDisplayConfig` ignores unknown
+  keys, so existing `config.json` files still load; stale keys are dropped on the next save.
+- Presets differ only in output volume — opencode 8/4000, balanced 12/8000, verbose 20/20000
+  (`previewLines` / `expandedPreviewMaxLines`).
+- `/tool-display` modal rebuilt around the surviving settings; `openSettingsModal` and
+  `handleToolDisplayArgs` are now internal.
+
+### Internal
+
+- 104 exports that were only ever read inside their own file lost the `export` keyword.
+  `ToolDisplayAdapter` and `ToolDisplayApi` stay exported as the public contract.
+- Extension total: 74 files / 898 KB -> 27 files / 651 KB.
+
 ## [0.5.0] - 2026-07-03
 
 ### Added

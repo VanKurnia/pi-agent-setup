@@ -1,99 +1,37 @@
-import { cloneCustomToolOverrides } from "./config-store.js";
-import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "./types.js";
+import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "./support.js";
 
 export const TOOL_DISPLAY_PRESETS = ["opencode", "balanced", "verbose"] as const;
 export type ToolDisplayPreset = (typeof TOOL_DISPLAY_PRESETS)[number];
 
+/** Presets differ only in how much output a card shows before it is expanded. */
 const TOOL_DISPLAY_PRESET_CONFIGS: Record<ToolDisplayPreset, ToolDisplayConfig> = {
     opencode: {
         ...DEFAULT_TOOL_DISPLAY_CONFIG,
-        registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides },
     },
     balanced: {
         ...DEFAULT_TOOL_DISPLAY_CONFIG,
-        registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides },
-        readOutputMode: "summary",
-        searchOutputMode: "count",
-        mcpOutputMode: "summary",
-        bashOutputMode: "summary",
+        previewLines: 12,
+        expandedPreviewMaxLines: 8000,
     },
     verbose: {
         ...DEFAULT_TOOL_DISPLAY_CONFIG,
-        registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides },
-        readOutputMode: "preview",
-        searchOutputMode: "preview",
-        mcpOutputMode: "preview",
-        bashOutputMode: "preview",
-        previewLines: 12,
-        bashCollapsedLines: 20,
+        previewLines: 20,
+        expandedPreviewMaxLines: 20_000,
     },
 };
 
-function toolOverrideOwnershipEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
-    return (
-        a.registerToolOverrides.read === b.registerToolOverrides.read &&
-        a.registerToolOverrides.grep === b.registerToolOverrides.grep &&
-        a.registerToolOverrides.find === b.registerToolOverrides.find &&
-        a.registerToolOverrides.ls === b.registerToolOverrides.ls &&
-        a.registerToolOverrides.bash === b.registerToolOverrides.bash &&
-        a.registerToolOverrides.edit === b.registerToolOverrides.edit &&
-        a.registerToolOverrides.write === b.registerToolOverrides.write
-    );
-}
-
-function customToolOverridesEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
-    const aEntries = Object.entries(a.customToolOverrides).sort(([left], [right]) =>
-        left.localeCompare(right),
-    );
-    const bEntries = Object.entries(b.customToolOverrides).sort(([left], [right]) =>
-        left.localeCompare(right),
-    );
-    if (aEntries.length !== bEntries.length) {
-        return false;
-    }
-
-    return aEntries.every(([toolName, override], index) => {
-        const [otherToolName, otherOverride] = bEntries[index];
-        return (
-            toolName === otherToolName &&
-            override.enabled === otherOverride.enabled &&
-            override.kind === otherOverride.kind &&
-            override.outputMode === otherOverride.outputMode
-        );
-    });
-}
-
 function configsEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
     return (
-        toolOverrideOwnershipEqual(a, b) &&
-        customToolOverridesEqual(a, b) &&
+        a.enabled === b.enabled &&
         a.enableNativeUserMessageBox === b.enableNativeUserMessageBox &&
         a.collapseAfterTurn === b.collapseAfterTurn &&
-        a.boxedToolCalls === b.boxedToolCalls &&
-        a.readOutputMode === b.readOutputMode &&
-        a.searchOutputMode === b.searchOutputMode &&
-        a.mcpOutputMode === b.mcpOutputMode &&
         a.previewLines === b.previewLines &&
-        a.expandedPreviewMaxLines === b.expandedPreviewMaxLines &&
-        a.bashOutputMode === b.bashOutputMode &&
-        a.bashCollapsedLines === b.bashCollapsedLines &&
-        a.diffViewMode === b.diffViewMode &&
-        a.diffIndicatorMode === b.diffIndicatorMode &&
-        a.diffSplitMinWidth === b.diffSplitMinWidth &&
-        a.diffCollapsedLines === b.diffCollapsedLines &&
-        a.diffWordWrap === b.diffWordWrap &&
-        a.showTruncationHints === b.showTruncationHints &&
-        a.showRtkCompactionHints === b.showRtkCompactionHints
+        a.expandedPreviewMaxLines === b.expandedPreviewMaxLines
     );
 }
 
 export function getToolDisplayPresetConfig(preset: ToolDisplayPreset): ToolDisplayConfig {
-    const config = TOOL_DISPLAY_PRESET_CONFIGS[preset];
-    return {
-        ...config,
-        registerToolOverrides: { ...config.registerToolOverrides },
-        customToolOverrides: cloneCustomToolOverrides(config.customToolOverrides),
-    };
+    return { ...TOOL_DISPLAY_PRESET_CONFIGS[preset] };
 }
 
 export function detectToolDisplayPreset(config: ToolDisplayConfig): ToolDisplayPreset | "custom" {

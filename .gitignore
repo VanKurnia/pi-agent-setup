@@ -53,6 +53,10 @@ AGENTS.md
 # TypeScript
 tsconfig.tsbuildinfo
 
+# Generated dev-check scope (see .script/dev-scope.mjs) — machine-local: it
+# mirrors the local /extensions toggle state, which is untracked by design.
+tsconfig.devscope.json
+
 # IDE workspace
 pi-x-ide/
 

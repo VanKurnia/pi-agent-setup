@@ -1,22 +1,27 @@
 {
   "name": "pi-agent-setup",
   "private": true,
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint agent/extensions/",
-    "lint:fix": "eslint agent/extensions/ --fix",
+    "dev-scope": "node .script/dev-scope.mjs",
+    "typecheck": "node .script/dev-scope.mjs --quiet && tsc --noEmit",
+    "lint": "node .script/dev-scope.mjs --quiet && eslint agent/extensions/",
+    "lint:fix": "node .script/dev-scope.mjs --quiet && eslint agent/extensions/ --fix",
     "format": "prettier --write agent/extensions/",
     "format:check": "prettier --check agent/extensions/",
-    "prepare": "husky"
+    "prepare": "husky && node .script/dev-scope.mjs --quiet"
   },
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "^0.87.1",
-    "@earendil-works/pi-ai": "^0.87.1",
-    "@earendil-works/pi-coding-agent": "^0.87.1",
-    "@earendil-works/pi-tui": "^0.87.1",
+    "@earendil-works/pi-agent-core": "^1.0.0",
+    "@earendil-works/pi-ai": "^1.0.0",
+    "@earendil-works/pi-coding-agent": "^1.0.0",
+    "@earendil-works/pi-tui": "^1.0.0",
     "@eslint/js": "^9.0.0",
     "@types/node": "^22.0.0",
     "eslint": "^9.0.0",
+    "globals": "^14.0.0",
     "husky": "^9.0.0",
     "lint-staged": "^15.0.0",
     "prettier": "^3.0.0",

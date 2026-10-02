@@ -1,27 +1,14 @@
 // Vendored from ../zellij-modal/index.ts to keep pi-tool-display standalone.
 // Keep this module in sync when upstream zellij-modal primitives change.
-import {
-    getSettingsListTheme,
-    type ExtensionAPI,
-    type Theme,
-} from "@earendil-works/pi-coding-agent";
-import {
-    Box,
-    Container,
-    SettingsList,
-    Spacer,
-    Text,
-    truncateToWidth,
-    visibleWidth,
-    type SettingItem,
-} from "@earendil-works/pi-tui";
+import { type ExtensionAPI, type Theme } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 const ANSI_RESET = "\x1b[0m";
 
 /**
  * Border character set used to render a modal frame.
  */
-export interface BorderCharacters {
+interface BorderCharacters {
     /** Top-left corner. */
     topLeft: string;
     /** Top-right corner. */
@@ -43,7 +30,7 @@ export interface BorderCharacters {
 /**
  * Predefined border character sets aligned with Zellij styles.
  */
-export const BORDER_STYLES = {
+const BORDER_STYLES = {
     rounded: {
         topLeft: "╭",
         topRight: "╮",
@@ -85,12 +72,12 @@ export const BORDER_STYLES = {
 /**
  * Name of a supported border style.
  */
-export type BorderStyle = keyof typeof BORDER_STYLES;
+type BorderStyle = keyof typeof BORDER_STYLES;
 
 /**
  * Supported palette color formats.
  */
-export type PaletteColor =
+type PaletteColor =
     | { type: "rgb"; r: number; g: number; b: number }
     | { type: "8bit"; code: number }
     | { type: "named"; name: string };
@@ -98,7 +85,7 @@ export type PaletteColor =
 /**
  * Semantic color slots for a Zellij-style modal.
  */
-export interface ZellijColorPalette {
+interface ZellijColorPalette {
     /** Primary foreground text. */
     fg: PaletteColor;
     /** Modal background. */
@@ -126,7 +113,7 @@ export interface ZellijColorPalette {
 /**
  * Default Zellij-inspired palette.
  */
-export const DEFAULT_ZELLIJ_PALETTE: ZellijColorPalette = {
+const DEFAULT_ZELLIJ_PALETTE: ZellijColorPalette = {
     fg: { type: "named", name: "white" },
     bg: { type: "named", name: "black" },
     accent: { type: "8bit", code: 36 },
@@ -143,7 +130,7 @@ export const DEFAULT_ZELLIJ_PALETTE: ZellijColorPalette = {
 /**
  * A title segment in the top border.
  */
-export interface TitleSegment {
+interface TitleSegment {
     /** Segment text. */
     text: string;
     /** Segment foreground color slot or explicit color. */
@@ -161,7 +148,7 @@ export interface TitleSegment {
 /**
  * Three-part title bar configuration.
  */
-export interface TitleBarConfig {
+interface TitleBarConfig {
     /** Left segment (usually title). */
     left?: TitleSegment | string;
     /** Center segment (usually status). */
@@ -175,7 +162,7 @@ export interface TitleBarConfig {
 /**
  * Help text line rendered in the bottom border.
  */
-export interface HelpUndertitleConfig {
+interface HelpUndertitleConfig {
     /** Static help text. */
     text?: string;
     /** Dynamic help text generator. */
@@ -196,7 +183,7 @@ export interface HelpUndertitleConfig {
 /**
  * Full modal configuration.
  */
-export interface ZellijModalConfig {
+interface ZellijModalConfig {
     /** Border style preset. */
     borderStyle: BorderStyle;
     /** Active color palette. */
@@ -225,7 +212,7 @@ export interface ZellijModalConfig {
 /**
  * Partial modal configuration used by consumers.
  */
-export type ZellijModalConfigPartial = Partial<ZellijModalConfig> & {
+type ZellijModalConfigPartial = Partial<ZellijModalConfig> & {
     /** Shorthand for `titleBar.left`. */
     title?: string;
     /** Shorthand for help text. */
@@ -235,7 +222,7 @@ export type ZellijModalConfigPartial = Partial<ZellijModalConfig> & {
 /**
  * Modal rendering metadata.
  */
-export interface ZellijModalRenderOutput {
+interface ZellijModalRenderOutput {
     /** Fully rendered lines. */
     lines: string[];
     /** Visible frame width. */
@@ -263,7 +250,7 @@ export interface ZellijModalContentRenderer {
 /**
  * Full modal component contract.
  */
-export interface ZellijModalComponent extends ZellijModalContentRenderer {
+interface ZellijModalComponent extends ZellijModalContentRenderer {
     /** Effective modal configuration. */
     config: ZellijModalConfig;
     /** Wrapped content renderer. */
@@ -277,7 +264,7 @@ export interface ZellijModalComponent extends ZellijModalContentRenderer {
 /**
  * Theme helper for modal-specific color resolution and ANSI formatting.
  */
-export interface ZellijModalTheme {
+interface ZellijModalTheme {
     /** Active palette used by this theme helper. */
     palette: ZellijColorPalette;
     /** Resolve color slot or explicit color into ANSI foreground/background codes. */
@@ -291,7 +278,7 @@ export interface ZellijModalTheme {
 /**
  * Resolve a `PaletteColor` into ANSI foreground/background escape codes.
  */
-export function resolveColor(color: PaletteColor): { fg: string; bg: string } {
+function resolveColor(color: PaletteColor): { fg: string; bg: string } {
     if (color.type === "rgb") {
         const r = clampInt(color.r, 0, 255);
         const g = clampInt(color.g, 0, 255);
@@ -333,7 +320,7 @@ export function resolveColor(color: PaletteColor): { fg: string; bg: string } {
 /**
  * Build a `ZellijModalTheme` helper from a palette.
  */
-export function createZellijModalTheme(palette: ZellijColorPalette): ZellijModalTheme {
+function createZellijModalTheme(palette: ZellijColorPalette): ZellijModalTheme {
     return {
         palette,
         resolveColor: (color) => resolveColor(resolvePaletteColor(color, palette)),
@@ -347,7 +334,7 @@ export function createZellijModalTheme(palette: ZellijColorPalette): ZellijModal
 /**
  * Convert Pi `Theme` values to a Zellij modal palette.
  */
-export function themeToZellijPalette(theme: Theme): ZellijColorPalette {
+function themeToZellijPalette(theme: Theme): ZellijColorPalette {
     const extract = (colorName: string, fallback: PaletteColor): PaletteColor => {
         const provider = theme as unknown as {
             getFgAnsi?: (name: string) => string;
@@ -391,7 +378,7 @@ interface PositionedTitleSegment {
 /**
  * Core frame renderer for Zellij-style borders, title bar, and undertitle.
  */
-export class ZellijModalFrame {
+class ZellijModalFrame {
     private config: ZellijModalConfig;
     private borders: BorderCharacters;
     private theme: ZellijModalTheme;
@@ -836,129 +823,10 @@ export class ZellijModal implements ZellijModalComponent {
     }
 }
 
-/**
- * Options for the pre-built settings modal content renderer.
- */
-export interface SettingsModalOptions {
-    /** Modal heading. */
-    title: string;
-    /** Optional descriptive subtitle shown above settings. */
-    description?: string;
-    /** Settings list items. */
-    settings: SettingItem[];
-    /** Called when a setting value changes. */
-    onChange: (id: string, value: string) => void;
-    /** Called when modal should close. */
-    onClose: () => void;
-    /** Optional help text shown below settings. */
-    helpText?: string;
-    /** Enables in-list search (`/` and typing behavior from SettingsList). */
-    enableSearch?: boolean;
-}
-
-/**
- * Pre-built Zellij content renderer for configuration modals.
- */
-export class ZellijSettingsModal implements ZellijModalContentRenderer {
-    private container: Container;
-    private contentBox: Box;
-    private settingsList: SettingsList;
-    private options: SettingsModalOptions;
-    private theme: Theme;
-
-    constructor(options: SettingsModalOptions, theme: Theme) {
-        if (!options.title || !options.title.trim()) {
-            throw new Error("ZellijSettingsModal requires a non-empty title.");
-        }
-
-        this.options = options;
-        this.theme = theme;
-        this.container = new Container();
-        this.contentBox = new Box(0, 0);
-
-        this.contentBox.addChild(
-            new Text(this.theme.fg("accent", this.theme.bold(options.title)), 0, 0),
-        );
-
-        if (options.description) {
-            this.contentBox.addChild(new Spacer(1));
-            this.contentBox.addChild(new Text(this.theme.fg("muted", options.description), 0, 0));
-        }
-
-        this.contentBox.addChild(new Spacer(1));
-        this.settingsList = new SettingsList(
-            options.settings,
-            Math.min(Math.max(options.settings.length + 2, 6), 18),
-            getSettingsListTheme(),
-            (id, value) => {
-                this.options.onChange(id, value);
-            },
-            () => {
-                this.options.onClose();
-            },
-            { enableSearch: options.enableSearch ?? true },
-        );
-        this.contentBox.addChild(this.settingsList);
-
-        if (options.helpText) {
-            this.contentBox.addChild(new Spacer(1));
-            this.contentBox.addChild(new Text(this.theme.fg("dim", options.helpText), 0, 0));
-        }
-
-        this.container.addChild(this.contentBox);
-    }
-
-    /**
-     * Render settings modal content.
-     */
-    render(width: number): string[] {
-        const safeWidth = Math.max(1, width);
-        try {
-            return this.container.render(safeWidth);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            return [
-                this.theme.fg(
-                    "error",
-                    truncateToWidth(`Settings render error: ${message}`, safeWidth, "…"),
-                ),
-            ];
-        }
-    }
-
-    /**
-     * Invalidate internal caches.
-     */
-    invalidate(): void {
-        this.container.invalidate();
-    }
-
-    /**
-     * Forward key input to SettingsList.
-     */
-    handleInput(data: string): void {
-        if (isEnterActivationInput(data)) {
-            return;
-        }
-        this.settingsList.handleInput(data);
-    }
-
-    /**
-     * Programmatically update one setting value in the list.
-     */
-    updateValue(id: string, value: string): void {
-        this.settingsList.updateValue(id, value);
-    }
-}
-
 function pushPaddingLines(lines: string[], count: number, paddedWidth: number): void {
     for (let i = 0; i < count; i++) {
         lines.push(" ".repeat(paddedWidth));
     }
-}
-
-function isEnterActivationInput(data: string): boolean {
-    return data === "\r" || data === "\n" || data === "\r\n";
 }
 
 function normalizeHelpUndertitle(

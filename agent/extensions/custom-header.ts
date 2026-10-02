@@ -1,11 +1,11 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { TUI, TuiMouseEvent, TuiMouseEventResult } from "@earendil-works/pi-tui";
 import { stripAnsi } from "./shared/strip-ansi.js";
 
 type Rgb = [number, number, number];
-type StyledPart = {
-    raw: string;
-    styled: string;
-};
 
 type HeaderTheme = {
     fg(name: string, text: string): string;
@@ -15,141 +15,173 @@ type HeaderTheme = {
 
 const ANSI_RESET = "\x1b[0m";
 
-const LOGO_LINES = [
-    "████████████╗",
-    "████████████║",
-    "████╔═══████║",
-    "████║   ████║",
-    "████████╬═══████╗",
-    "████████║   ████║ ",
-    "████╔═══╝   ████║",
-    "████║       ████║",
-    "╚═══╝       ╚═══╝",
-];
+// Official Pi brand colors: coral top bar, blue left pillar, amber right pillar.
+const BRAND_CORAL: Rgb = [228, 138, 122];
+const BRAND_BLUE: Rgb = [79, 142, 179];
+const BRAND_AMBER: Rgb = [234, 182, 93];
 
-const TAGLINE_LINE_1 = "There are many agent harnesses,";
-const TAGLINE_LINE_2_PREFIX = "but this one is ";
-const TAGLINE_LINE_2_HIGHLIGHT = "yours";
-const TAGLINE_LINE_2_SUFFIX = ".";
+const LOGO_BLOCK_WIDTH = 16;
 
-const LOGO_BLOCK_WIDTH = Math.max(...LOGO_LINES.map((line) => [...line].length));
-
-// Official pi brand sections (pi.dev/logo-auto.svg): coral top bar,
-// blue body + middle bar, amber right pillar. Fixed hex — same on any theme.
-const BRAND_CORAL: Rgb = [240, 144, 130];
-const BRAND_BLUE: Rgb = [77, 154, 191];
-const BRAND_AMBER: Rgb = [241, 190, 88];
-
-function brandColorForCell(row: number, col: number): Rgb {
-    if (row <= 1) return BRAND_CORAL;
-    if (row <= 3) return col < 5 ? BRAND_BLUE : BRAND_CORAL;
-    return col < 12 ? BRAND_BLUE : BRAND_AMBER;
+function applyTruecolor([r, g, b]: Rgb, text: string): string {
+    return `\x1b[38;2;${r};${g};${b}m${text}${ANSI_RESET}`;
 }
+
+const C12 = applyTruecolor(BRAND_CORAL, "████████████");
+const C4 = applyTruecolor(BRAND_CORAL, "████");
+const B8 = applyTruecolor(BRAND_BLUE, "████████");
+const B4 = applyTruecolor(BRAND_BLUE, "████");
+const A4 = applyTruecolor(BRAND_AMBER, "████");
+
+const ROW_LINES = [C12, `${B4}    ${C4}`, `${B8}    ${A4}`, `${B4}        ${A4}`];
+
+// Precomputed 8-line logo (4 rows × 2 vertical scale).
+const LOGO_LINES = ROW_LINES.flatMap((line) => [line, line]);
 
 function getVisibleLength(text: string): number {
     return [...stripAnsi(text)].length;
 }
 
-function applyTruecolor(rgb: Rgb, text: string): string {
-    const [red, green, blue] = rgb;
-    return `\x1b[38;2;${red};${green};${blue}m${text}${ANSI_RESET}`;
-}
-
-function createCenteredBlockLine(text: string, width: number): string {
-    const leftPadding = Math.max(0, Math.floor((width - LOGO_BLOCK_WIDTH) / 2));
-    return `${" ".repeat(leftPadding)}${text}`;
-}
-
-function createCenteredStyledLine(parts: StyledPart[], width: number): string {
-    const rawText = parts.map((part) => part.raw).join("");
-    const leftPadding = Math.max(0, Math.floor((width - [...rawText].length) / 2));
-    const styledText = parts.map((part) => part.styled).join("");
-    return `${" ".repeat(leftPadding)}${styledText}`;
+function centerLine(line: string, width: number): string {
+    const padding = " ".repeat(Math.max(0, Math.floor((width - getVisibleLength(line)) / 2)));
+    return `${padding}${line}`;
 }
 
 function fitLineToWidth(line: string, width: number): string {
-    if (getVisibleLength(line) <= width) {
-        return line;
-    }
-
-    return stripAnsi(line).slice(0, width);
+    return getVisibleLength(line) <= width ? line : stripAnsi(line).slice(0, width);
 }
 
 function renderLogoLines(width: number): string[] {
-    return LOGO_LINES.map((line, rowIndex) => {
-        const colored = [...line]
-            .map((ch, col) =>
-                ch === " " ? ch : applyTruecolor(brandColorForCell(rowIndex, col), ch),
-            )
-            .join("");
-        return createCenteredBlockLine(colored, width);
-    });
+    const padding = " ".repeat(Math.max(0, Math.floor((width - LOGO_BLOCK_WIDTH) / 2)));
+    return LOGO_LINES.map((line) => `${padding}${line}`);
 }
 
 function renderTaglineLines(width: number, theme: HeaderTheme): string[] {
-    const line1 = createCenteredStyledLine(
-        [{ raw: TAGLINE_LINE_1, styled: theme.fg("text", TAGLINE_LINE_1) }],
-        width,
-    );
-
-    const line2 = createCenteredStyledLine(
-        [
-            {
-                raw: TAGLINE_LINE_2_PREFIX,
-                styled: theme.fg("text", TAGLINE_LINE_2_PREFIX),
-            },
-            {
-                raw: TAGLINE_LINE_2_HIGHLIGHT,
-                styled: theme.underline(theme.bold(theme.fg("text", TAGLINE_LINE_2_HIGHLIGHT))),
-            },
-            {
-                raw: TAGLINE_LINE_2_SUFFIX,
-                styled: theme.fg("text", TAGLINE_LINE_2_SUFFIX),
-            },
-        ],
-        width,
-    );
-
-    return [line1, line2];
+    const line1 = theme.fg("text", "There are many agent harnesses,");
+    const line2 = `${theme.fg("text", "but this one is ")}${theme.underline(
+        theme.bold(theme.fg("text", "yours")),
+    )}${theme.fg("text", ".")}`;
+    return [centerLine(line1, width), centerLine(line2, width)];
 }
-
-// Memoized logo lines keyed by width; avoids per-render rebuilds on
-// message-hot paths. Logo colors are fixed brand hex (theme-independent).
-const logoLinesCache = new Map<string, string[]>();
 
 let promptKind: string | null = null;
 let compactFailedReason: string | null = null;
 
-function getCachedLogoLines(width: number): string[] {
-    const key = String(width);
-    const hit = logoLinesCache.get(key);
-    if (hit) return hit;
-    const lines = renderLogoLines(width);
-    if (logoLinesCache.size >= 20) logoLinesCache.clear();
-    logoLinesCache.set(key, lines);
-    return lines;
+function createStatusLine(text: string, width: number, theme: HeaderTheme): string {
+    return fitLineToWidth(centerLine(theme.fg("warning", text), width), width);
 }
 
 function renderHeaderLines(width: number, theme: HeaderTheme): string[] {
-    const logoLines = getCachedLogoLines(width);
+    const logoLines = renderLogoLines(width);
     const taglineLines = renderTaglineLines(width, theme);
 
     const baseLines = ["", ...logoLines, "", ...taglineLines, ""].map((line) =>
         fitLineToWidth(line, width),
     );
-    const statusLine = (text: string): string =>
-        fitLineToWidth(
-            createCenteredStyledLine([{ raw: text, styled: theme.fg("warning", text) }], width),
-            width,
-        );
+
     const statusLines: string[] = [];
     if (promptKind !== null) {
-        statusLines.push(statusLine(`waiting for input: ${promptKind}`));
+        statusLines.push(createStatusLine(`waiting for input: ${promptKind}`, width, theme));
     }
     if (compactFailedReason !== null) {
-        statusLines.push(statusLine(`compaction failed: ${compactFailedReason}`));
+        statusLines.push(
+            createStatusLine(`compaction failed: ${compactFailedReason}`, width, theme),
+        );
     }
     return [...statusLines, ...baseLines];
+}
+
+type PiAnimationFn = (
+    tui: unknown,
+    arg2: number | { screen: readonly string[]; logoColumn: number; logoRow: number },
+    arg3?: number,
+) => void;
+
+let cachedAnimationFn: PiAnimationFn | null | undefined = undefined;
+
+function findAnimationFile(): string | null {
+    const searchDirs: string[] = [];
+    if (process.argv[1]) {
+        const cliDir = path.dirname(path.resolve(process.argv[1]));
+        searchDirs.push(cliDir, path.resolve(cliDir, ".."));
+    }
+    try {
+        const resolved = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
+        searchDirs.push(path.dirname(resolved));
+    } catch {
+        /* ignore resolution failure */
+    }
+
+    for (const dir of searchDirs) {
+        const lazy = path.join(dir, "modes/interactive/components/pi-logo-animation.lazy.js");
+        if (fs.existsSync(lazy)) return lazy;
+
+        const chunksDir = path.join(dir, "chunks");
+        if (fs.existsSync(chunksDir)) {
+            const chunk = fs
+                .readdirSync(chunksDir)
+                .find((f) => f.startsWith("pi-logo-animation") && f.endsWith(".js"));
+            if (chunk) return path.join(chunksDir, chunk);
+        }
+
+        const bundleChunks = path.join(dir, "bundle/chunks");
+        if (fs.existsSync(bundleChunks)) {
+            const chunk = fs
+                .readdirSync(bundleChunks)
+                .find((f) => f.startsWith("pi-logo-animation") && f.endsWith(".js"));
+            if (chunk) return path.join(bundleChunks, chunk);
+        }
+    }
+    return null;
+}
+
+async function loadAnimationFn(): Promise<PiAnimationFn | null> {
+    if (cachedAnimationFn !== undefined) {
+        return cachedAnimationFn;
+    }
+
+    const file = findAnimationFile();
+    if (!file) {
+        cachedAnimationFn = null;
+        return null;
+    }
+
+    try {
+        const mod = (await import(pathToFileURL(file).href)) as {
+            playPiLogoAnimation?: PiAnimationFn;
+        };
+        cachedAnimationFn = mod.playPiLogoAnimation ?? null;
+    } catch {
+        cachedAnimationFn = null;
+    }
+
+    return cachedAnimationFn;
+}
+
+function playEasterEggAnimation(tui: TUI, logoColumn: number, logoRow: number): void {
+    void (async () => {
+        try {
+            const fn = await loadAnimationFn();
+            if (!fn) return;
+
+            const anyTui = tui as unknown as {
+                hasOverlay?(): boolean;
+                getScreenLines?(): string[];
+            };
+            if (anyTui.hasOverlay?.()) return;
+
+            if (fn.length >= 3) {
+                fn(tui, logoColumn, logoRow);
+            } else {
+                fn(tui, {
+                    screen: anyTui.getScreenLines?.() ?? [],
+                    logoColumn,
+                    logoRow,
+                });
+            }
+        } catch {
+            // Silently ignore animation failures
+        }
+    })();
 }
 
 export default function piStartupHeader(pi: ExtensionAPI) {
@@ -173,14 +205,48 @@ export default function piStartupHeader(pi: ExtensionAPI) {
         compactFailedReason = null;
         if (!ctx.hasUI) return;
 
-        ctx.ui.setHeader((_tui, theme) => ({
+        void loadAnimationFn();
+
+        ctx.ui.setHeader((tui, theme) => ({
             render(width: number): string[] {
                 return renderHeaderLines(width, theme);
             },
-            // Drop cached logo lines so a width change renders fresh.
-            // (Logo colors are fixed brand hex, theme-independent.)
-            invalidate() {
-                logoLinesCache.clear();
+            invalidate() {},
+            handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+                if (
+                    event.type !== "click" ||
+                    (event.button !== "left" && event.button !== undefined)
+                ) {
+                    return undefined;
+                }
+
+                const statusCount =
+                    (promptKind !== null ? 1 : 0) + (compactFailedReason !== null ? 1 : 0);
+                const logoTop = statusCount + 1;
+                const logoBottom = logoTop + LOGO_LINES.length;
+                const logoLeft = Math.max(0, Math.floor((event.width - LOGO_BLOCK_WIDTH) / 2));
+                const logoRight = logoLeft + LOGO_BLOCK_WIDTH;
+
+                if (
+                    event.y >= logoTop &&
+                    event.y < logoBottom &&
+                    event.x >= logoLeft &&
+                    event.x < logoRight
+                ) {
+                    const compScreenX = event.screenX - event.x;
+                    const compScreenY = event.screenY - event.y;
+                    const logoScreenX = compScreenX + logoLeft;
+                    const logoScreenY = compScreenY + logoTop;
+
+                    // Center offset: (16/2 - 2 = 6, 8/2 - 1 = 3) to match built-in animation center.
+                    const animCol = logoScreenX + 6;
+                    const animRow = logoScreenY + 3;
+
+                    playEasterEggAnimation(tui, animCol, animRow);
+                    return { handled: true };
+                }
+
+                return undefined;
             },
         }));
     });

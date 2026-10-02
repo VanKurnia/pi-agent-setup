@@ -1,4 +1,4 @@
-export interface ModalIconSet {
+interface ModalIconSet {
     search: string;
 }
 

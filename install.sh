@@ -48,7 +48,8 @@ else
   git clone --branch "$BRANCH" --depth 1 "$REPO_URL" "$PI_ROOT"
 fi
 
-# Git hooks run from .husky (lint-staged pre-commit)
+# Git hooks run from .husky (lint-staged pre-commit). husky's `prepare`
+# normalizes this to its own .husky/_ wrapper during the install below.
 git -C "$PI_ROOT" config core.hooksPath .husky
 
 # ── Migration: handle old extensions/ directory ───────────────
@@ -68,9 +69,10 @@ elif [[ -d "$PI_ROOT/extensions" && -d "$PI_ROOT/agent/extensions" && -n "$(ls -
 fi
 
 # Install every project dir (npm ci where locked, npm install elsewhere).
+# Disabled extensions are skipped — run .script/npm-ci-all.sh after enabling one.
 # Non-fatal: config bootstrap below must run even if one manifest fails.
 say "Installing dependencies..."
-bash "$PI_ROOT/.script/npm-ci-all.sh" --install \
+bash "$PI_ROOT/.script/npm-ci-all.sh" --install --skip-disabled \
   || warn "Some manifests failed to install (non-fatal — continuing to config bootstrap)"
 
 # Typecheck all extensions in one pass (non-fatal: baseline has pre-existing errors).

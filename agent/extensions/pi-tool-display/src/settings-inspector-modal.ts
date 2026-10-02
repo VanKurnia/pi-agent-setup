@@ -27,7 +27,7 @@ export interface InspectorSettingItem {
     searchTerms?: readonly string[];
 }
 
-export interface SplitPaneInspectorModalOptions {
+interface SplitPaneInspectorModalOptions {
     getSettings: () => readonly InspectorSettingItem[];
     onChange: (id: string, value: string) => void;
     onClose: () => void;

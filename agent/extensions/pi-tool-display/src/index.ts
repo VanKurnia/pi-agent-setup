@@ -1,31 +1,20 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
+    disposeAll,
     loadToolDisplayConfig,
     normalizeToolDisplayConfig,
+    resetDisposed,
     saveToolDisplayConfig,
-} from "./config-store.js";
-import {
-    applyCapabilityConfigGuards,
-    detectToolDisplayCapabilities,
-    type ToolDisplayCapabilities,
-} from "./capabilities.js";
-import { registerToolDisplayOverrides } from "./tool-overrides.js";
+    type ToolDisplayConfig,
+} from "./support.js";
 import {
     installPistyleToolRendererPatch,
+    registerNativeUserMessageBox,
+    registerThinkingLabeling,
+    registerToolDecoration,
     removePistyleToolRendererPatch,
-} from "./pistyle-tool-patch.js";
-import { resetPistyleRegistries } from "./pistyle-bridge.js";
-import { disposeAll, resetDisposed } from "./disposable.js";
-import { registerThinkingLabeling } from "./thinking-label.js";
-import registerNativeUserMessageBox from "./user-message-box-native.js";
-import { BUILT_IN_TOOL_OVERRIDE_NAMES, type ToolDisplayConfig } from "./types.js";
-
-function ownershipChanged(previous: ToolDisplayConfig, next: ToolDisplayConfig): boolean {
-    return BUILT_IN_TOOL_OVERRIDE_NAMES.some(
-        (toolName) =>
-            previous.registerToolOverrides[toolName] !== next.registerToolOverrides[toolName],
-    );
-}
+    resetPistyleRegistries,
+} from "./wiring.js";
 
 export default function toolDisplayExtension(pi: ExtensionAPI): void {
     const initial = loadToolDisplayConfig();
@@ -45,37 +34,21 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
 
     let config: ToolDisplayConfig = initial.config;
     let pendingLoadError = initial.error;
-    let capabilities: ToolDisplayCapabilities = {
-        hasMcpTooling: false,
-        hasRtkOptimizer: false,
-    };
-
-    const refreshCapabilities = (): void => {
-        capabilities = detectToolDisplayCapabilities(pi, process.cwd());
-    };
 
     const getConfig = (): ToolDisplayConfig => config;
-    const getCapabilities = (): ToolDisplayCapabilities => capabilities;
-    const getEffectiveConfig = (): ToolDisplayConfig =>
-        applyCapabilityConfigGuards(config, capabilities);
 
     const setConfig = (next: ToolDisplayConfig, ctx: ExtensionCommandContext): void => {
         const normalized = normalizeToolDisplayConfig(next);
-        const requiresReload = ownershipChanged(config, normalized);
         config = normalized;
 
         const saved = saveToolDisplayConfig(normalized);
         if (!saved.success && saved.error) {
             ctx.ui.notify(saved.error, "error");
         }
-
-        if (requiresReload) {
-            ctx.ui.notify("Tool ownership updates apply after /reload.", "warning");
-        }
     };
 
-    registerToolDisplayOverrides(pi, getEffectiveConfig);
-    installPistyleToolRendererPatch(getEffectiveConfig);
+    registerToolDecoration(pi, getConfig);
+    installPistyleToolRendererPatch(getConfig);
     registerNativeUserMessageBox(pi, getConfig);
     registerThinkingLabeling(pi);
 
@@ -83,24 +56,15 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
         description: "Configure tool output rendering (OpenCode-style)",
         handler: async (args, ctx) => {
             const { runToolDisplayCommandHandler } = await import("./config-modal.js");
-            await runToolDisplayCommandHandler(args, ctx, {
-                getConfig,
-                setConfig,
-                getCapabilities,
-            });
+            await runToolDisplayCommandHandler(args, ctx, { getConfig, setConfig });
         },
     });
 
     pi.on("session_start", async (_event, ctx) => {
         resetPistyleRegistries();
-        refreshCapabilities();
         if (pendingLoadError) {
             ctx.ui.notify(pendingLoadError, "warning");
             pendingLoadError = undefined;
         }
-    });
-
-    pi.on("before_agent_start", async () => {
-        refreshCapabilities();
     });
 }

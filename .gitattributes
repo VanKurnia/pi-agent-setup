@@ -1,1 +1,7 @@
+# Normalize text files to LF in the working tree on every platform. The
+# shebang shell scripts (install.sh, .script/*.sh) and the husky hooks break
+# under CRLF on Windows checkouts.
+* text=auto eol=lf
+
+# Explicit pin for the hook, so it stays LF independently of the wildcard.
 /.husky/pre-commit text eol=lf

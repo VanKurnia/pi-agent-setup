@@ -9,8 +9,8 @@ selector borders.
 
 | Mode | Selected by | Renderer |
 | --- | --- | --- |
-| compact (default) | `boxedToolCalls: false` | upstream `pi-tool-display` rows (no box) |
-| pi-style cards | `boxedToolCalls: true` | vendored pi-style boxed cards for **every** tool |
+| compact (removed) | — | upstream `pi-tool-display` rows (no box); deleted 2026-09-30 |
+| pi-style cards | always | vendored pi-style boxed cards for **every** tool; the only presentation |
 
 Two tools bypass the dispatcher and get fork-owned cards routed from `pistyle-bridge.ts`: `subagent`
 (`subagent-card.ts`) and db-viewer's query tools (`db-query-card.ts`). A tool that needs its own

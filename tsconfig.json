@@ -1,4 +1,5 @@
 {
+  "extends": "./tsconfig.devscope.json",
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
@@ -19,10 +20,5 @@
   },
   "include": [
     "agent/extensions/**/*.ts"
-  ],
-  "exclude": [
-    "**/node_modules",
-    "**/dist",
-    "**/build"
   ]
 }

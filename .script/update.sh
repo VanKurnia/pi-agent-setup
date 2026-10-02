@@ -99,6 +99,8 @@ fi
 # ── 2. Clone first — the old checkout is untouched if this fails ──
 say "Cloning $REPO_URL ($BRANCH) ..."
 git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$NEW"
+# Git hooks run from .husky (lint-staged pre-commit). husky's `prepare`
+# normalizes this to its own .husky/_ wrapper during the install below.
 git -C "$NEW" config core.hooksPath .husky
 ok "Fresh clone ready"
 
@@ -133,8 +135,9 @@ if [[ -f "$NPM_PKG_JSON" && -f "$SETTINGS" ]]; then
 fi
 
 # ── 6. Install all deps (npm ci where locked, npm install elsewhere) ──
+# Disabled extensions are skipped — run .script/npm-ci-all.sh after enabling one.
 if [[ -f "$PI_DIR/.script/npm-ci-all.sh" ]]; then
-  bash "$PI_DIR/.script/npm-ci-all.sh" --install
+  bash "$PI_DIR/.script/npm-ci-all.sh" --install --skip-disabled
   ok "Dependencies installed"
 else
   err "$PI_DIR/.script/npm-ci-all.sh missing — broken clone, aborting"

@@ -38,11 +38,7 @@
     "url": "https://github.com/alexykn/pi-cbm/issues"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.75.5",
-    "@earendil-works/pi-coding-agent": "^0.75.5",
-    "@earendil-works/pi-tui": "^0.75.5",
     "@types/node": "^25.9.1",
-    "typebox": "^1.1.38",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
   },
