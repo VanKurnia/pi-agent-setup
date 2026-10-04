@@ -4,28 +4,6 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "baseUrl": ".",
-    // Two Pi installs exist in this tree. The root `node_modules` copy is a stale
-    // 0.87.1 left over from an earlier install; the runtime actually loads
-    // `agent/install/releases/1.0.1`. Without these mappings, `tsc` resolves the
-    // stale copy and validates extensions against an API surface Pi no longer
-    // has -- which silently passes code that breaks at runtime, and rejects code
-    // (registerToolRenderer, annotations, exposure, outputSchema) that is correct.
-    //
-    // Both packages must be mapped together: mapping only pi-coding-agent pulls
-    // 1.0.1 pi-tui typings against the extension's 0.87.1 pi-tui import and
-    // fails with "Type 'TUI' is missing ... queryTerminalBackgroundColor".
-    //
-    // Verified 2026-10-04: with both mappings the tree typechecks clean and
-    // `--traceResolution` shows no resolution into the root node_modules copy.
-    "paths": {
-      "@earendil-works/pi-coding-agent": [
-        "agent/install/releases/1.0.1/node_modules/@earendil-works/pi-coding-agent/dist/index.d.ts"
-      ],
-      "@earendil-works/pi-tui": [
-        "agent/install/releases/1.0.1/node_modules/@earendil-works/pi-tui/dist/index.d.ts"
-      ]
-    },
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
