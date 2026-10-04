@@ -8,11 +8,10 @@ import {
     type ToolDisplayConfig,
 } from "./support.js";
 import {
-    installPistyleToolRendererPatch,
     registerNativeUserMessageBox,
+    registerPistyleToolRenderer,
     registerThinkingLabeling,
     registerToolDecoration,
-    removePistyleToolRendererPatch,
     resetPistyleRegistries,
 } from "./wiring.js";
 
@@ -27,7 +26,6 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     pi.on("session_shutdown", (event: { reason: string }) => {
         resetPistyleRegistries();
         if (event.reason === "reload") {
-            removePistyleToolRendererPatch();
             disposeAll();
         }
     });
@@ -48,7 +46,7 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     };
 
     registerToolDecoration(pi, getConfig);
-    installPistyleToolRendererPatch(getConfig);
+    registerPistyleToolRenderer(pi, getConfig);
     registerNativeUserMessageBox(pi, getConfig);
     registerThinkingLabeling(pi);
 

@@ -10,12 +10,33 @@ function resolveMaxRows(raw: number | undefined): number {
     return Math.min(1000, Math.max(1, Math.floor(raw)));
 }
 
+type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
+
+/**
+ * `structuredContent` is typed as `JsonValue`, and driver rows are not JSON:
+ * `SQLOutputValue` admits `bigint` and `Uint8Array`, neither of which is a
+ * `JsonValue`, so assigning raw rows fails to typecheck. This converts them.
+ *
+ * Fidelity notes: `bigint` becomes a decimal string (JSON.stringify throws on
+ * BigInt outright, so a replacer is required rather than optional), and BLOB
+ * `Uint8Array` becomes an array of byte numbers. `details` still carries the
+ * untouched driver rows, so anything needing the original values reads that.
+ */
+function toJsonRows(rows: readonly unknown[]): JsonValue[] {
+    return JSON.parse(
+        JSON.stringify(rows, (_key, value) =>
+            typeof value === "bigint" ? value.toString() : value,
+        ),
+    ) as JsonValue[];
+}
+
 export default function dbViewerExtension(pi: ExtensionAPI) {
     // Tool 1: SQLite Query Executor
     pi.registerTool({
         name: "query_sqlite",
         label: "Query SQLite",
         description: "Execute safe, read-only SELECT queries on a local SQLite database file",
+        annotations: { readOnlyHint: true },
         promptSnippet: "Query SQLite databases",
         promptGuidelines: [
             "Use query_sqlite when you need to inspect SQLite schema, counts, or table records.",
@@ -28,6 +49,12 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
             maxRows: Type.Optional(
                 Type.Number({ description: "Maximum rows to return (default 200, 1-1000)" }),
             ),
+        }),
+        outputSchema: Type.Object({
+            rowCount: Type.Number({ description: "Total rows returned before truncation" }),
+            rows: Type.Array(Type.Record(Type.String(), Type.Any()), {
+                description: "Result rows, JSON-encoded",
+            }),
         }),
         async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
             const safety = isQuerySafe(params.query);
@@ -55,6 +82,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
                     formatRowsToMarkdown(displayRows as Record<string, unknown>[]) + notice;
                 return {
                     content: [{ type: "text", text }],
+                    structuredContent: { rowCount: total, rows: toJsonRows(displayRows) },
                     details: { rowsCount: total, rows: displayRows },
                 };
             } catch (error: any) {
@@ -81,6 +109,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
         name: "query_mysql",
         label: "Query MySQL",
         description: "Execute safe, read-only queries on a MySQL database",
+        annotations: { readOnlyHint: true },
         promptSnippet: "Query MySQL databases",
         promptGuidelines: [
             "Use query_mysql to view table data, schema, or descriptions on MySQL databases.",
@@ -95,6 +124,12 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
             maxRows: Type.Optional(
                 Type.Number({ description: "Maximum rows to return (default 200, 1-1000)" }),
             ),
+        }),
+        outputSchema: Type.Object({
+            rowCount: Type.Number({ description: "Total rows returned before truncation" }),
+            rows: Type.Array(Type.Record(Type.String(), Type.Any()), {
+                description: "Result rows, JSON-encoded",
+            }),
         }),
         async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
             const safety = isQuerySafe(params.query);
@@ -138,6 +173,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
                     formatRowsToMarkdown(displayRows as Record<string, unknown>[]) + notice;
                 return {
                     content: [{ type: "text", text }],
+                    structuredContent: { rowCount: total, rows: toJsonRows(displayRows) },
                     details: { rowsCount: total, rows: displayRows },
                 };
             } catch (error: any) {

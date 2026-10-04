@@ -41,7 +41,6 @@ import {
     sanitizeAnsiForThemedOutput,
 } from "./support.js";
 import {
-    ToolExecutionComponent,
     ExtensionAPI,
     ExtensionContext,
     ToolDefinition,
@@ -53,6 +52,7 @@ import {
     Markdown,
     truncateToWidth,
     visibleWidth,
+    type Component,
     type DefaultTextStyle,
     type MarkdownTheme,
 } from "@earendil-works/pi-tui";
@@ -196,84 +196,40 @@ function renderPistyleToolResult(
 
 // from: pistyle-tool-patch.ts
 
-type RendererLike = (...args: unknown[]) => unknown;
-type RendererSelector = (this: object) => RendererLike | undefined;
-type PatchablePrototype = Record<string, unknown> & {
-    getCallRenderer?: RendererSelector;
-    getResultRenderer?: RendererSelector;
-};
-let restorePatch: (() => void) | undefined;
-function neutralizeToolContainer(instance: object): void {
-    const host = instance as {
-        getRenderShell?(): string;
-        selfRenderContainer?: {
-            setBgFn?(fn: (text: string) => string): void;
-            paddingX?: number;
-            paddingY?: number;
-        };
-        contentBox?: {
-            setBgFn?(fn: (text: string) => string): void;
-            paddingX?: number;
-            paddingY?: number;
-        };
-        contentText?: { setCustomBgFn?(fn: (text: string) => string): void };
-    };
-    const container =
-        typeof host.getRenderShell === "function" && host.getRenderShell() === "self"
-            ? host.selfRenderContainer
-            : host.contentBox;
-    if (container) {
-        container.paddingX = 0;
-        container.paddingY = 0;
-        container.setBgFn?.((text) => text);
-    }
-    // The generic fallback shell (tools with no definition) tints contentText instead.
-    host.contentText?.setCustomBgFn?.((text) => text);
-}
-function patchedSelector(
-    method: "getCallRenderer" | "getResultRenderer",
-    getConfig: ConfigGetter,
-): RendererSelector {
-    return function patchedRendererSelection(this: object): RendererLike | undefined {
-        const rawName = (this as { toolName?: unknown }).toolName;
-        const toolName = typeof rawName === "string" && rawName ? rawName : undefined;
-        return (...rendererArgs: unknown[]) => {
-            const config = getConfig();
-            neutralizeToolContainer(this);
-            const [first, second, third, fourth] = rendererArgs;
-            if (method === "getCallRenderer") {
-                return renderPistyleToolCall(
+// Renderer registration is native as of Pi 1.0.1: `pi.registerToolRenderer`.
+// The previous implementation monkey-patched `ToolExecutionComponent.prototype`
+// and reached into the live component instance to clear Pi's container fill.
+// That is no longer necessary - `renderShell: "self"` selects Pi's
+// `selfRenderContainer` (a bare `Container` with no paddingX/paddingY/bgFn)
+// instead of `contentBox` (a `Box(1, 1, theme.bg("toolPendingBg"))`).
+// See .plans/015 for the source-level equivalence.
+export function registerPistyleToolRenderer(pi: ExtensionAPI, getConfig: ConfigGetter): void {
+    pi.registerToolRenderer((toolName, next) => {
+        const config = getConfig();
+        if (!config.enabled) {
+            return next();
+        }
+        return {
+            renderShell: "self",
+            renderCall: (args, theme, context) =>
+                renderPistyleToolCall(
                     toolName,
-                    first as Record<string, unknown>,
-                    second,
-                    third,
+                    args as Record<string, unknown>,
+                    theme,
+                    context,
                     config,
-                );
-            }
-            return renderPistyleToolResult(toolName, first, second, third, fourth, config);
+                ) as Component,
+            renderResult: (result, options, theme, context) =>
+                renderPistyleToolResult(
+                    toolName,
+                    result,
+                    options,
+                    theme,
+                    context,
+                    config,
+                ) as Component,
         };
-    };
-}
-/** Returns true when the renderer-resolution patch is active. */
-export function installPistyleToolRendererPatch(getConfig: ConfigGetter): boolean {
-    restorePatch?.();
-    const prototype = ToolExecutionComponent.prototype as unknown as PatchablePrototype;
-    const originalCall = prototype.getCallRenderer;
-    const originalResult = prototype.getResultRenderer;
-    if (typeof originalCall !== "function" || typeof originalResult !== "function") {
-        return false;
-    }
-    prototype.getCallRenderer = patchedSelector("getCallRenderer", getConfig);
-    prototype.getResultRenderer = patchedSelector("getResultRenderer", getConfig);
-    restorePatch = () => {
-        prototype.getCallRenderer = originalCall;
-        prototype.getResultRenderer = originalResult;
-        restorePatch = undefined;
-    };
-    return true;
-}
-export function removePistyleToolRendererPatch(): void {
-    restorePatch?.();
+    });
 }
 
 // from: thinking-label.ts
