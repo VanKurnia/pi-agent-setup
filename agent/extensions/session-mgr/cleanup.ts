@@ -1,27 +1,227 @@
-/** Session cleanup: candidate scan + age display (pure helpers, no UI). */
+/**
+ * Session cleanup: candidate scan, trash handling, cleanup settings, and interactive UI.
+ *
+ * Loaded on-demand when `/session-mgr` is executed or during `session_start` auto-clean.
+ */
 
+import { spawnSync } from "node:child_process";
 import {
     closeSync,
+    copyFileSync,
+    existsSync,
     fstatSync,
+    mkdirSync,
     openSync,
+    readFileSync,
     readSync,
     readdirSync,
+    renameSync,
     rmdirSync,
     statSync,
+    unlinkSync,
+    writeFileSync,
 } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { normalizeDir, shortenHome } from "./helpers/paths.js";
-import { loadCleanupSettings, saveCleanupSettings } from "./helpers/cleanup-settings.js";
+import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { showPicker } from "../shared/picker.js";
+import { shortenHome } from "../shared/text-format.js";
 import {
+    fileStamp,
     listSessionFiles,
+    normalizeDir,
     parseSessionHeader,
     readFileHead,
     readSessionCwd,
-} from "./helpers/sessions.js";
-import { trashSessionFile } from "./helpers/trash.js";
+} from "./session-ops.js";
+
+// =============================================================================
+// Settings: Cleanup
+// =============================================================================
+
+const SETTINGS_FILE_NAME = "session-mgr-settings.json";
+
+export interface CleanupSettings {
+    autoCleanThresholdDays: number;
+    lastAutoCleanAt: string;
+}
+
+const DEFAULT_SETTINGS: Required<CleanupSettings> = {
+    autoCleanThresholdDays: 30,
+    lastAutoCleanAt: "",
+};
+
+function getSettingsPath(): string {
+    return join(getAgentDir(), SETTINGS_FILE_NAME);
+}
+
+const MAX_THRESHOLD_DAYS = 3650;
+
+function normalizeThreshold(value: unknown): number {
+    if (
+        typeof value === "number" &&
+        Number.isInteger(value) &&
+        value >= 0 &&
+        value <= MAX_THRESHOLD_DAYS
+    ) {
+        return value;
+    }
+    return DEFAULT_SETTINGS.autoCleanThresholdDays;
+}
+
+function normalizeStamp(value: unknown): string {
+    if (typeof value === "string" && value !== "" && !Number.isNaN(Date.parse(value))) {
+        return value;
+    }
+    return "";
+}
+
+export function loadCleanupSettings(): Required<CleanupSettings> {
+    try {
+        const settingsPath = getSettingsPath();
+        if (!existsSync(settingsPath)) return { ...DEFAULT_SETTINGS };
+        const raw = readFileSync(settingsPath, "utf8");
+        const parsed = JSON.parse(raw) as Partial<CleanupSettings>;
+        return {
+            autoCleanThresholdDays: normalizeThreshold(parsed.autoCleanThresholdDays),
+            lastAutoCleanAt: normalizeStamp(parsed.lastAutoCleanAt),
+        };
+    } catch (error) {
+        console.error("Failed to load session-mgr settings:", error);
+        return { ...DEFAULT_SETTINGS };
+    }
+}
+
+export function saveCleanupSettings(settings: Required<CleanupSettings>): void {
+    try {
+        const settingsPath = getSettingsPath();
+        const dir = dirname(settingsPath);
+        if (!existsSync(dir)) {
+            mkdirSync(dir, { recursive: true });
+        }
+        writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
+    } catch (error) {
+        console.error("Failed to save session-mgr settings:", error);
+    }
+}
+
+// =============================================================================
+// Trash Handling
+// =============================================================================
+
+export type TrashResult =
+    { kind: "os" } | { kind: "local"; dest: string } | { kind: "failed"; error: string };
+
+const OS_TRASH_TIMEOUT_MS = 15000;
+
+function osTrashSucceeded(status: number | null, filePath: string): boolean {
+    return status === 0 && !existsSync(filePath);
+}
+
+function tryOsTrash(filePath: string): boolean {
+    try {
+        if (process.platform === "win32") {
+            const script =
+                "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($env:PI_TRASH_TARGET,'OnlyErrorDialogs','SendToRecycleBin')";
+            const result = spawnSync(
+                "powershell.exe",
+                ["-NoProfile", "-NonInteractive", "-Command", script],
+                {
+                    timeout: OS_TRASH_TIMEOUT_MS,
+                    env: { ...process.env, PI_TRASH_TARGET: filePath },
+                },
+            );
+            if (result.error) return false;
+            return osTrashSucceeded(result.status, filePath);
+        }
+        if (process.platform === "darwin") {
+            const escaped = filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+            const expr = `tell application "Finder" to delete POSIX file "${escaped}"`;
+            const result = spawnSync("osascript", ["-e", expr], {
+                timeout: OS_TRASH_TIMEOUT_MS,
+            });
+            if (result.error) return false;
+            return osTrashSucceeded(result.status, filePath);
+        }
+        if (process.platform === "linux") {
+            const gio = spawnSync("gio", ["trash", "--", filePath], {
+                timeout: OS_TRASH_TIMEOUT_MS,
+            });
+            if (!gio.error && osTrashSucceeded(gio.status, filePath)) return true;
+            const gioCode = (gio.error as NodeJS.ErrnoException | undefined)?.code;
+            if (gio.error && gioCode !== "ENOENT") return false;
+            if (!gio.error) return false;
+            const fallback = spawnSync("trash-put", ["--", filePath], {
+                timeout: OS_TRASH_TIMEOUT_MS,
+            });
+            if (fallback.error) return false;
+            return osTrashSucceeded(fallback.status, filePath);
+        }
+        return false;
+    } catch {
+        return false;
+    }
+}
+
+function stampBeforeExtension(base: string): string {
+    const stamp = fileStamp(new Date().toISOString());
+    const dot = base.lastIndexOf(".");
+    if (dot > 0) return `${base.slice(0, dot)}_${stamp}${base.slice(dot)}`;
+    return `${base}_${stamp}`;
+}
+
+function localTrash(agentDir: string, filePath: string): TrashResult {
+    try {
+        const parentName = basename(dirname(filePath));
+        let dest = join(agentDir, "sessions", ".trash", parentName, basename(filePath));
+        mkdirSync(dirname(dest), { recursive: true });
+        if (existsSync(dest)) {
+            dest = join(dirname(dest), stampBeforeExtension(basename(filePath)));
+        }
+        try {
+            renameSync(filePath, dest);
+            return { kind: "local", dest };
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException)?.code !== "EXDEV") {
+                return {
+                    kind: "failed",
+                    error: error instanceof Error ? error.message : String(error),
+                };
+            }
+            try {
+                copyFileSync(filePath, dest);
+                unlinkSync(filePath);
+                return { kind: "local", dest };
+            } catch (copyError) {
+                try {
+                    if (existsSync(dest)) unlinkSync(dest);
+                } catch {}
+                return {
+                    kind: "failed",
+                    error: copyError instanceof Error ? copyError.message : String(copyError),
+                };
+            }
+        }
+    } catch (error) {
+        return { kind: "failed", error: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+export function trashSessionFile(agentDir: string, filePath: string): TrashResult {
+    try {
+        if (tryOsTrash(filePath)) return { kind: "os" };
+        if (!existsSync(filePath)) {
+            return { kind: "failed", error: `Source file not found: ${filePath}` };
+        }
+        return localTrash(agentDir, filePath);
+    } catch (error) {
+        return { kind: "failed", error: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+// =============================================================================
+// Candidate Scanning & Age Calculation
+// =============================================================================
 
 export interface CleanupCandidate {
     file: string;
@@ -35,7 +235,6 @@ export interface CleanupCandidate {
 
 const TAIL_SCAN_BYTES = 32768;
 
-/** Last `session_info` name in the file tail; falls back to header id / basename. */
 function readSessionName(filePath: string): string {
     const fallback =
         parseSessionHeader(readFileHead(filePath)?.split("\n")[0])?.id.slice(0, 8) ??
@@ -49,7 +248,6 @@ function readSessionName(filePath: string): string {
         const buf = Buffer.alloc(length);
         readSync(fd, buf, 0, length, Math.max(0, size - length));
         const lines = buf.toString("utf-8").split("\n");
-        // Drop the first chunk line: it may be a partial mid-line read.
         const rest = lines.slice(1).reverse();
         for (const line of rest) {
             const trimmed = line.trim();
@@ -70,133 +268,161 @@ function readSessionName(filePath: string): string {
         if (fd !== -1) {
             try {
                 closeSync(fd);
-            } catch {
-                // Ignore close errors; the read result (or fallback) stands.
-            }
+            } catch {}
         }
     }
 }
 
-/**
- * Sessions older than `thresholdDays` (by file mtime), newest-first.
- * Skips `sessions/.trash/` and the excluded (current session) file.
- * Never throws — unreadable roots/folders/files are skipped.
- */
+function calculateAgeDays(mtimeMs: number, nowMs: number = Date.now()): number {
+    return Math.max(0, Math.floor((nowMs - mtimeMs) / (24 * 3600 * 1000)));
+}
+
+function isSessionFolder(entryName: string): boolean {
+    return entryName.startsWith("--") && entryName.endsWith("--");
+}
+
 export function collectCleanupCandidates(
     agentDir: string,
     thresholdDays: number,
     excludeFile?: string,
 ): CleanupCandidate[] {
-    if (!(thresholdDays > 0)) return [];
-    const candidates: CleanupCandidate[] = [];
-    let entries;
+    const sessionsRoot = join(agentDir, "sessions");
+    let folders: string[] = [];
     try {
-        entries = readdirSync(join(agentDir, "sessions"), { withFileTypes: true });
+        folders = readdirSync(sessionsRoot).filter(isSessionFolder);
     } catch {
         return [];
     }
-    for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        if (entry.name === ".trash") continue;
-        const dir = join(agentDir, "sessions", entry.name);
-        for (const fileName of listSessionFiles(dir)) {
+    const normalizedExclude = excludeFile ? normalizeDir(excludeFile) : undefined;
+    const now = Date.now();
+    const candidates: CleanupCandidate[] = [];
+
+    for (const folder of folders) {
+        const folderPath = join(sessionsRoot, folder);
+        const files = listSessionFiles(folderPath);
+        if (files.length === 0) continue;
+
+        for (const f of files) {
+            const filePath = join(folderPath, f);
+            if (normalizedExclude && normalizeDir(filePath) === normalizedExclude) continue;
+
+            let mtimeMs = 0;
+            let sizeBytes = 0;
             try {
-                const file = join(dir, fileName);
-                if (excludeFile && normalizeDir(file) === normalizeDir(excludeFile)) continue;
-                const stat = statSync(file);
-                const ageDays = (Date.now() - stat.mtimeMs) / 86400000;
-                if (!(ageDays > thresholdDays)) continue;
-                candidates.push({
-                    file,
-                    folder: dir,
-                    cwd: readSessionCwd(file) ?? "(unknown)",
-                    name: readSessionName(file),
-                    mtimeMs: stat.mtimeMs,
-                    ageDays,
-                    sizeBytes: stat.size,
-                });
+                const st = statSync(filePath);
+                mtimeMs = st.mtimeMs;
+                sizeBytes = st.size;
             } catch {
                 continue;
             }
+
+            const ageDays = calculateAgeDays(mtimeMs, now);
+            if (thresholdDays > 0 && ageDays < thresholdDays) continue;
+
+            const cwd = readSessionCwd(filePath) ?? "unknown";
+            const name = readSessionName(filePath);
+            candidates.push({
+                file: filePath,
+                folder,
+                cwd,
+                name,
+                mtimeMs,
+                ageDays,
+                sizeBytes,
+            });
         }
     }
-    candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    return candidates;
+
+    return candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
 }
 
-/** Compact age display: 45.2 → "45d", 0.5 → "12h", 0.01 → "14m" (min 1m). */
-export function formatAge(days: number): string {
-    if (days >= 1) return `${Math.floor(days)}d`;
-    if (days >= 1 / 24) return `${Math.floor(days * 24)}h`;
-    return `${Math.max(1, Math.floor(days * 1440))}m`;
+export function sweepEmptySessionFolders(agentDir: string): number {
+    const sessionsRoot = join(agentDir, "sessions");
+    let removed = 0;
+    try {
+        for (const folder of readdirSync(sessionsRoot)) {
+            if (!isSessionFolder(folder)) continue;
+            const folderPath = join(sessionsRoot, folder);
+            try {
+                if (readdirSync(folderPath).length === 0) {
+                    rmdirSync(folderPath);
+                    removed++;
+                }
+            } catch {}
+        }
+    } catch {}
+    return removed;
+}
+
+/** Trash session files, reporting how many went to the OS recycle bin vs the local fallback. */
+export function trashCandidates(
+    agentDir: string,
+    files: string[],
+): { os: number; local: number; failed: string[] } {
+    let os = 0;
+    let local = 0;
+    const failed: string[] = [];
+
+    for (const f of files) {
+        const r = trashSessionFile(agentDir, f);
+        if (r.kind === "os") os++;
+        else if (r.kind === "local") local++;
+        else failed.push(`${basename(f)}: ${r.error}`);
+    }
+
+    return { os, local, failed };
+}
+
+function formatAge(ageDays: number): string {
+    if (ageDays === 0) return "today";
+    if (ageDays === 1) return "yesterday";
+    if (ageDays < 30) return `${ageDays}d ago`;
+    const m = Math.floor(ageDays / 30);
+    return `${m}mo ago`;
+}
+
+// =============================================================================
+// UI: Cleanup & Settings
+// =============================================================================
+
+async function editThreshold(ctx: ExtensionCommandContext, current: number): Promise<void> {
+    const input = await ctx.ui.input(
+        "Auto clean threshold in days (0 to disable auto-clean):",
+        String(current),
+    );
+    if (input === undefined) return;
+    const parsed = Number.parseInt(input.trim(), 10);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > MAX_THRESHOLD_DAYS) {
+        ctx.ui.notify(
+            `Invalid threshold: must be an integer between 0 and ${MAX_THRESHOLD_DAYS}.`,
+            "error",
+        );
+        return;
+    }
+    saveCleanupSettings({ ...loadCleanupSettings(), autoCleanThresholdDays: parsed });
+    ctx.ui.notify(
+        parsed === 0
+            ? "Auto-clean disabled. (Run /session-mgr to clean manually anytime)"
+            : `Auto-clean threshold set to ${parsed} days.`,
+        "info",
+    );
 }
 
 /**
- * Remove session subfolders left with zero `*.jsonl` files. Never recursive,
- * never touches `.trash/`. Per-folder try/catch: ignores ENOTEMPTY/EPERM and
- * races with other pi instances. Never throws.
+ * Sessions eligible for trashing, current session excluded. A threshold of 0
+ * disables the age filter, so manual cleanup can browse every stored session.
  */
-export function sweepEmptySessionFolders(agentDir: string): void {
-    let entries;
-    try {
-        entries = readdirSync(join(agentDir, "sessions"), { withFileTypes: true });
-    } catch {
-        return;
-    }
-    for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        if (entry.name === ".trash") continue;
-        const dir = join(agentDir, "sessions", entry.name);
-        try {
-            if (listSessionFiles(dir).length === 0) rmdirSync(dir);
-        } catch {
-            continue;
-        }
-    }
-}
-
-/** Trash a file list with no UI access (callers own all notify calls). */
-async function trashCandidates(
+function eligibleSessions(
     agentDir: string,
-    files: string[],
-): Promise<{ os: number; local: number; failed: { file: string; error: string }[] }> {
-    const result: {
-        os: number;
-        local: number;
-        failed: { file: string; error: string }[];
-    } = { os: 0, local: 0, failed: [] };
-    for (const file of files) {
-        const trashed = trashSessionFile(agentDir, file);
-        if (trashed.kind === "os") result.os += 1;
-        else if (trashed.kind === "local") result.local += 1;
-        else result.failed.push({ file, error: trashed.error });
-    }
-    return result;
+    ctx: { sessionManager: { getSessionFile(): string | undefined } },
+    thresholdDays: number,
+): CleanupCandidate[] {
+    return collectCleanupCandidates(agentDir, thresholdDays, ctx.sessionManager.getSessionFile());
 }
 
-function parseThresholdInput(raw: string): number | undefined {
-    const trimmed = raw.trim();
-    if (!/^\d+$/.test(trimmed)) return undefined;
-    const n = Number(trimmed);
-    if (!Number.isInteger(n) || n < 0 || n > 3650) return undefined;
-    return n;
-}
-
-async function editThreshold(ctx: ExtensionCommandContext, current: number): Promise<void> {
-    const prompt = "Auto clean threshold (days, 0 = off)";
-    let raw = await ctx.ui.input(prompt, String(current));
-    if (raw === undefined) return;
-    let n = parseThresholdInput(raw);
-    if (n === undefined) {
-        ctx.ui.notify("Enter a whole number 0–3650", "warning");
-        raw = await ctx.ui.input(prompt, String(current));
-        if (raw === undefined) return;
-        n = parseThresholdInput(raw);
-        if (n === undefined) return;
-    }
-    const prev = loadCleanupSettings();
-    saveCleanupSettings({ ...prev, autoCleanThresholdDays: n });
-    ctx.ui.notify(`Auto clean threshold set to ${n}d`, "info");
+/** Human phrasing for a threshold, where 0 means "no age filter". */
+function thresholdLabel(thresholdDays: number): string {
+    return thresholdDays === 0 ? "any age" : `older than ${thresholdDays}d`;
 }
 
 async function cleanNow(
@@ -204,67 +430,54 @@ async function cleanNow(
     ctx: ExtensionCommandContext,
     thresholdDays: number,
 ): Promise<void> {
-    const list = collectCleanupCandidates(
-        agentDir,
-        thresholdDays,
-        ctx.sessionManager.getSessionFile(),
-    );
-    if (list.length === 0) {
-        ctx.ui.notify(`No sessions older than ${thresholdDays}d`, "info");
+    const cands = eligibleSessions(agentDir, ctx, thresholdDays);
+    if (cands.length === 0) {
+        ctx.ui.notify(
+            thresholdDays === 0
+                ? "No session files found to clean."
+                : `No sessions found ${thresholdLabel(thresholdDays)}.`,
+            "info",
+        );
         return;
     }
-    const oldest = Math.max(...list.map((c) => c.ageDays));
-    const mb = (list.reduce((sum, c) => sum + c.sizeBytes, 0) / 1048576).toFixed(1);
-    const lines = [
-        `Oldest ${formatAge(oldest)} · total ${mb} MB · goes to OS Recycle Bin (fallback sessions/.trash). Current session excluded.`,
-        ...list
-            .slice(0, 8)
-            .map((c) => `• ${c.name} · ${formatAge(c.ageDays)} · ${shortenHome(c.cwd)}`),
-    ];
-    if (list.length > 8) lines.push(`…and ${list.length - 8} more`);
-    if (!(await ctx.ui.confirm(`Delete ${list.length} old sessions?`, lines.join("\n")))) return;
-    const r = await trashCandidates(
-        agentDir,
-        list.map((c) => c.file),
+
+    const items = cands.map((c) => ({
+        value: c.file,
+        label: `${c.name} · ${formatAge(c.ageDays)} · ${shortenHome(c.cwd)}`,
+        description: `${c.ageDays}d · ${(c.sizeBytes / 1024).toFixed(0)} KB`,
+    }));
+
+    const picked = await showPicker(
+        ctx,
+        `Clean sessions (${cands.length} ${thresholdLabel(thresholdDays)}):`,
+        "enter trash this session • esc back",
+        () => items,
     );
+    if (!picked) return;
+
+    const r = trashCandidates(agentDir, [picked]);
     sweepEmptySessionFolders(agentDir);
-    ctx.ui.notify(
-        `Cleaned ${list.length - r.failed.length} (${r.os} recycle bin, ${r.local} local trash${r.failed.length ? `, ${r.failed.length} failed` : ""})`,
-        r.failed.length > 0 ? "warning" : "info",
-    );
-    for (const f of r.failed) console.warn(`[session-mgr] failed to trash ${f.file}: ${f.error}`);
+    if (r.failed.length > 0) {
+        ctx.ui.notify(`Failed: ${r.failed.join("; ")}`, "error");
+    } else {
+        ctx.ui.notify(
+            `Session trashed (${r.os > 0 ? "OS Recycle Bin" : "sessions/.trash"})`,
+            "info",
+        );
+    }
 }
 
-async function handleSessionMgr(agentDir: string, ctx: ExtensionCommandContext): Promise<void> {
-    let thresholdDays = loadCleanupSettings().autoCleanThresholdDays;
-    let level1Desc: string;
-    try {
-        const count = collectCleanupCandidates(
-            agentDir,
-            thresholdDays,
-            ctx.sessionManager.getSessionFile(),
-        ).length;
-        level1Desc = `${thresholdDays}d auto-clean · ${count} candidates`;
-    } catch {
-        level1Desc = "threshold unknown";
-    }
-    const level1 = await showPicker(
-        ctx,
-        "Session manager:",
-        "type to filter • ↑↓ navigate • enter select • esc close",
-        () => [{ value: "cleanup", label: "Session cleanup…", description: level1Desc }],
-    );
-    if (level1 !== "cleanup") return;
+export async function handleSessionMgr(
+    agentDir: string,
+    ctx: ExtensionCommandContext,
+): Promise<void> {
     for (;;) {
-        thresholdDays = loadCleanupSettings().autoCleanThresholdDays;
-        const level2Count = collectCleanupCandidates(
-            agentDir,
-            thresholdDays,
-            ctx.sessionManager.getSessionFile(),
-        ).length;
-        const level2 = await showPicker(
+        const thresholdDays = loadCleanupSettings().autoCleanThresholdDays;
+        const candidateCount = eligibleSessions(agentDir, ctx, thresholdDays).length;
+
+        const picked = await showPicker(
             ctx,
-            "Session cleanup:",
+            "Session manager settings:",
             "type to filter • ↑↓ navigate • enter select • esc close",
             () => [
                 {
@@ -275,15 +488,15 @@ async function handleSessionMgr(agentDir: string, ctx: ExtensionCommandContext):
                 {
                     value: "clean-now",
                     label: "Clean now",
-                    description: `delete ${level2Count} sessions older than ${thresholdDays}d`,
+                    description: `browse ${candidateCount} sessions ${thresholdLabel(thresholdDays)}`,
                 },
             ],
         );
-        if (level2 === "threshold") {
+        if (picked === "threshold") {
             await editThreshold(ctx, thresholdDays);
             continue;
         }
-        if (level2 === "clean-now") {
+        if (picked === "clean-now") {
             await cleanNow(agentDir, ctx, loadCleanupSettings().autoCleanThresholdDays);
             continue;
         }
@@ -291,63 +504,42 @@ async function handleSessionMgr(agentDir: string, ctx: ExtensionCommandContext):
     }
 }
 
-export function registerSessionMgr(pi: ExtensionAPI): void {
-    pi.registerCommand("session-mgr", {
-        description: "Session manager settings (cleanup…)",
-        handler: async (_args: string, ctx: ExtensionCommandContext) => {
-            const agentDir = getAgentDir();
-            if (!ctx.hasUI) {
-                ctx.ui.notify(
-                    "Session manager: no dialog available in headless mode — use /session-mgr from interactive TUI.",
-                    "error",
-                );
-                return;
-            }
-            await handleSessionMgr(agentDir, ctx);
-        },
-    });
-    pi.on("session_start", async (event, ctx) => {
-        try {
-            if (event.reason !== "startup") return;
-            if (!ctx.hasUI) return;
-            const settings = loadCleanupSettings();
-            if (settings.autoCleanThresholdDays <= 0) return;
-            const last = Date.parse(settings.lastAutoCleanAt);
-            if (!Number.isNaN(last) && Date.now() - last < 24 * 3600 * 1000) return;
-            const agentDir = getAgentDir();
-            const exclude = ctx.sessionManager.getSessionFile();
-            const cands = collectCleanupCandidates(
-                agentDir,
-                settings.autoCleanThresholdDays,
-                exclude,
-            );
-            if (cands.length === 0) return;
-            saveCleanupSettings({ ...settings, lastAutoCleanAt: new Date().toISOString() });
-            const oldest = Math.max(...cands.map((c) => c.ageDays));
-            const mb = (cands.reduce((a, c) => a + c.sizeBytes, 0) / 1048576).toFixed(1);
-            const lines = [
-                `Oldest ${formatAge(oldest)} · total ${mb} MB · goes to OS Recycle Bin (fallback sessions/.trash). Current session excluded.`,
-                ...cands
-                    .slice(0, 8)
-                    .map((c) => `• ${c.name} · ${formatAge(c.ageDays)} · ${shortenHome(c.cwd)}`),
-            ];
-            if (cands.length > 8) lines.push(`…and ${cands.length - 8} more`);
-            if (!(await ctx.ui.confirm(`Delete ${cands.length} old sessions?`, lines.join("\n"))))
-                return;
-            const r = await trashCandidates(
-                agentDir,
-                cands.map((c) => c.file),
-            );
-            sweepEmptySessionFolders(agentDir);
-            ctx.ui.notify(
-                `Cleaned ${cands.length - r.failed.length} (${r.os} recycle bin, ${r.local} local trash${r.failed.length ? `, ${r.failed.length} failed` : ""})`,
-                r.failed.length > 0 ? "warning" : "info",
-            );
-        } catch (e) {
-            console.warn(
-                "[session-mgr] auto-clean skipped:",
-                e instanceof Error ? e.message : String(e),
-            );
-        }
-    });
+export async function handleAutoCleanupOnStart(ctx: ExtensionContext): Promise<void> {
+    try {
+        if (!ctx.hasUI) return;
+        const settings = loadCleanupSettings();
+        if (settings.autoCleanThresholdDays <= 0) return;
+        const last = Date.parse(settings.lastAutoCleanAt);
+        if (!Number.isNaN(last) && Date.now() - last < 24 * 3600 * 1000) return;
+        const agentDir = getAgentDir();
+        const cands = eligibleSessions(agentDir, ctx, settings.autoCleanThresholdDays);
+        if (cands.length === 0) return;
+        saveCleanupSettings({ ...settings, lastAutoCleanAt: new Date().toISOString() });
+
+        const oldest = Math.max(...cands.map((c) => c.ageDays));
+        const mb = (cands.reduce((a, c) => a + c.sizeBytes, 0) / 1048576).toFixed(1);
+        const lines = [
+            `Oldest ${formatAge(oldest)} · total ${mb} MB · goes to OS Recycle Bin (fallback sessions/.trash). Current session excluded.`,
+            ...cands
+                .slice(0, 8)
+                .map((c) => `• ${c.name} · ${formatAge(c.ageDays)} · ${shortenHome(c.cwd)}`),
+        ];
+        if (cands.length > 8) lines.push(`…and ${cands.length - 8} more`);
+        if (!(await ctx.ui.confirm(`Delete ${cands.length} old sessions?`, lines.join("\n"))))
+            return;
+        const r = trashCandidates(
+            agentDir,
+            cands.map((c) => c.file),
+        );
+        sweepEmptySessionFolders(agentDir);
+        ctx.ui.notify(
+            `Cleaned ${cands.length - r.failed.length} (${r.os} recycle bin, ${r.local} local trash${r.failed.length ? `, ${r.failed.length} failed` : ""})`,
+            r.failed.length > 0 ? "warning" : "info",
+        );
+    } catch (e) {
+        console.warn(
+            "[session-mgr] auto-clean skipped:",
+            e instanceof Error ? e.message : String(e),
+        );
+    }
 }

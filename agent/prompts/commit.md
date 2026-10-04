@@ -8,7 +8,7 @@ Additional user note (if any): $@
 
 **Your Workflow:**
 
-1.  **Check Staged Changes**: Run `git_diff_staged` to see what has been prepared for commit.
+1.  **Check Staged Changes**: Run `git diff --staged` to see what has been prepared for commit.
     *   If there are no staged changes, inform the user and stop.
 
 2.  **Draft Message**: Based on the diff, write a commit message following the user's preferences and Conventional Commits standard.
@@ -21,7 +21,7 @@ Additional user note (if any): $@
     *   "Cancel."
 
 4.  **Execute or Iterate**:
-    *   If "Yes", run `git_commit` with the message and confirm completion.
+    *   If "Yes", run `git commit -m "<message>"` with the message and confirm completion.
     *   If "No, I want to suggest an edit" (or if the user provides other feedback), ask for their suggestions. Then, create a *new, revised* commit message incorporating their feedback and return to Step 3.
     *   If "Cancel", stop the process.
 

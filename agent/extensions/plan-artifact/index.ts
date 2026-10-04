@@ -4,8 +4,7 @@ import type { SelectItem } from "@earendil-works/pi-tui";
 import { Container, Key, Markdown, SelectList, Text, matchesKey } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { registerExtensionApi } from "../shared/cross-extension-api.js";
-import { createPlanServer } from "./server.ts";
-import { extractSections } from "./markdown.ts";
+import { createPlanServer, extractSections } from "./server.ts";
 import type { PlanProposal } from "./types.ts";
 import * as crypto from "node:crypto";
 

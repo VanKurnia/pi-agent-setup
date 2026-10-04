@@ -158,12 +158,12 @@
             "placements": {
               "filechanges": "off",
               "codebase-memory": "off",
-              "extmgr": "off"
+              "ext-mgr": "off"
             },
             "colorModes": {
               "filechanges": "original",
               "codebase-memory": "original",
-              "extmgr": "zentui"
+              "ext-mgr": "zentui"
             }
           }
         }

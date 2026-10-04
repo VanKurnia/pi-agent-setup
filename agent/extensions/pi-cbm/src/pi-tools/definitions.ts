@@ -534,7 +534,7 @@ export const toolDefinitions: ToolDefinition[] = [
         name: "detect_changes",
         label: "CBM Detect Changes",
         description:
-            "Map local git diff → changed files + impacted symbols (blast radius). Use before edit/commit. Returns `changed_files`+`changed_count`+`impacted_symbols`. May include duplicate entries when index is stale — cross-check with git_status. `include_metadata=true` for raw impact.",
+            "Map local git diff → changed files + impacted symbols (blast radius). Use before edit/commit. Returns `changed_files`+`changed_count`+`impacted_symbols`. May include duplicate entries when index is stale — cross-check with `git status`. `include_metadata=true` for raw impact.",
         promptSnippet:
             "detect_changes(project?, depth?, base_branch?/since?): graph impact analysis for local changes",
         promptGuidelines: [

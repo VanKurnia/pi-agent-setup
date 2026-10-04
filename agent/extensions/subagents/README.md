@@ -8,7 +8,7 @@ A pi extension that registers a single `subagent` tool with two agents:
 |-------|-------|-------|---------|
 | **scout** | read, grep, find, ls, web_search, web_fetch | via `/subagents:settings` | Fast codebase recon + lightweight web research |
 | **worker** | read, write, edit, safe_bash | via `/subagents:settings` | Code changes |
-| — | git_status, git_diff, git_log, etc. | — | Git operations (via git-toolkit) |
+| — | git status, git diff, git log, etc. | — | Git operations (via terminal) |
 | — | query_sqlite, query_mysql | — | Database queries (via db-viewer) |
 
 ## Usage

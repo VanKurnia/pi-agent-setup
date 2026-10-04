@@ -1,0 +1,30 @@
+{
+  "name": "smart-web-access",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Unified smart web fetch and search extension for Pi.",
+  "license": "MIT",
+  "main": "./index.ts",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "defuddle": "^0.19.2",
+    "linkedom": "^0.18.13",
+    "lodash": "^4.17.21",
+    "mime-types": "^2.1.35",
+    "wreq-js": "^2.3.1"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.17.24",
+    "@types/mime-types": "^3.0.1"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  }
+}

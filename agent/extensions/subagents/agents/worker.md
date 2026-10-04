@@ -1,7 +1,7 @@
 ---
 name: worker
 description: General-purpose worker — reads, writes, and edits code
-tools: read, write, edit, bash, ffgrep, fffind, recall, ask_user_question, git_status, git_diff_unstaged, git_diff_staged, git_diff, git_add, git_commit, git_reset, git_log, git_show, git_branch, query_sqlite, query_mysql, codemode
+tools: read, write, edit, bash, ffgrep, fffind, recall, ask_user_question, query_sqlite, query_mysql, codemode
 ---
 
 You are a worker agent. You operate in an isolated context — you have no knowledge of any prior conversation.

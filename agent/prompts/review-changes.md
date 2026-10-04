@@ -1,31 +1,33 @@
 ---
-description: Review all changes via ocr_review, then inspect flagged hunks with git_diff for correctness and edge cases.
-argument-hint: "[path|workpackage|branch-range]"
+description: Review code changes using ocr_review or ocr_scan, then inspect flagged hunks with git diff for correctness and edge cases.
+argument-hint: "[path|branch-range|commit]"
 ---
 
-Scope: ${@:-whole workspace}.
+Target Scope: ${@:-whole workspace}.
 
-## Scope
+## Execution Workflow
 
-| Argument                           | Runs                                                                                                                                            |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| (none)                             | `ocr_review` — workspace diff (staged + unstaged + untracked)                                                                                   |
-| dir or file path                   | `ocr_scan` with `path` — `ocr review` is diff-based and has no path flag; alternatively run `ocr_review` and keep only findings under that path |
-| `NNN` or `.plans/NNN-*.md`         | read the plan file, then review the files it lists                                                                                              |
-| `a..b`, branch name, or commit sha | `ocr_review` with `from`/`to`, or `commit` for a single commit                                                                                  |
+1. **Select Review Tool by Scope**:
+   - **Workspace diff (no arguments or "whole workspace")**: Call `ocr_review({})` to review all current uncommitted changes (staged + unstaged + untracked).
+   - **Specific commit (`<sha>`)**: Call `ocr_review({ commit: "<sha>" })`.
+   - **Branch or commit range (`<from>..<to>`)**: Call `ocr_review({ from: "<from>", to: "<to>" })`.
+   - **Specific file or directory path**:
+     - `ocr_review` is diff-based across the repo. To review changes with emphasis on a path, run `ocr_review({ background: "Focus review on changes under <path>" })` and filter findings to that path; OR
+     - To audit whole files under that directory regardless of diff, run `ocr_scan({ path: "<path>" })`.
+   - **Plan file (`NNN` or `.plans/NNN-*.md`)**: Read the plan file first, then review the files referenced within it.
 
-- Multiple arguments: review each scope, merge findings into one report.
-- Nonexistent path or ref: report it, skip it. Do not guess alternatives.
+2. **Terminal Inspection**:
+   - If findings or flagged files require detailed hunk inspection, run `git diff` via your shell tool (`powershell` on Windows or `bash` on Unix). Do not call `git diff` as a tool name.
 
-1. **Automated review** — Run `ocr_review` on the current workspace to get AI-powered findings (bugs, security, reliability).
-2. **Manual follow-up** — Use `git_diff` on specific files flagged by OCR or for deeper hunk-level inspection of concerns.
-3. **Classify findings** — High (bugs/security) → fix, Medium → report with context, Low → discard.
+3. **Triage Findings**:
+   - **High** (bugs, security flaws, clear breakage) → report and fix if requested.
+   - **Medium** (valid concerns, edge cases, questionable patterns) → report with file and line numbers.
+   - **Low** (stylistic nits, false positives) → discard silently.
 
-Review every flagged hunk systematically:
+4. **Systematic Review Checklist**:
+   - **Correctness** — Normal paths, boundary conditions, empty/nil states, and error handling.
+   - **Edge cases** — Off-by-one, null/undefined, race conditions, type mismatches.
+   - **Side effects** — Breaking callers, resource leaks, or violating invariants.
+   - **Consistency** — Adherence to surrounding conventions and architecture.
 
-1. **Correctness** — Does the logic handle normal paths, empty states, and error cases?
-2. **Edge cases** — Any off-by-one, null/undefined, race conditions, or type mismatches?
-3. **Side effects** — Could this break callers, leak resources, or violate invariants?
-4. **Consistency** — Does it match surrounding code style, conventions, and patterns?
-
-If OCR found no issues and manual inspection confirms, state explicitly.
+If OCR reports no findings and manual inspection confirms, state explicitly that changes look clean.

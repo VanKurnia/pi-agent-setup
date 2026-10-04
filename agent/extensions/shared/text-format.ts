@@ -2,7 +2,15 @@
  * Shared text-formatting helpers used by the status widgets.
  */
 
+import { homedir } from "node:os";
 import { visibleWidth } from "@earendil-works/pi-tui";
+
+/** Replace the user's home directory prefix with `~`, normalizing separators. */
+export function shortenHome(p: string): string {
+    const home = homedir().replace(/\\/g, "/");
+    const normalized = p.replace(/\\/g, "/");
+    return normalized.startsWith(home) ? `~${normalized.slice(home.length)}` : p;
+}
 
 export function formatDuration(ms: number): string {
     if (ms < 1000) return `${ms}ms`;

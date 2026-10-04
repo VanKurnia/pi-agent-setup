@@ -155,13 +155,23 @@ function countTableRows(text: string): number | undefined {
     }
     return separatorSeen && tableLines >= 2 ? tableLines - 2 : undefined;
 }
+/** ` · N items` — the secondary metric appended after a footer's primary one. */
+function countMetric(
+    theme: BoxTheme,
+    count: number,
+    singular: string,
+    plural = `${singular}s`,
+): string {
+    const label = `${count} ${count === 1 ? singular : plural}`;
+    return `${theme.fg("dim", " · ")}${theme.fg("dim", label)}`;
+}
 /** `elapsed · N rows` — the word-count metric would be noise for a table. */
 function dbFooter(theme: BoxTheme, context: BoxedToolContext, rows: number | undefined): string {
     const elapsedMs = stateElapsedMs(context);
     const elapsed =
         elapsedMs === undefined ? theme.fg("dim", "--") : formatElapsedMetric(theme, elapsedMs);
     if (rows === undefined) return elapsed;
-    return `${elapsed}${theme.fg("dim", " · ")}${theme.fg("dim", `${rows} ${rows === 1 ? "row" : "rows"}`)}`;
+    return `${elapsed}${countMetric(theme, rows, "row")}`;
 }
 export function renderDbQueryResult(
     result: BoxedToolResult,
@@ -408,7 +418,7 @@ function readDetails(result: BoxedToolResult | undefined): OcrCardState | undefi
 function fileRowLines(
     files: OcrFileRow[],
     glyph: string,
-    glyphRole: "warning" | "success",
+    glyphRole: "warning" | "success" | "error",
     theme: BoxTheme,
     withCounts: boolean,
 ): string[] {
@@ -527,6 +537,12 @@ function actionRowLines(actions: OcrActionRow[], expanded: boolean, theme: BoxTh
     return lines;
 }
 
+/** Placeholder shown before the first progress line reaches the card. */
+function emptyPartialHint(state: OcrCardState): string {
+    if (state.scope) return `Running ${state.mode} · ${state.scope} — preparing review…`;
+    return `Running ${state.mode} — preparing review…`;
+}
+
 function renderPartial(
     state: OcrCardState,
     options: { expanded: boolean; isPartial: boolean },
@@ -535,20 +551,22 @@ function renderPartial(
 ): Component {
     const body = (contentWidth: number): string[] => {
         void contentWidth;
-        const lines =
-            state.actions.length > 0
-                ? actionRowLines(state.actions, options.expanded, theme)
-                : [theme.fg("dim", "No output received yet")];
-        if (state.files !== undefined && state.files.length > 0) {
-            lines.push("", theme.fg("dim", "Files"));
+        const lines: string[] = [];
+        const files = state.files ?? [];
+        const hasActions = state.actions.length > 0;
+
+        if (state.error) {
+            lines.push(theme.fg("error", state.error));
+        } else if (hasActions) {
+            lines.push(...actionRowLines(state.actions, options.expanded, theme));
+        } else if (files.length === 0) {
+            lines.push(theme.fg("dim", emptyPartialHint(state)));
+        }
+
+        if (!state.error && files.length > 0) {
+            if (hasActions) lines.push("", theme.fg("dim", "Files"));
             lines.push(
-                ...fileRowLines(
-                    state.files,
-                    SPINNER_FRAMES[spinnerFrameIndex],
-                    "warning",
-                    theme,
-                    false,
-                ),
+                ...fileRowLines(files, SPINNER_FRAMES[spinnerFrameIndex], "warning", theme, false),
             );
         }
         return applyBudget(lines, options.expanded, theme);
@@ -556,12 +574,13 @@ function renderPartial(
     startSpinnerTicker(context);
     const fileCount = state.files?.length ?? 0;
     const footer = `${formatBoxedRunningStatus(theme, stateElapsedMs(context))}${
-        fileCount > 0
-            ? `${theme.fg("dim", " · ")}${theme.fg("dim", `${fileCount} ${fileCount === 1 ? "file" : "files"}`)}`
-            : ""
+        fileCount > 0 ? countMetric(theme, fileCount, "file") : ""
     }`;
+    let dividerLabel = "Status";
+    if (state.actions.length > 0) dividerLabel = "Actions";
+    else if (fileCount > 0) dividerLabel = "Files";
     return renderBoxedToolResult(theme, body, {
-        dividerLabel: "Actions",
+        dividerLabel,
         footerLines: [footer],
         isError: context.isError,
         isPartial: options.isPartial,
@@ -638,10 +657,12 @@ function renderFailed(
     options: { expanded: boolean; isPartial: boolean },
     theme: BoxTheme,
     context: BoxedToolContext,
+    fallbackError?: string,
 ): Component {
     const body = (): string[] => {
+        const errorText = state.error || fallbackError || "Unknown error";
         const { lines: errorLines, omitted } = selectRenderLines(
-            state.error ?? "Unknown error",
+            errorText,
             options.expanded ? getToolsRenderConfig().maxExpandedLines : 10,
         );
         const lines = errorLines.map((line) => formatToolOutputLine(theme, line, "error"));
@@ -650,12 +671,20 @@ function renderFailed(
         }
         if (state.files !== undefined && state.files.length > 0) {
             lines.push("", theme.fg("dim", "Files"));
-            lines.push(...fileRowLines(state.files, "✓", "success", theme, true));
+            lines.push(...fileRowLines(state.files, "✗", "error", theme, true));
         }
         return applyBudget(lines, options.expanded, theme);
     };
+    const elapsedMs = stateElapsedMs(context);
+    const fileCount = state.files?.length ?? 0;
+    const footer = [
+        `${
+            elapsedMs === undefined ? theme.fg("dim", "--") : formatElapsedMetric(theme, elapsedMs)
+        }${fileCount > 0 ? countMetric(theme, fileCount, "file") : ""}`,
+    ];
     return renderBoxedToolResult(theme, body, {
         dividerLabel: "Error",
+        footerLines: footer,
         isError: context.isError,
         isPartial: options.isPartial,
     });
@@ -683,8 +712,10 @@ export function renderOcrResult(
     }
     if (options.isPartial && firstResultPass) return EMPTY_RESULT;
     if (options.isPartial) return renderPartial(state, options, theme, context);
+    if (context.isError || state.error) {
+        return renderFailed(state, options, theme, context, output.trim());
+    }
     if (state.result) return renderSettled(state, state.result, options, theme, context);
-    if (state.error) return renderFailed(state, options, theme, context);
     // Preview runs publish the seeded file list without a result payload.
     return renderPreview(state, options, theme, context);
 }
@@ -839,7 +870,7 @@ function requestDetailLines(items: CallItem[], expanded: boolean, theme: BoxThem
     return lines;
 }
 /**
- * Shared with the subagents widget (`subagents/src/widget.ts`): only `running`
+ * Shared with the subagents widget (`subagents/src/render.ts`): only `running`
  * and `pending` come from the reported status, and a terminal row is judged by
  * its exit code, so both surfaces classify the same payload identically.
  */
