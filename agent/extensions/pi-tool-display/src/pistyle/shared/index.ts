@@ -229,9 +229,7 @@ export function formatElapsed(result: MetricResultLike | undefined): string {
 
 const MAX_RENDER_LINE_CHARS = 2000;
 const DEFAULT_COLLAPSED_RENDER_LINES = 10;
-const MAX_BOXED_RESULT_RENDERED_HEAD_LINES = 40;
-const MAX_BOXED_RESULT_RENDERED_TAIL_LINES = 8;
-const MAX_BOXED_RESULT_RENDERED_LINES = 160;
+const MAX_BOXED_RESULT_RENDERED_TAIL_LINES = 15;
 const RENDER_TRUNCATION_SUFFIX = "… (truncated)";
 const TRUNCATE_ELLIPSIS = "…";
 const ANSI_RESET = "\x1b[0m";
@@ -544,18 +542,12 @@ function boxedResultRenderBudget(
         0,
         Math.floor(Number.isFinite(rawLineBudget) ? rawLineBudget : DEFAULT_COLLAPSED_RENDER_LINES),
     );
-    const maxRenderedLines = Math.max(1, Math.min(rawLines * 3, MAX_BOXED_RESULT_RENDERED_LINES));
-    const tailLines = Math.min(
-        Math.ceil(rawLines * 0.15),
-        MAX_BOXED_RESULT_RENDERED_TAIL_LINES,
-        Math.max(0, maxRenderedLines - 1),
+    const tailLines = Math.max(
+        0,
+        Math.min(Math.ceil(rawLines * 0.15), MAX_BOXED_RESULT_RENDERED_TAIL_LINES),
     );
-    const headLines = Math.min(
-        rawLines,
-        MAX_BOXED_RESULT_RENDERED_HEAD_LINES,
-        Math.max(1, maxRenderedLines - tailLines - 1),
-    );
-    return { headLines, tailLines, maxRenderedLines };
+    const headLines = Math.max(1, rawLines - tailLines - 1);
+    return { headLines, tailLines, maxRenderedLines: rawLines };
 }
 
 // from: pistyle\shared\theme-extras.ts
@@ -1392,16 +1384,6 @@ type RenderLinesCache = {
     width: number;
     lines: string[];
 };
-function pushBoundedLines(target: string[], lines: string[], maxLines: number): boolean {
-    const slots = maxLines - target.length;
-    if (slots <= 0) return false;
-    if (lines.length > slots) {
-        target.push(...lines.slice(0, slots));
-        return false;
-    }
-    target.push(...lines);
-    return true;
-}
 function renderBoxedOutputLines(
     theme: BoxTheme,
     outputLines: string[],
@@ -1409,47 +1391,31 @@ function renderBoxedOutputLines(
     rawLineBudget = DEFAULT_COLLAPSED_RENDER_LINES,
     frameColor?: string,
 ): string[] {
-    const budget = boxedResultRenderBudget(rawLineBudget);
-    const headLimit = Math.max(0, Math.min(budget.headLines, budget.maxRenderedLines));
+    const fragments = outputLines.flatMap((line) => (line ?? "").split("\n"));
+    const budget = Math.max(
+        1,
+        Math.floor(Number.isFinite(rawLineBudget) ? rawLineBudget : DEFAULT_COLLAPSED_RENDER_LINES),
+    );
+    if (fragments.length <= budget) {
+        return fragments.map((fragment) => boxedTruncatedLine(theme, fragment, width, frameColor));
+    }
+    const renderBudget = boxedResultRenderBudget(budget);
+    const headLimit = Math.max(0, Math.min(renderBudget.headLines, renderBudget.maxRenderedLines));
     const tailLimit = Math.max(
         0,
-        Math.min(budget.tailLines, Math.max(0, budget.maxRenderedLines - headLimit - 1)),
+        Math.min(
+            renderBudget.tailLines,
+            Math.max(0, renderBudget.maxRenderedLines - headLimit - 1),
+        ),
     );
-    const head: string[] = [];
-    let nextInputIndex = 0;
-    let truncated = false;
-    for (; nextInputIndex < outputLines.length; nextInputIndex++) {
-        // An output "line" may carry embedded newlines (raw tool error messages,
-        // JSON payloads). Split before boxing so every fragment gets its own
-        // border and truncation — otherwise the box frame visually breaks on the
-        // embedded rows.
-        const fragments = (outputLines[nextInputIndex] ?? "").split("\n");
-        let headExceeded = false;
-        for (const fragment of fragments) {
-            const line = boxedTruncatedLine(theme, fragment, width, frameColor);
-            if (!pushBoundedLines(head, [line], headLimit)) {
-                headExceeded = true;
-                break;
-            }
-        }
-        if (headExceeded) {
-            truncated = true;
-            nextInputIndex++;
-            break;
-        }
-    }
-    if (!truncated && nextInputIndex >= outputLines.length) return head;
-    const tail: string[] = [];
-    const tailStart = Math.max(nextInputIndex, outputLines.length - tailLimit);
-    for (let i = tailStart; i < outputLines.length; i++) {
-        const fragments = (outputLines[i] ?? "").split("\n");
-        for (const fragment of fragments) {
-            const line = boxedTruncatedLine(theme, fragment, width, frameColor);
-            tail.push(line);
-            if (tail.length > tailLimit) tail.splice(0, tail.length - tailLimit);
-        }
-    }
-    const skippedInputLines = Math.max(0, tailStart - nextInputIndex);
+    const head = fragments
+        .slice(0, headLimit)
+        .map((fragment) => boxedTruncatedLine(theme, fragment, width, frameColor));
+    const tailStart = Math.max(headLimit, fragments.length - tailLimit);
+    const tail = fragments
+        .slice(tailStart)
+        .map((fragment) => boxedTruncatedLine(theme, fragment, width, frameColor));
+    const skippedInputLines = Math.max(0, tailStart - headLimit);
     const skippedText =
         skippedInputLines > 0
             ? `… rendered output truncated; ${skippedInputLines} input lines skipped before tail`

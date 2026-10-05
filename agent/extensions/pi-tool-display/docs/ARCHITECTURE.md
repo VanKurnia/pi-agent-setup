@@ -76,8 +76,8 @@ told the user nothing about what it was doing.
 - Call card: `➔ Subagent · parallel · scout, worker` header, then one line per requested agent/task
   (title, then the task's first 5 lines; expanded shows all).
 - Result card: one row per agent — status glyph, name, title, `N tools · N tok · elapsed` — then that
-  agent's recent tool calls (6 collapsed; expanded lifts the per-agent cap and the output cap, though
-  the boxed-result helper still head/tail-truncates a body past ~40 lines), the live `▸ current tool`
+  agent's recent tool calls (6 collapsed; expanded lifts the per-agent cap and the output cap up to
+  the expanded render budget), the live `▸ current tool`
   line while running, its latest prose line, and any error. Settled runs append the concatenated output
   under a rule, and the footer shows `elapsed · ok/total agents · tokens`. The running footer is the
   fork's standard `󰐊 Running · <elapsed>` — until the first partial result paints, the call card reads

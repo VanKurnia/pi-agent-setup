@@ -1,8 +1,10 @@
 /**
  * smart-web-access — unified local web access extension for Pi.
- * Registers `web_search`, `web_fetch`, and `batch_web_fetch`.
+ * Registers `web_search` and `web_fetch`.
+ * `batch_web_fetch` was removed on purpose -- use `codemode` to fan out
+ * `tools.web_fetch(...)` calls when several URLs are needed.
  *
- * Heavy dependencies (wreq-js, linkedom, defuddle, mime-types, lodash) are
+ * Heavy dependencies (wreq-js, linkedom, defuddle, mime-types) are
  * lazily loaded inside execute() handlers so startup cost remains near zero.
  */
 
@@ -28,9 +30,6 @@ import {
 import { Type } from "typebox";
 
 import {
-    type BatchFetchItemProgress,
-    type BatchFetchProgressSnapshot,
-    type BatchFetchResult,
     type FetchResult,
     type FetchToolConfig,
     type FingerprintOs,
@@ -40,7 +39,6 @@ import {
     type QueryStatus,
     type WebSearchDetails,
     createBaseFetchToolParameterProperties,
-    createBatchFetchToolParameterProperties,
     formatByteCount,
     isFileFetchResult,
     isError,
@@ -198,13 +196,6 @@ const toolDescription = [
     "Does NOT execute JavaScript — use a browser automation tool for JS-heavy pages.",
 ].join(" ");
 
-const batchToolDescription = [
-    "Fetch multiple URLs with browser-grade TLS fingerprinting and readable extraction.",
-    "Each request accepts the same parameters as web_fetch and fans out with bounded concurrency.",
-    "Returns full per-item metadata to the agent and streams compact per-item progress in the pi TUI.",
-    "Does NOT execute JavaScript — use a browser automation tool for JS-heavy pages.",
-].join(" ");
-
 const SPINNER_INTERVAL_MS = 80;
 
 type WebFetchRenderDetails = {
@@ -220,14 +211,6 @@ type WebFetchRenderDetails = {
     progress?: number;
     phase?: string;
     url?: string;
-    spinnerTick?: number;
-};
-
-type BatchRenderDetails = {
-    verbose?: boolean;
-    batchProgress?: BatchFetchProgressSnapshot;
-    batchResult?: BatchFetchResult;
-    completed?: boolean;
     spinnerTick?: number;
 };
 
@@ -299,21 +282,6 @@ export function renderSearchProgressCard(
 // TUI Helpers: Fetch
 // =============================================================================
 
-function formatPercent(value: number | undefined): string {
-    if (value === undefined || Number.isNaN(value)) return "";
-    const clamped = Math.max(0, Math.min(1, value));
-    return `${Math.round(clamped * 100)}%`;
-}
-
-function formatBatchItemSummary(item: BatchFetchItemProgress): string {
-    const status = item.status === "error" ? "failed" : item.status;
-    const percent =
-        item.status === "loading" || item.status === "processing"
-            ? ` ${formatPercent(item.progress)}`
-            : "";
-    return `${item.url} -> ${status}${percent}`;
-}
-
 export function createWebFetchCallComponent(
     args: Record<string, unknown>,
     theme: Pick<Theme, "fg" | "bold">,
@@ -322,24 +290,6 @@ export function createWebFetchCallComponent(
     const format = typeof args.format === "string" ? ` [${args.format}]` : "";
     return new Text(
         `${theme.fg("toolTitle", theme.bold("web_fetch"))} ${theme.fg("accent", url)}${theme.fg("dim", format)}`,
-        0,
-        0,
-    );
-}
-
-export function createBatchFetchCallComponent(
-    args: Record<string, unknown>,
-    theme: Pick<Theme, "fg" | "bold">,
-): Text {
-    const requests = Array.isArray(args.requests) ? args.requests : [];
-    const requestCount = requests.length;
-    const countLabel = `${requestCount} URL${requestCount === 1 ? "" : "s"}`;
-    const firstUrl =
-        requestCount > 0 && typeof requests[0]?.url === "string"
-            ? ` -> ${requests[0].url}${requestCount > 1 ? ` (+${requestCount - 1} more)` : ""}`
-            : "";
-    return new Text(
-        `${theme.fg("toolTitle", theme.bold("batch_web_fetch"))} ${theme.fg("accent", countLabel)}${theme.fg("dim", firstUrl)}`,
         0,
         0,
     );
@@ -428,54 +378,6 @@ export function createWebFetchResultComponent(
     return container;
 }
 
-export function createBatchFetchResultComponent(
-    details: BatchRenderDetails | undefined,
-    expanded: boolean,
-    theme: Pick<Theme, "fg" | "bold">,
-): Container {
-    const container = new Container();
-    const summary = details?.batchResult
-        ? `${details.batchResult.succeeded}/${details.batchResult.total} succeeded`
-        : "Completed";
-    const icon =
-        details?.batchResult && details.batchResult.failed > 0
-            ? theme.fg("warning", "!")
-            : theme.fg("success", "✓");
-
-    container.addChild(new Text(`${icon} ${theme.fg("accent", summary)}`, 0, 0));
-
-    const items = details?.batchProgress?.items ?? [];
-    if (items.length > 0) {
-        container.addChild(new Spacer(1));
-        const maxVisible = expanded ? items.length : Math.min(items.length, 5);
-        for (const item of items.slice(0, maxVisible)) {
-            const mark =
-                item.status === "done"
-                    ? theme.fg("success", "✓")
-                    : item.status === "error"
-                      ? theme.fg("error", "✗")
-                      : theme.fg("dim", "•");
-            container.addChild(
-                new Text(`${mark} ${theme.fg("dim", formatBatchItemSummary(item))}`, 0, 0),
-            );
-        }
-        if (!expanded && items.length > maxVisible) {
-            container.addChild(
-                new Text(
-                    theme.fg(
-                        "dim",
-                        `... +${items.length - maxVisible} more (${keyHint("app.tools.expand", "to expand")})`,
-                    ),
-                    0,
-                    0,
-                ),
-            );
-        }
-    }
-
-    return container;
-}
-
 // =============================================================================
 // Extension Entry Point
 // =============================================================================
@@ -488,13 +390,13 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
         description:
             "Search the web and return each query's results as readable markdown -- title, URL and snippet " +
             "per result -- followed by a summary of every result link, to open with " +
-            "web_fetch (a single page) or batch_web_fetch (two or three). Call this " +
+            "web_fetch (or several web_fetch calls in parallel through codemode). Call this " +
             "whenever the answer depends on information that changes over time: latest versions, APIs, " +
             "prices, dates, events, release notes. Memory of these is often stale even when it feels certain.",
         promptSnippet: "Search the web for current or external information",
         promptGuidelines: [
             "Use web_search when current or external information would change the answer, then " +
-                "web_fetch or batch_web_fetch to open the few most relevant links it returns.",
+                "web_fetch (in parallel through codemode) to open the few most relevant links it returns.",
             "Match the number of web_search queries to the question: one for a narrow lookup, more only when the " +
                 "extra angles would change the answer.",
         ],
@@ -699,104 +601,6 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
         renderResult(result, { expanded }, theme) {
             const details = result.details as WebFetchRenderDetails | undefined;
             return createWebFetchResultComponent(details, expanded, theme);
-        },
-    });
-
-    // ── 3. batch_web_fetch ──────────────────────────────────────────────────────
-    pi.registerTool({
-        name: "batch_web_fetch",
-        label: "batch_web_fetch",
-        description: batchToolDescription,
-        promptSnippet:
-            "batch_web_fetch(requests, verbose?): fetch multiple URLs concurrently with full agent metadata and per-item progress in the pi TUI",
-        parameters: Type.Object({
-            ...createBatchFetchToolParameterProperties(fetchDefaults),
-            verbose: Type.Optional(
-                Type.Boolean({
-                    description:
-                        "Compatibility flag. pi currently returns the full metadata header for successful results regardless, while keeping the history preview compact. Default: false, or smartFetchVerboseByDefault from pi settings.",
-                }),
-            ),
-        }),
-
-        renderCall(args, theme) {
-            return createBatchFetchCallComponent(args, theme);
-        },
-
-        async execute(_toolCallId, params: Record<string, unknown>, _signal, onUpdate, ctx) {
-            const settings = await loadPiSmartFetchSettings(ctx.cwd, getAgentDir());
-            const runtimeDefaults = resolveFetchToolDefaults(settings);
-            const verbose = (params.verbose as boolean) ?? settings.verboseByDefault;
-
-            let latestSnapshot: BatchFetchProgressSnapshot | undefined;
-            let spinnerTick = 0;
-            let spinnerTimer: NodeJS.Timeout | null = null;
-
-            const emitProgress = (snapshot: BatchFetchProgressSnapshot | undefined) => {
-                onUpdate?.({
-                    content: [{ type: "text", text: "" }],
-                    details: { verbose, batchProgress: snapshot, spinnerTick },
-                });
-            };
-
-            spinnerTimer = setInterval(() => {
-                if (!latestSnapshot) return;
-                spinnerTick += 1;
-                emitProgress(latestSnapshot);
-            }, SPINNER_INTERVAL_MS);
-
-            try {
-                const { executeBatchFetchToolCall, buildBatchFetchResponseText } =
-                    await import("./fetch.js");
-
-                const batchResult = await executeBatchFetchToolCall(params, runtimeDefaults, {
-                    batchConcurrency: runtimeDefaults.batchConcurrency,
-                    onProgress(snapshot) {
-                        latestSnapshot = snapshot;
-                        emitProgress(snapshot);
-                    },
-                });
-
-                if (spinnerTimer) clearInterval(spinnerTimer);
-
-                const finalProgress: BatchFetchProgressSnapshot = {
-                    items: batchResult.items.map((item) => ({
-                        index: item.index,
-                        url: item.request.url,
-                        status: item.status,
-                        progress: item.progress,
-                        error: item.error,
-                    })),
-                    total: batchResult.total,
-                    completed: batchResult.total,
-                    succeeded: batchResult.succeeded,
-                    failed: batchResult.failed,
-                    batchConcurrency: batchResult.batchConcurrency,
-                };
-
-                const responseText = buildBatchFetchResponseText(batchResult);
-                return {
-                    content: [{ type: "text", text: responseText }],
-                    details: {
-                        verbose,
-                        batchProgress: finalProgress,
-                        batchResult,
-                        completed: true,
-                    },
-                };
-            } catch (error) {
-                if (spinnerTimer) clearInterval(spinnerTimer);
-                const message = error instanceof Error ? error.message : String(error);
-                return {
-                    content: [{ type: "text", text: `Error: ${message}` }],
-                    details: { verbose, completed: true, error: true },
-                };
-            }
-        },
-
-        renderResult(result, { expanded }, theme) {
-            const details = result.details as BatchRenderDetails | undefined;
-            return createBatchFetchResultComponent(details, expanded, theme);
         },
     });
 }

@@ -529,10 +529,10 @@ export default function ninerouter(pi: ExtensionAPI) {
         name: "ninerouter_web_fetch",
         label: "9router Web Fetch",
         description:
-            "Fallback URL fetch/extract through your 9router instance. Use when web_fetch or batch_web_fetch fails on a URL. Not the default fetch tool.",
+            "Fallback URL fetch/extract through your 9router instance. Use when web_fetch fails on a URL. Not the default fetch tool.",
         promptSnippet: "Fallback URL fetch via 9router when web_fetch fails",
         promptGuidelines: [
-            "Fallback path only: try web_fetch or batch_web_fetch first. If a URL errors, is blocked, times out, or extracts empty, retry that URL once with ninerouter_web_fetch before giving up.",
+            "Fallback path only: try web_fetch first (several in parallel through codemode when needed). If a URL errors, is blocked, times out, or extracts empty, retry that URL once with ninerouter_web_fetch before giving up.",
             "The route parameter is optional; omit it to use the configured 9router default fetch route.",
         ],
         parameters: Type.Object({

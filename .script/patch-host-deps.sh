@@ -12,10 +12,12 @@
 #   those specifiers through dist/core/extensions/virtual-modules.js.
 #
 #   Some published extensions still ship the wrong declaration —
-#   e.g. pi-smart-fetch@0.3.17 (latest) lists @earendil-works/pi-tui
-#   and @sinclair/typebox as dependencies. Upstream master is unfixed,
-#   and `npm ci` restores the pristine manifest, so this rewrite must
-#   run after every dependency install.
+#   e.g. pi-smart-fetch@0.3.17 listed @earendil-works/pi-tui and
+#   @sinclair/typebox as dependencies (no longer installed here: the local
+#   smart-web-access extension supersedes it, and other packages may repeat
+#   the mistake). Upstream was unfixed at that version, and `npm ci` restores
+#   the pristine manifest, so this rewrite must run after every dependency
+#   install.
 #
 #   Installed copies of those packages are deliberately left on disk:
 #   npm reinstalls them from the unchanged registry metadata anyway,

@@ -132,9 +132,10 @@ range, not dependencies: @earendil-works/pi-tui, @sinclair/typebox.
 pi injects its own copies of those packages as virtual modules
 (`HOST_PROVIDED_EXTENSION_PACKAGES` in the host's `resource-loader.js`), so an
 installed copy can only cause duplicate runtime modules. Some published
-extensions still declare them the wrong way — `pi-smart-fetch@0.3.17` (latest, and
-unfixed on `master`) is the current offender — and `npm ci` restores the pristine
-manifest, so the rewrite runs after every install:
+extensions still declare them the wrong way — `pi-smart-fetch@0.3.17` was the
+offender (it has since been replaced by the local `smart-web-access`
+extension), and `npm ci` restores any pristine manifest, so the rewrite runs
+after every install:
 
 ```bash
 .script/patch-host-deps.sh [PI_ROOT]   # default: $HOME/.pi

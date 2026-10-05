@@ -135,7 +135,18 @@ function markdownRows(
     return (width) => {
         if (isError || !text.trim()) return new Text(text, 0, 0).render(width);
         const lines = new Markdown(text, 0, 0, getMarkdownTheme()).render(width);
-        if (expanded || lines.length <= COLLAPSED_MARKDOWN_LINES) return lines;
+        if (expanded) {
+            const maxExpanded = getToolsRenderConfig().maxExpandedLines;
+            if (maxExpanded > 0 && lines.length > maxExpanded) {
+                const remaining = lines.length - maxExpanded;
+                return [
+                    ...lines.slice(0, maxExpanded),
+                    `... (${remaining} more lines omitted by render budget)`,
+                ];
+            }
+            return lines;
+        }
+        if (lines.length <= COLLAPSED_MARKDOWN_LINES) return lines;
         const remaining = lines.length - COLLAPSED_MARKDOWN_LINES;
         return [
             ...lines.slice(0, COLLAPSED_MARKDOWN_LINES),

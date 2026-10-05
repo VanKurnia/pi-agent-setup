@@ -78,7 +78,7 @@ for (const r of rows) {
 
 if (process.env.SERIES) {
     console.log("\n--- raw per-run series (module import + factory) ---");
-    const watch = ["pi-tool-display", "pi-blackhole", "pi-smart-fetch", "subagents", "session-mgr", "open-code-review", "pi-zentui", "ext-mgr"];
+    const watch = ["pi-tool-display", "pi-blackhole", "smart-web-access", "subagents", "session-mgr", "open-code-review", "pi-zentui", "ext-mgr"];
     for (const [label, ms] of samples) {
         if (!watch.some((w) => label.includes(w))) continue;
         console.log(short(label).padEnd(74) + ms.join(" "));

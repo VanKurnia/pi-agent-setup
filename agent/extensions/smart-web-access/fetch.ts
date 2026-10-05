@@ -11,7 +11,6 @@ import { chmod, mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import { pipeline } from "node:stream/promises";
-import deburr from "lodash/deburr.js";
 import { extension as mimeExtension } from "mime-types";
 import { Defuddle } from "defuddle/node";
 import { getProfiles, fetch as wreqFetch } from "wreq-js";
@@ -463,6 +462,10 @@ function isTextualContentType(contentType: string): boolean {
         normalized === "application/ecmascript" ||
         normalized === "image/svg+xml"
     );
+}
+
+function deburr(value: string): string {
+    return value.normalize("NFD").replace(/\p{Diacritic}/gu, "");
 }
 
 function sanitizeBaseName(value: string): string {

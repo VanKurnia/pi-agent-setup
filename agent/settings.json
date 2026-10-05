@@ -2,8 +2,6 @@
   "packages": [
     "npm:@ff-labs/pi-fff",
     "npm:pi-blackhole",
-    "npm:pi-smart-fetch",
-    "npm:pi-smart-web-search",
     "npm:pi-x-ide",
     "npm:pi-zentui",
   ],
@@ -15,10 +13,10 @@
     "write",
     "+codemode"
   ],
-  "lastChangelogVersion": "0.87.1",
+  "lastChangelogVersion": "1.0.2",
   "enableInstallTelemetry": false,
   "treeFilterMode": "user-only",
-  "quietStartup": true,
+  "quietStartup": "header",
   "terminal": {
     "showTerminalProgress": false
   },

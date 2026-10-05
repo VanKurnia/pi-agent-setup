@@ -214,13 +214,13 @@ function cleanUpLinks(markdown: string): string {
 }
 
 const FETCH_TOOL_NAME = "web_fetch";
-const BATCH_FETCH_TOOL_NAME = "batch_web_fetch";
 const SEARCH_RESULTS_HEADER = "# Search results by query";
 const LINK_SUMMARY_HEADER = "# Read these pages";
 
 const FETCH_INSTRUCTION =
-    `Open the most relevant links below before answering -- ${FETCH_TOOL_NAME} for a single page, ` +
-    `${BATCH_FETCH_TOOL_NAME} for two or three. Pick the few that best answer the question rather ` +
+    `Open the most relevant links below before answering -- ${FETCH_TOOL_NAME} for each page, ` +
+    "several in parallel through codemode when more than one is needed. Pick the few that best " +
+    "answer the question rather " +
     "than the whole list. These previews are brief and may be out of date; skip fetching only if " +
     "they already fully answer the question.";
 

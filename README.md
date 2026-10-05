@@ -113,6 +113,7 @@ Pi connects to these external tools and services (not counting Pi packages):
 | `pi-speeed`         | Session performance monitoring (`/pi-speeed`)                                                                                                                                                                                      |
 | `pi-tool-display`   | Local config stub; implementation comes from the npm package of the same name                                                                                                                                                      |
 | `plan-artifact`     | Browser UI for `.plans/` markdown with commenting and syntax highlighting                                                                                                                                                          |
+| `smart-web-access`   | Unified web access — `web_search`, `web_fetch`, `batch_web_fetch` (browser TLS impersonation + Defuddle extraction); replaces the npm `pi-smart-fetch` / `pi-smart-web-search` pair |
 | `subagents`         | Subagent orchestration for delegating tasks (`subagent` tool, `/reload-agents`, `/subagents:settings`)                                                                                                                             |
 | `thinking-fold`     | Collapsible thinking blocks with per-model behavior (`/thinking-fold-settings`)                                                                                                                                                    |
 | `update-setup`      | Runs `.script/update.sh` inside pi with live output widget (`/update-setup`)                                                                                                                                                       |
@@ -126,8 +127,6 @@ Pi connects to these external tools and services (not counting Pi packages):
 | `pi-zentui`           | Extended TUI components                                                                                             |
 | `pi-blackhole`        | Session compaction & observation engine — manages context window via truncation, reflection, and automatic archival |
 | `pi-speeed`           | Performance monitoring for pi agent sessions (npm companion to the local extension)                                 |
-| `pi-smart-fetch`      | Enhanced web-fetch tool                                                                                             |
-| `pi-smart-web-search` | Enhanced web-search tool                                                                                            |
 | `pi-tool-display`     | TUI rendering — collapsed tool output, diff visualization, thinking labels.                                         |
 
 ### Skills
