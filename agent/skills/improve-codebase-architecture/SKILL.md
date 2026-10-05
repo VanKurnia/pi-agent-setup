@@ -14,10 +14,10 @@ This command is built on a shared design vocabulary:
 
 ## Process
 
-### 1. Explore — Use CBM tools as primary method, before scout:
+### 1. Explore
 
-Before sending a scout, run CBM tools for objective data:
-
+**A. CBM Exploration (if enabled / available)**:
+If the Codebase Memory extension (`pi-cbm`) is active and its tools are registered in your session (`get_architecture`, `search_graph`, `query_graph`, `trace_path`, `detect_changes`), use them first for structural orientation:
 - `get_architecture(aspects=["hotspots", "dependencies", "boundaries", "layers", "clusters"])`
   → Leiden community detection reveals de-facto modules. Modules that appear as separate
   communities are typically good deep modules; modules merged with others may be too shallow.
@@ -38,7 +38,12 @@ Before sending a scout, run CBM tools for objective data:
 - `detect_changes(since="3 months ago")` — churn hotspots often correlate with
   architectural friction.
 
-After collecting CBM data, use `subagent` scout for verification and specific details.
+**B. Standard Exploration (fallback if CBM is disabled or unavailable)**:
+If CBM tools are not in your session:
+- Locate files and symbol definitions using `fffind` and `ffgrep`.
+- Review recent churn areas via shell git commands (`git log --oneline -30`).
+- Read entry points, manifests, and critical sections directly with `read`.
+- Dispatch a `subagent` scout (if subagents are enabled) or explore directly following imports.
 
 ---
 
@@ -52,12 +57,17 @@ Use the Agent tool with **`subagent` scout** to walk the codebase. Don't follow 
 
 Apply the **deletion test** to anything you suspect is shallow: would deleting it concentrate complexity, or just move it? A "yes, concentrates" is the signal you want.
 
-### 2. Present candidates via `plan_artifact`
+### 2. Present candidates
 
-Call the `plan_artifact` tool with:
+**Path A: via `plan_artifact` (if enabled / available)**:
+If the `plan_artifact` tool is registered in your session:
+- Call `plan_artifact` with `summary` and `plan` (markdown with `##` headings for each candidate section).
+- The user reviews candidates and provides feedback through the browser UI (inline commenting and accept/request-changes workflow — no manual `ask_user_question` needed for candidate selection).
 
-- **`summary`**: Short summary, e.g. `"Architecture review: <repo> — <N> deepening candidates"`
-- **`plan`**: Full markdown with `##` headings for each candidate section.
+**Path B: Direct in-session presentation (fallback if `plan_artifact` is disabled or unavailable)**:
+If `plan_artifact` is not registered:
+- Output the full candidate report directly into your response using the markdown candidate structure below.
+- Conclude by asking the user to choose which candidate to deepen using `ask_user_question` (or direct user choice).
 
 The plan markdown should follow this structure:
 
@@ -102,13 +112,11 @@ Repeat the candidate section for each candidate. End with the **Top Recommendati
 
 **Use the `/codebase-design` vocabulary**: module, interface, implementation, depth, deep, shallow, seam, adapter, leverage, locality. Never substitute: component, service, API, signature, boundary, layer, wrapper.
 
-The browser UI supports inline commenting and accept/request-changes workflow — no manual `ask_user_question` needed for candidate selection.
-
 ### 3. Grilling loop
 
-Once the user accepts a plan (via the browser UI's Accept button), run the `/grill-me` skill to walk the design tree with them — constraints, dependencies, the shape of the deepened module, what sits behind the seam, what tests survive.
+Once the candidate is selected/accepted (either via the browser UI's Accept button when using `plan_artifact`, or via `ask_user_question` / user message when presenting directly in-session), run the `/grill-me` skill to walk the design tree with them — constraints, dependencies, the shape of the deepened module, what sits behind the seam, what tests survive.
 
-If the user requests changes via the browser UI, revise the plan and call `plan_artifact` again with updated content.
+If the user requests changes (via the browser UI or in-session), revise the candidate design and re-present it.
 
 - **What would you like to do next?**
   - Use `ask_user_question` to offer choices:

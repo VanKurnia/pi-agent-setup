@@ -28,8 +28,8 @@ The skill invokes via `/skill:improve ...` in pi. Plans it writes are plain mark
 /skill:improve security               focused audit (also: perf, tests, bugs, ...)
 /skill:improve branch                 audit only what the current branch changes
 /skill:improve next                   feature suggestions — where to take the project
-/skill:improve plan <description>     skip the audit, spec one thing
-/skill:improve review-plan <file>     critique and tighten an existing plan
+/skill:improve plan <description>     skip the audit, empirically verify evidence, spec one thing
+/skill:improve review-plan <file>     critique and tighten an existing plan (direct review for rigor & anti-bloat)
 /skill:improve execute <plan>         dispatch a cheaper executor, review its work
 /skill:improve reconcile              refresh the backlog: verify, unblock, retire
 /skill:improve ... --issues           also publish plans as GitHub issues

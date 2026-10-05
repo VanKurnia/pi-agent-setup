@@ -33,8 +33,5 @@
       "eslint --fix",
       "prettier --write"
     ]
-  },
-  "dependencies": {
-    "mysql2": "^3.22.6"
   }
 }

@@ -53,7 +53,7 @@ tools before grep/read. For literal strings, configs, docs, manifests, and
 files whose path you already know, go straight to `ffgrep`/`read`; CBM does not
 index prose. Fall back immediately if two CBM calls return nothing useful.
 
-- **`subagent` worker** — isolated code changes. Tools: `read`, `write`, `edit`, `safe_bash`, `ask_user_question`, plus full git toolkit and database queries. Use when the change is well-specified but still supports one-shot questions to the user.
+- **`subagent` worker** — isolated code changes. Tools: `read`, `write`, `edit`, shell tools, plus database queries. Subagents run autonomously without asking user questions.
 
 **Before any non-trivial implementation, you must know:**
 
@@ -89,7 +89,7 @@ for the target project.
 ### When NOT to Use Subagents
 
 - **Tiny targeted edits** where you already know the exact file and line — just do it directly.
-- **Anything requiring back-and-forth with the user** — subagents _can_ ask questions via the `relayToParent` mechanism (`ask_user_question` is registered as a subagent tool). They write a JSON event to stderr, the parent picks it up, and the subagent polls a temp file for the answer. This works for text, single-select, and multi-select modes. **However**, subagents still can't do free-form multi-turn conversation — use them for one-shot questions, not dialogs.
+- **Anything requiring user interaction** — subagents cannot call `ask_user_question` and cannot prompt the user. All necessary instructions, context, constraints, and decision paths must be supplied upfront in the task description.
 - **Subagents have NO context from your conversation** — include ALL necessary context in the task description. File paths, patterns, constraints, expected output format.
 
 ## Implementation Discipline

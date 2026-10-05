@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "description": "Pi Extension to view SQLite and MySQL databases securely",
   "main": "index.ts",
+  "dependencies": {
+    "mysql2": "^3.24.4"
+  },
   "pi": {
     "extensions": [
       "./index.ts"
     ]
-  },
-  "dependencies": {
-    "mysql2": "^3.11.0"
   }
 }

@@ -180,6 +180,7 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 
 ## Quality bar — check before finishing each plan
 
+### Rigor & Executability
 - Could a model that has never seen this repo execute this with only the plan file and the repo? If any step requires knowledge from the advisor session, inline that knowledge.
 - Is every verification a command with an expected result, not a judgment ("make sure it works")?
 - Does every step name exact files and symbols, not "the relevant module"?
@@ -187,3 +188,16 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 - Would a reviewer reading only "Why this matters" + "Done criteria" understand what they're approving?
 - No secret values anywhere in the file — locations and credential types only.
 - "Planned at" SHA is filled in and the in-scope paths in the drift check match the Scope section.
+
+### Simplification & Cleanliness Gate (simplify-changes principles)
+- Does the plan avoid speculative flexibility, extra configuration, and premature abstractions (YAGNI)?
+- Does the plan reuse existing workspace mechanisms and utilities (`agent/extensions/shared/`, built-ins) instead of duplicating logic?
+- Are internal invariants enforced via tighter types rather than redundant runtime defensive checks?
+- Does the plan explicitly forbid leaving personal tracking markers (`TODO`, `FIXME`, `plan #X`) in code?
+- If existing code or intentional abstractions are removed, is it protected by an explicit approval explanation (what, why, impact, simpler replacement)?
+
+### Empirical Verification & Zero Assumptions
+- Has every claim about bugs, behavior, or module contracts been empirically verified with concrete evidence gathered in this session (via `codemode`, temp script, or probe harness)?
+- Is the plan free of assumptions, unverified guesses, or speculative claims?
+
+

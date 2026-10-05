@@ -7,7 +7,7 @@ A pi extension that registers a single `subagent` tool with two agents:
 | Agent | Tools | Model | Purpose |
 |-------|-------|-------|---------|
 | **scout** | read, grep, find, ls, web_search, web_fetch | via `/subagents:settings` | Fast codebase recon + lightweight web research |
-| **worker** | read, write, edit, safe_bash | via `/subagents:settings` | Code changes |
+| **worker** | read, write, edit, bash | via `/subagents:settings` | Code changes |
 | — | git status, git diff, git log, etc. | — | Git operations (via terminal) |
 | — | query_sqlite, query_mysql | — | Database queries (via db-viewer) |
 
@@ -145,6 +145,5 @@ extension in the main session.
 subagents/
 ├── index.ts           # Extension entry point
 ├── agents/            # Built-in agent configs (frontmatter + system prompt)
-└── tools/             # Extensions loaded into subagent processes
-    └── safe-bash.ts   # bash with dangerous command blocking
+└── src/               # Execution core, dispatcher, and rendering
 ```

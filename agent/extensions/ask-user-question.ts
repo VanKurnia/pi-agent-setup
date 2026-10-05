@@ -9,9 +9,6 @@ import {
     wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { randomUUID } from "node:crypto";
-import * as fs from "node:fs";
-import * as path from "node:path";
 
 interface AskOption {
     label: string;
@@ -232,82 +229,6 @@ export function buildResult(
         content: [{ type: "text" as const, text }],
         details: buildStructuredResult("answered", question, mode, answers, context),
     };
-}
-
-/**
- * Relay mode for headless subagents: write a JSON event to stdout,
- * then poll a temp answer file until the parent writes back.
- */
-async function relayToParent(
-    _ctx: any,
-    question: string,
-    context: string | undefined,
-    mode: string,
-    options?: any[],
-    timeoutMs = 120000,
-): Promise<any> {
-    const answerDir = process.env.PI_SUBAGENT_ANSWER_DIR;
-    if (!answerDir) {
-        throw new Error("PI_SUBAGENT_ANSWER_DIR not set — cannot relay ask_user_question");
-    }
-
-    const id = randomUUID();
-    const answerFile = path.join(answerDir, `ans-${id}.json`);
-
-    // Write the question event to stdout as a JSON line the parent can parse
-    const event = JSON.stringify({
-        type: "ask_user_question_pending",
-        id,
-        question,
-        context,
-        mode,
-        options: options || [],
-        answerFile,
-    });
-    // Write to stderr because pi in JSON mode redirects stdout to stderr.
-    // The parent's runSubagent parses stderr lines for our relay events.
-    process.stderr.write(event + "\n");
-
-    // Wait for the answer file via watch, with timeout
-    const answer = await new Promise<any>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            unwatch();
-            reject(new Error("User did not respond in time"));
-        }, timeoutMs);
-
-        const unwatch = () => {
-            clearTimeout(timeout);
-            fs.unwatchFile(answerFile, listener);
-        };
-
-        const listener = (curr: fs.Stats, prev: fs.Stats) => {
-            if (curr.mtimeMs === prev.mtimeMs) return; // no change (stat noise)
-            try {
-                const content = fs.readFileSync(answerFile, "utf-8");
-                const data = JSON.parse(content);
-                unwatch();
-                resolve(data);
-            } catch {
-                // File exists but not fully written yet, or invalid JSON — wait for next stat
-            }
-        };
-
-        // Start watching FIRST so no write between initial read and watch start is missed
-        fs.watchFile(answerFile, { interval: 200 }, listener);
-
-        // Then check if file already exists (parent may have written it)
-        try {
-            const content = fs.readFileSync(answerFile, "utf-8");
-            const data = JSON.parse(content);
-            unwatch();
-            resolve(data);
-            return;
-        } catch {
-            // File doesn't exist yet — watch is already active, will pick up future writes
-        }
-    });
-
-    return answer;
 }
 
 async function askSingleChoice(
@@ -717,25 +638,12 @@ export default function askUserQuestion(pi: ExtensionAPI) {
             }
 
             if (!ctx.hasUI) {
-                try {
-                    const answerData = await relayToParent(
-                        ctx,
-                        params.question,
-                        context,
-                        mode,
-                        params.options as any[] | undefined,
-                    );
-                    // Convert relay answer back to AskAnswer[]
-                    const answers: AskAnswer[] = answerData.answers || [];
-                    return buildResult(params.question, context, mode, answers);
-                } catch (err: any) {
-                    return unavailableResult(
-                        params.question,
-                        mode,
-                        `ask_user_question relay failed: ${err.message}`,
-                        context,
-                    );
-                }
+                return unavailableResult(
+                    params.question,
+                    mode,
+                    "ask_user_question is not supported in non-interactive or subagent sessions. Provide all instructions and parameters upfront.",
+                    context,
+                );
             }
 
             return withUILock(async () => {

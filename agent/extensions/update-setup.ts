@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { registerExtensionApi } from "./shared/cross-extension-api.js";
+import { stripAnsi } from "./shared/strip-ansi.js";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -18,8 +19,6 @@ const BASH_CANDIDATES = [
 // this extension only finds bash, runs it, and renders the output.
 const SCRIPT_ABS = (piDir: string) => join(piDir, ".script", "update.sh");
 const piDir = () => join(homedir(), process.env.PI_CONFIG_DIR || ".pi");
-
-const stripAnsi = (str: string) => str.replace(/[\u001b\u009b][[()#;?]*.?[0-9]*[a-zA-Z]/g, "");
 
 function findBash(): string | null {
     // 1. Try pi's configured shellPath from settings.json first
