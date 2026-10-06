@@ -11,6 +11,7 @@ agent/9router-config.json
 .pi/
 agent/sessions/
 agent/bin/
+agent/install/
 agent/auth.json
 agent/pi-blackhole/
 agent/fff/
