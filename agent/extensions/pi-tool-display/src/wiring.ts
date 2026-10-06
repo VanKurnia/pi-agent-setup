@@ -13,7 +13,6 @@ import {
     resetBashTreeRegistry,
     resetBatchRegistry,
     resetGrepRegistry,
-    resetTurnRegistry,
 } from "./pistyle/features/tools/boxed/index.js";
 import {
     isDbQueryTool,
@@ -47,7 +46,7 @@ import {
     ToolRenderResultOptions,
     UserMessageComponent,
 } from "@earendil-works/pi-coding-agent";
-import { onReloadShutdown } from "./extension-lifecycle.js";
+import { onReloadShutdown } from "./index.js";
 import {
     Markdown,
     truncateToWidth,
@@ -97,7 +96,6 @@ export function resetPistyleRegistries(): void {
     resetGrepRegistry();
     resetBatchRegistry();
     resetBashTreeRegistry();
-    resetTurnRegistry();
     syncedPreviewLines = -1;
     syncedExpandedMaxLines = -1;
     syncedCollapseAfterTurn = -1;

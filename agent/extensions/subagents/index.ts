@@ -16,7 +16,6 @@ import { Type } from "typebox";
 import {
     clearAgentCache,
     discoverAgents,
-    loadEnv,
     refreshAgents,
     SettingsManager,
     substituteEnv,
@@ -122,14 +121,12 @@ export const SubagentParams = Type.Object({
 });
 
 export default function registerSubagent(pi: ExtensionAPI) {
-    loadEnv();
     // Settings load lazily on first access (tool invocation / wizard), not at boot.
     const settings = new SettingsManager();
 
     pi.registerCommand("reload-agents", {
         description: "Re-discover agent files from ~/.pi/agent/agents/",
         handler: async (_args: string, ctx: any) => {
-            loadEnv(true); // Force re-read .env
             clearAgentCache(); // Force re-discovery
             const configs = discoverAgents(ctx.cwd, "user").agents;
             refreshAgents(configs);

@@ -2,9 +2,7 @@
   "name": "pi-filechanges",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "diff": "^5.2.0"
-  },
+  "dependencies": {},
   "pi": {
     "extensions": ["./index.ts"]
   }

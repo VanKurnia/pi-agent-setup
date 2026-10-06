@@ -2,9 +2,7 @@
   "name": "pi-plan-artifact",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "marked": "^16.2.0"
-  },
+  "dependencies": {},
   "pi": {
     "extensions": ["./index.ts"]
   }

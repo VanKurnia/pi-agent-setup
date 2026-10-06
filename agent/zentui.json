@@ -77,14 +77,17 @@
           "contextThresholds": {
             "warning": 70,
             "error": 90
-          }
+          },
+          "showCacheHit": false,
+          "separator": "dash"
         },
         "accent-rail": {
           "rail": "▎",
           "asciiRail": "|",
           "transparent": false
         }
-      }
+      },
+      "codexQuota": false
     },
     "userMessages": {
       "enabled": true,
@@ -167,6 +170,11 @@
             }
           }
         }
+      },
+      "codexQuota": false,
+      "colors": {
+        "contextNormal": "text",
+        "tokens": "text"
       }
     },
     "workingLine": {

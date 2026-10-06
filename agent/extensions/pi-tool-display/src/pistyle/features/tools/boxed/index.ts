@@ -4949,6 +4949,7 @@ const bashTool: BoxedToolDefinition = {
     },
 };
 
+
 // from: pistyle\features\tools\boxed\batch.ts
 
 // Consecutive quiet-tool (read/ls/find) call batching.
@@ -6303,249 +6304,6 @@ const readTool: BoxedToolDefinition = {
     },
 };
 
-// from: pistyle\features\tools\boxed\turn-summary.ts
-
-// Turn tool summary registry (ADR 0007).
-//
-// When a turn completes, its finalized tool blocks collapse into a single
-// summary line (`➔ Read 2 files, ran 4 shell commands · 3.1s`) rendered by the
-// turn's leader (its first non-error tool call that collapses under the render
-// config); every other collapsible tool item of the turn renders zero lines.
-// Error results stay visible, interrupted turns never collapse, and Pi's
-// global tool-output toggle (Ctrl+O) expands everything again
-// (`options.expanded` is read, never written).
-//
-// The summary also reports the turn's aggregate diff stats (`· Edit +6 -2`,
-// diff colors) computed purely from tool-result data — `details.diff` for
-// edit, the parsed `── diff ──` output section for the quick-edit family
-// (the same sources the box renderers read) — so live, scroll-back, and
-// resume render identically. `write` carries no diff and is skipped; error
-// members keep their visible blocks and never contribute stats.
-//
-// Mutating tools (edit/write/quick_edit/substitute_edit/target_edit) are
-// exempt from the summary by default (`tools.collapseMutatingTools: off`):
-// their blocks are the record of what was done to the user's files, so they
-// always stay visible (compact preview) even in an ended turn — the summary
-// covers only read-only tools (read/ls/find/grep/bash). Turning the leaf on
-// restores the full collapse.
-//
-// Design notes:
-// - The registry is populated from **session content**, never from runtime
-//   event flags: the live path registers the final assistant message +
-//   toolResults at `turn_end`; the restore path rebuilds the registry from
-//   `sessionManager.getEntries()` at session start / `session_tree`, so
-//   scroll-back and session resume render identically.
-// - A turn is "ended" only when every tool call of its message has a matching
-//   tool result AND (live) turn_end fired / (restore) the message is
-//   finalized (`stopReason`) or a later user/assistant message exists.
-// - Elapsed per member is frozen from the renderer wall-clock state
-//   (STARTED_AT/ENDED_AT) at the first post-turn result pass; the summary
-//   totals the members' frozen elapsed. No render-time I/O.
-// - No new Pi-core patch identity: the dispatcher (boxed/index.ts) decides
-//   collapse before the per-tool renderers run, so every certified renderer
-//   surface stays untouched when the turn is not collapsed.
-interface TurnMemberInfo {
-    readonly toolCallId: string;
-    readonly toolName: string;
-    /** Whether a tool result was registered for this call (run completeness). */
-    readonly hasResult: boolean;
-    isError: boolean;
-    /** Frozen wall-clock elapsed (ms), recorded from the renderer context state. */
-    elapsedMs?: number;
-    /** Frozen diff line stats recorded from the tool result (edit family). */
-    diffStats?: { additions: number; removals: number } | undefined;
-}
-interface TurnState {
-    /**
-     * First non-error member that collapses under the current render config
-     * (mutating members are skipped unless `tools.collapseMutatingTools` is
-     * on); renders the summary line. Empty when every member errored or when
-     * the turn's members are all mutating with the exemption active (such a
-     * turn collapses nothing).
-     */
-    leaderId: string;
-    ended: boolean;
-    members: readonly TurnMemberInfo[];
-}
-/**
- * Tools that change the user's files. Their blocks are the record of what was
- * done — they stay visible after the turn and are excluded from the summary
- * unless `tools.collapseMutatingTools` is on. bash is deliberately NOT here:
- * read-only and mutating commands are indistinguishable without parsing the
- * command text.
- */
-const MUTATING_TOOLS: ReadonlySet<string> = new Set([
-    "edit",
-    "write",
-    "quick_edit",
-    "substitute_edit",
-    "target_edit",
-]);
-/** Whether the tool changes the user's files (exempt from turn collapse). */
-function isMutatingTool(toolName: string): boolean {
-    return MUTATING_TOOLS.has(toolName);
-}
-/** Whether the summary should also cover mutating tools (render config). */
-function mutatingCollapses(): boolean {
-    return getToolsRenderConfig().collapseMutatingTools;
-}
-interface TurnEntry {
-    readonly turn: TurnState;
-    readonly member: TurnMemberInfo;
-}
-const memberByCallId = new Map<string, TurnEntry>();
-/** Per-member component invalidate callbacks captured during render passes. */
-const invalidateByCallId = new Map<string, () => void>();
-/** Reset all turn state (session start/shutdown). */
-export function resetTurnRegistry(): void {
-    memberByCallId.clear();
-    invalidateByCallId.clear();
-}
-/** Registry lookup for the render dispatcher. */
-function getTurnEntry(toolCallId: string): TurnEntry | undefined {
-    return memberByCallId.get(toolCallId);
-}
-/**
- * Capture a member's component invalidate callback during a render pass. Pi
- * only re-invokes the tool renderer selectors from updateDisplay(); calling
- * the captured callback after turn_end rebuilds the block with the collapsed
- * summary. Idempotent per toolCallId (latest component wins).
- */
-function noteTurnMemberRender(toolCallId: string, invalidate: () => void): void {
-    if (typeof invalidate !== "function") return;
-    invalidateByCallId.set(toolCallId, invalidate);
-}
-/**
- * Freeze a member's wall-clock elapsed into the registry (idempotent; the
- * value is frozen by the renderer state once the terminal result rendered).
- */
-function noteTurnMemberElapsed(toolCallId: string, elapsedMs: number | undefined): void {
-    if (elapsedMs === undefined) return;
-    const entry = memberByCallId.get(toolCallId);
-    if (!entry || entry.member.elapsedMs !== undefined) return;
-    entry.member.elapsedMs = elapsedMs;
-}
-/** Per-tool summary phrasing: `Read 2 files` / `ran 4 shell commands`. */
-const TURN_SUMMARY_STYLE: Readonly<
-    Record<string, { readonly verb: string; readonly unit: string }>
-> = Object.freeze({
-    read: { verb: "Read", unit: "file" },
-    bash: { verb: "ran", unit: "shell command" },
-    ls: { verb: "Listed", unit: "path" },
-    find: { verb: "Found", unit: "file" },
-    grep: { verb: "Grepped", unit: "pattern" },
-    edit: { verb: "Edited", unit: "file" },
-    write: { verb: "Wrote", unit: "file" },
-    quick_edit: { verb: "Edited", unit: "file" },
-    substitute_edit: { verb: "Edited", unit: "file" },
-    target_edit: { verb: "Edited", unit: "file" },
-});
-interface TurnSummaryParts {
-    /** `Read 2 files`, `ran 4 shell commands`, ... in first-use order. */
-    readonly parts: readonly string[];
-    readonly failedCount: number;
-    /** Sum of members' frozen elapsed; undefined when nothing was recorded. */
-    readonly elapsedMs: number | undefined;
-    /** Aggregate diff line stats over non-error edit-family members; undefined
-     * when none carried a diff. Collected regardless of the mutating exemption:
-     * visible edit blocks are exactly what these stats describe. */
-    readonly diffStats: { additions: number; removals: number } | undefined;
-}
-/**
- * Aggregate a turn's collapsed members into summary parts (pure). Mutating
- * members are excluded from counts/elapsed unless `tools.collapseMutatingTools`
- * is on — by default their visible blocks are the record; the summary counts
- * only what it hides. Their diff stats aggregate either way.
- */
-function turnSummaryParts(turn: TurnState): TurnSummaryParts {
-    const counts = new Map<string, number>();
-    const order: string[] = [];
-    let failedCount = 0;
-    let elapsedMs: number | undefined;
-    let diffAdditions = 0;
-    let diffRemovals = 0;
-    let diffMembers = 0;
-    const collapseMutating = mutatingCollapses();
-    for (const member of turn.members) {
-        if (member.isError) {
-            failedCount++;
-            continue;
-        }
-        if (member.diffStats !== undefined) {
-            diffAdditions += member.diffStats.additions;
-            diffRemovals += member.diffStats.removals;
-            diffMembers++;
-        }
-        if (!collapseMutating && isMutatingTool(member.toolName)) continue;
-        if (member.elapsedMs !== undefined) elapsedMs = (elapsedMs ?? 0) + member.elapsedMs;
-        const existing = counts.get(member.toolName);
-        if (existing === undefined) {
-            counts.set(member.toolName, 1);
-            order.push(member.toolName);
-        } else counts.set(member.toolName, existing + 1);
-    }
-    const parts = order.map((toolName) => {
-        const count = counts.get(toolName) ?? 0;
-        const style = TURN_SUMMARY_STYLE[toolName];
-        // Unknown tools (extension tools like TaskCreate/ask_user_question) use a
-        // neutral phrasing with the invariant tool name: `used 5 TaskCreate`.
-        return style
-            ? `${style.verb} ${count} ${pluralForm(style.unit, count)}`
-            : `used ${count} ${toolName}`;
-    });
-    return {
-        parts,
-        failedCount,
-        elapsedMs,
-        diffStats:
-            diffMembers > 0 ? { additions: diffAdditions, removals: diffRemovals } : undefined,
-    };
-}
-function formatTurnSummaryLine(theme: BoxTheme, turn: TurnState): string {
-    const summary = turnSummaryParts(turn);
-    // The summary is deliberately quiet: the whole line renders dim so completed
-    // tool work recedes behind the assistant's answer. Only the diff stats
-    // (`+N` added / `-M` removed) and the failed marker stay color-coded —
-    // changes and errors must remain visible at a glance.
-    const parts = summary.parts.join(", ");
-    let line = `${theme.fg("dim", `➔ ${parts}`)}`;
-    if (summary.diffStats !== undefined)
-        line += `${theme.fg("dim", " · Edit ")}${formatDiffStatsPair(theme, summary.diffStats.additions, summary.diffStats.removals)}`;
-    if (summary.failedCount > 0)
-        line += theme.fg(
-            "error",
-            ` · ${summary.failedCount} ${pluralForm("failure", summary.failedCount)}`,
-        );
-    if (summary.elapsedMs !== undefined)
-        line += `${theme.fg("dim", " · ")}${formatElapsedMetric(theme, summary.elapsedMs)}`;
-    return line;
-}
-/** Leader call component: renders the live turn summary line on every pass. */
-function renderTurnSummaryCall(theme: BoxTheme, turn: TurnState): Component {
-    return {
-        invalidate() {},
-        render(width: number): string[] {
-            return [
-                safeTruncateToWidth(formatTurnSummaryLine(theme, turn), Math.max(1, width), "…"),
-            ];
-        },
-    };
-}
-/**
- * Empty result component for the turn-summary leader. The summary lives in the
- * call component; the result adds nothing. Deliberately NOT the shared
- * EMPTY_BATCH_COMPONENT singleton, so the decoration's hideBatchMember
- * (identity-compared) never hides the leader.
- */
-function emptyTurnResult(): Component {
-    return {
-        invalidate() {},
-        render() {
-            return [];
-        },
-    };
-}
-
 // from: pistyle\features\tools\boxed\write.ts
 
 // Boxed write tool renderer
@@ -6708,40 +6466,18 @@ const REGISTRY: Readonly<Record<string, BoxedToolDefinition>> = {
  * (edit/write/…) are exempt unless `tools.collapseMutatingTools` is on — their
  * blocks are the record of what was done and stay visible by default.
  */
-function collapsedTurnFor(toolCallId: string, expanded: boolean): TurnState | undefined {
-    const config = getToolsRenderConfig();
-    if (expanded || !config.collapseAfterTurn) return undefined;
-    const entry = getTurnEntry(toolCallId);
-    if (!entry?.turn.ended || entry.member.isError) return undefined;
-    if (isMutatingTool(entry.member.toolName) && !config.collapseMutatingTools) return undefined;
-    return entry.turn;
-}
-// Named `renderBoxedToolForCall`/`ForResult` rather than `renderBoxedToolCall`/`Result`:
-// the shared box helpers above use those names, and after the merge a local
-// declaration would shadow them.
 export function renderBoxedToolForCall(
     toolName: unknown,
     args: Record<string, unknown>,
     theme: BoxTheme,
     context: BoxedToolContext,
 ): Component {
-    // Any non-batchable tool call is a batch boundary: the next quiet call starts
-    // a fresh batch instead of joining the previous one.
     if (!isBatchableTool(toolName)) closeActiveBatch();
-    const turn = collapsedTurnFor(context.toolCallId, context.expanded);
-    if (turn) {
-        if (turn.leaderId === context.toolCallId) return renderTurnSummaryCall(theme, turn);
-        // Same singleton the batch machinery uses: the decoration's hideBatchMember
-        // (identity-compared) removes the instance so members consume zero lines.
-        return EMPTY_BATCH_COMPONENT;
-    }
-    // Capture the component invalidate so the turn_end path can force this block
-    // to re-run the renderer selectors (pi only re-invokes them from updateDisplay).
-    noteTurnMemberRender(context.toolCallId, context.invalidate);
     const tool = typeof toolName === "string" ? REGISTRY[toolName] : undefined;
     if (tool) return tool.call(args, theme, context);
     return renderFallbackCall(toolName, args, theme, context);
 }
+
 export function renderBoxedToolForResult(
     toolName: unknown,
     result: { content?: readonly unknown[]; details?: unknown },
@@ -6749,16 +6485,6 @@ export function renderBoxedToolForResult(
     theme: BoxTheme,
     context: BoxedToolContext,
 ): Component {
-    const turn = collapsedTurnFor(context.toolCallId, options.expanded);
-    if (turn) {
-        // Freeze the member's wall-clock elapsed into the registry once the turn
-        // collapsed (the value is already frozen by the renderer context state).
-        if (!options.isPartial)
-            noteTurnMemberElapsed(context.toolCallId, getStateElapsedMs(context.state));
-        if (turn.leaderId === context.toolCallId) return emptyTurnResult();
-        return EMPTY_BATCH_COMPONENT;
-    }
-    noteTurnMemberRender(context.toolCallId, context.invalidate);
     const tool = typeof toolName === "string" ? REGISTRY[toolName] : undefined;
     if (tool) return tool.result(result, options, theme, context);
     return renderFallbackResult(toolName, result, options, theme, context);

@@ -160,27 +160,14 @@ function formatEvalResult(result: unknown): string {
     return String(result);
 }
 
-// ── Page content extraction (Readability → Turndown) ───────
+// ── Page content extraction (in-browser evaluation) ─────────
 
 async function extractPageContent(url: string): Promise<{
     title: string;
     finalUrl: string;
     markdown: string;
 }> {
-    const readabilityMod = await import("@mozilla/readability");
-    const { Readability } = readabilityMod;
-
-    const jsdomMod = await import("jsdom");
-    const { JSDOM } = jsdomMod;
-
-    const turndownMod = await import("turndown");
-    const TurndownService = turndownMod.default ?? turndownMod;
-
-    const gfmMod = await import("turndown-plugin-gfm");
-    const gfm = gfmMod.gfm ?? gfmMod.default?.gfm ?? gfmMod;
-
     const b = await getBrowser();
-
     const pages = await b.pages();
     const p = pages[pages.length - 1];
     if (!p) throw new Error("No active tab found");
@@ -190,56 +177,21 @@ async function extractPageContent(url: string): Promise<{
         new Promise((r) => setTimeout(r, 10000)),
     ]).catch(() => {});
 
-    // Get full HTML via CDP (bypasses TrustedScriptURL restrictions)
-    const client = await p.createCDPSession();
-    const { root } = await client.send("DOM.getDocument", { depth: -1, pierce: true });
-    const { outerHTML } = await client.send("DOM.getOuterHTML", { nodeId: root.nodeId });
-    await client.detach();
-
     const finalUrl = p.url();
-    const doc = new JSDOM(outerHTML, { url: finalUrl });
-    const reader = new Readability(doc.window.document);
-    const article = reader.parse();
+    const title = (await p.title()) || "";
 
-    function htmlToMarkdown(html: string): string {
-        const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
-        turndown.use(gfm);
-        turndown.addRule("removeEmptyLinks", {
-            filter: (node: any) => node.nodeName === "A" && !node.textContent?.trim(),
-            replacement: () => "",
-        });
-        return turndown
-            .turndown(html)
-            .replace(/\[\\?\[\s*\\?\]\]\([^)]*\)/g, "")
-            .replace(/ +/g, " ")
-            .replace(/\s+,/g, ",")
-            .replace(/\s+\./g, ".")
-            .replace(/\n{3,}/g, "\n\n")
-            .trim();
-    }
+    const markdown = await p.evaluate(() => {
+        const root = document.querySelector("main, article, [role='main'], .content, #content") || document.body;
+        if (!root) return "(Could not extract content)";
 
-    let content: string;
-    if (article?.content) {
-        content = htmlToMarkdown(article.content);
-    } else {
-        // Fallback
-        const fallbackDoc = new JSDOM(outerHTML, { url: finalUrl });
-        const fallbackBody = fallbackDoc.window.document;
-        fallbackBody
-            .querySelectorAll("script, style, noscript, nav, header, footer, aside")
-            .forEach((el: any) => el.remove());
-        const main =
-            fallbackBody.querySelector("main, article, [role='main'], .content, #content") ||
-            fallbackBody.body;
-        const fallbackHtml = main?.innerHTML || "";
-        if (fallbackHtml.trim().length > 100) {
-            content = htmlToMarkdown(fallbackHtml);
-        } else {
-            content = "(Could not extract content)";
-        }
-    }
+        const clone = root.cloneNode(true) as HTMLElement;
+        clone.querySelectorAll("script, style, noscript, nav, header, footer, aside, svg, iframe").forEach((el) => el.remove());
 
-    return { title: article?.title || "", finalUrl, markdown: content };
+        const text = (clone.innerText || clone.textContent || "").trim();
+        return text.length > 50 ? text : "(Could not extract content)";
+    });
+
+    return { title, finalUrl, markdown };
 }
 
 // ── Chrome start ────────────────────────────────────────────

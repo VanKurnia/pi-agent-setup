@@ -10,11 +10,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck",
-    "prepack": "npm run check"
+    "typecheck": "tsc --noEmit"
   },
   "pi": {
     "extensions": [
@@ -36,11 +32,6 @@
   },
   "bugs": {
     "url": "https://github.com/alexykn/pi-cbm/issues"
-  },
-  "devDependencies": {
-    "@types/node": "^25.9.1",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.10"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

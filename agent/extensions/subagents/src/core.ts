@@ -418,39 +418,8 @@ export class SettingsManager {
 }
 
 // ── Agent discovery ─────────────────────────────────────────────────────
-let envLoaded = false;
 
 const AGENTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "agents");
-
-export function loadEnv(force = false): void {
-    if (envLoaded && !force) return;
-    envLoaded = true;
-    const envPath = path.join(getAgentDir(), "..", ".env");
-    if (!fs.existsSync(envPath)) return;
-    try {
-        const content = fs.readFileSync(envPath, "utf-8");
-        for (const line of content.split(/\r?\n/)) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith("#")) continue;
-            const index = trimmed.indexOf("=");
-            if (index === -1) continue;
-            const key = trimmed.slice(0, index).trim();
-            let val = trimmed.slice(index + 1).trim();
-            if (
-                (val.startsWith('"') && val.endsWith('"')) ||
-                (val.startsWith("'") && val.endsWith("'"))
-            ) {
-                val = val.slice(1, -1);
-            }
-            process.env[key] = val;
-        }
-    } catch (err) {
-        // Warn, then continue with whatever parsed.
-        console.warn(
-            `[subagents] Failed to load ${envPath}: ${(err as Error)?.message ?? String(err)}; using partial env.`,
-        );
-    }
-}
 
 function isDirectory(p: string): boolean {
     try {

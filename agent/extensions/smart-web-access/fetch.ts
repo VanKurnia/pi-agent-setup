@@ -11,7 +11,6 @@ import { chmod, mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { extension as mimeExtension } from "mime-types";
 import { Defuddle } from "defuddle/node";
 import { getProfiles, fetch as wreqFetch } from "wreq-js";
 
@@ -548,9 +547,41 @@ function deriveUrlPathName(url: string): {
     }
 }
 
+const COMMON_MIME_EXTENSIONS: Record<string, string> = {
+    "text/html": ".html",
+    "text/plain": ".txt",
+    "text/markdown": ".md",
+    "text/csv": ".csv",
+    "text/css": ".css",
+    "text/javascript": ".js",
+    "application/javascript": ".js",
+    "application/json": ".json",
+    "application/pdf": ".pdf",
+    "application/zip": ".zip",
+    "application/gzip": ".gz",
+    "application/x-tar": ".tar",
+    "application/xml": ".xml",
+    "text/xml": ".xml",
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/svg+xml": ".svg",
+    "image/x-icon": ".ico",
+    "audio/mpeg": ".mp3",
+    "audio/wav": ".wav",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+};
+
 function resolveExtensionFromMimeType(contentType: string): string {
-    const extension = mimeExtension(normalizeContentType(contentType));
-    return sanitizeExtension(typeof extension === "string" ? extension : "") || ".dat";
+    const normalized = normalizeContentType(contentType);
+    if (COMMON_MIME_EXTENSIONS[normalized]) {
+        return COMMON_MIME_EXTENSIONS[normalized];
+    }
+    if (normalized.endsWith("+json")) return ".json";
+    if (normalized.endsWith("+xml")) return ".xml";
+    return ".dat";
 }
 
 function resolveDownloadTarget(
