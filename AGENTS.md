@@ -16,5 +16,3 @@
 
 ## Git Rules
 1. Jangan pernah push atau lakukan operasi git apapun kecuali diminta atau atas izin eksplisit dari user.
-
-

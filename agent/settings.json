@@ -1,7 +1,6 @@
 {
   "packages": [
     "npm:@ff-labs/pi-fff",
-    "npm:pi-blackhole",
     "npm:pi-x-ide",
     "npm:pi-zentui",
   ],
