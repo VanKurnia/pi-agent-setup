@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import { relative } from "node:path";
+import { calculateContextTokens, estimateTokens } from "@earendil-works/pi-coding-agent";
 
 export interface CompileInput {
     messages: Array<{ role?: string; content?: unknown }>;
@@ -23,6 +24,7 @@ export function extractGitCommits(cwd?: string): string[] {
 
 interface ToolCallBlock {
     type?: string;
+    arguments?: Record<string, unknown>;
     args?: Record<string, unknown>;
 }
 
@@ -37,14 +39,13 @@ export function collectTouchedFiles(
         const content = Array.isArray(msg.content) ? msg.content : [];
         for (const rawBlock of content) {
             const block = rawBlock as ToolCallBlock | undefined;
-            if (
-                block?.type === "toolCall" &&
-                typeof block.args === "object" &&
-                block.args !== null
-            ) {
-                const candidate = block.args.path || block.args.file || block.args.filePath;
-                if (typeof candidate === "string" && candidate.trim()) {
-                    files.add(relative(root, candidate.trim()));
+            if (block?.type === "toolCall") {
+                const args = block.arguments || block.args;
+                if (typeof args === "object" && args !== null) {
+                    const candidate = args.path || args.file || args.filePath;
+                    if (typeof candidate === "string" && candidate.trim()) {
+                        files.add(relative(root, candidate.trim()).replace(/\\/g, "/"));
+                    }
                 }
             }
         }
@@ -78,4 +79,68 @@ export function compileVccSummary(input: CompileInput): string {
     }
 
     return sections.join("\n\n---\n\n");
+}
+
+export interface SessionEntryLike {
+    type: string;
+    message?: unknown;
+    firstKeptEntryId?: string;
+}
+
+export function getUsageTokens(msg: unknown): number | undefined {
+    if (typeof msg !== "object" || msg === null) return undefined;
+    const record = msg as Record<string, unknown>;
+    if (record.role !== "assistant") return undefined;
+    if (record.stopReason === "error" || record.stopReason === "aborted") return undefined;
+    if (!record.usage) return undefined;
+    try {
+        const tokens = calculateContextTokens(
+            record.usage as Parameters<typeof calculateContextTokens>[0],
+        );
+        return typeof tokens === "number" && Number.isFinite(tokens) && tokens > 0
+            ? tokens
+            : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+export function rawTokensSinceLastCompaction(entries: SessionEntryLike[]): number {
+    let compactionIndex = -1;
+    for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].type === "compaction") {
+            compactionIndex = i;
+            break;
+        }
+    }
+
+    const scanStart = compactionIndex === -1 ? 0 : compactionIndex + 1;
+    let usageIndex = -1;
+    for (let i = entries.length - 1; i >= scanStart; i--) {
+        if (entries[i].type === "message" && getUsageTokens(entries[i].message) !== undefined) {
+            usageIndex = i;
+            break;
+        }
+    }
+
+    if (usageIndex !== -1) {
+        const baseline = getUsageTokens(entries[usageIndex].message) || 0;
+        let postTokens = 0;
+        for (let i = usageIndex + 1; i < entries.length; i++) {
+            if (entries[i].type === "message" && entries[i].message) {
+                postTokens += estimateTokens(
+                    entries[i].message as Parameters<typeof estimateTokens>[0],
+                );
+            }
+        }
+        return baseline + postTokens;
+    }
+
+    let total = 0;
+    for (let i = scanStart; i < entries.length; i++) {
+        if (entries[i].type === "message" && entries[i].message) {
+            total += estimateTokens(entries[i].message as Parameters<typeof estimateTokens>[0]);
+        }
+    }
+    return total;
 }

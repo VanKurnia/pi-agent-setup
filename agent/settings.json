@@ -17,7 +17,8 @@
   "treeFilterMode": "user-only",
   "quietStartup": "header",
   "terminal": {
-    "showTerminalProgress": false
+    "showTerminalProgress": false,
+    "images": "iterm2"
   },
   "showCacheMissNotices": true,
   "tuiMode": "fullscreen",
