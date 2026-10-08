@@ -181,11 +181,15 @@ async function extractPageContent(url: string): Promise<{
     const title = (await p.title()) || "";
 
     const markdown = await p.evaluate(() => {
-        const root = document.querySelector("main, article, [role='main'], .content, #content") || document.body;
+        const root =
+            document.querySelector("main, article, [role='main'], .content, #content") ||
+            document.body;
         if (!root) return "(Could not extract content)";
 
         const clone = root.cloneNode(true) as HTMLElement;
-        clone.querySelectorAll("script, style, noscript, nav, header, footer, aside, svg, iframe").forEach((el) => el.remove());
+        clone
+            .querySelectorAll("script, style, noscript, nav, header, footer, aside, svg, iframe")
+            .forEach((el) => el.remove());
 
         const text = (clone.innerText || clone.textContent || "").trim();
         return text.length > 50 ? text : "(Could not extract content)";
@@ -267,6 +271,10 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
     pi.registerTool({
         name: "browser_start",
         label: "Start Browser",
+        annotations: {
+            idempotentHint: true,
+            openWorldHint: true,
+        },
         description:
             "Start or connect to Chrome with remote debugging on port 9222. Must be running before using other browser tools.",
         promptSnippet: "Start Chrome browser for automation",
@@ -303,6 +311,9 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
     pi.registerTool({
         name: "browser_nav",
         label: "Navigate Browser",
+        annotations: {
+            openWorldHint: true,
+        },
         description:
             "Navigate Chrome to a URL in the current tab (or open a new tab). Chrome must be running on :9222.",
         promptSnippet: "Navigate browser to URL",
@@ -351,6 +362,9 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
     // Tool 3: Evaluate JavaScript
     pi.registerTool({
         name: "browser_eval",
+        annotations: {
+            openWorldHint: true,
+        },
         label: "Evaluate JavaScript",
         description: "Execute JavaScript in the active Chrome tab and return the result.",
         promptSnippet: "Run JavaScript in browser page",
@@ -391,6 +405,10 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
     // Tool 4: Screenshot
     pi.registerTool({
         name: "browser_screenshot",
+        annotations: {
+            readOnlyHint: true,
+            openWorldHint: true,
+        },
         label: "Browser Screenshot",
         description:
             "Capture a screenshot of the current Chrome tab. Saves to a temp file and returns the path.",
@@ -434,6 +452,10 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
     // Tool 5: Extract page content
     pi.registerTool({
         name: "browser_content",
+        annotations: {
+            readOnlyHint: true,
+            openWorldHint: true,
+        },
         label: "Extract Page Content",
         description:
             "Navigate to a URL and extract readable content as markdown using Mozilla Readability.",
@@ -465,6 +487,10 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
     // Tool 6: Cookies
     pi.registerTool({
         name: "browser_cookies",
+        annotations: {
+            readOnlyHint: true,
+            openWorldHint: true,
+        },
         label: "Get Browser Cookies",
         description: "List all cookies for the current Chrome tab.",
         promptSnippet: "Get browser cookies",
@@ -506,6 +532,9 @@ export default function browserToolsExtension(pi: ExtensionAPI) {
     // Tool 7: Interactive element picker
     pi.registerTool({
         name: "browser_pick",
+        annotations: {
+            openWorldHint: true,
+        },
         label: "Pick Elements",
         description:
             "Injects an interactive element picker into the current page. The user clicks elements (Cmd+Click for multi-select, Enter to finish, ESC to cancel). Returns CSS selector info for selected elements.",

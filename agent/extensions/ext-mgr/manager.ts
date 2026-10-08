@@ -493,11 +493,16 @@ async function setExtensionState(
     target: State,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
     try {
-        if (target === "enabled") {
-            await rename(entry.disabledPath, entry.activePath);
-        } else {
-            await rename(entry.activePath, entry.disabledPath);
+        const [source, destination] =
+            target === "enabled"
+                ? [entry.disabledPath, entry.activePath]
+                : [entry.activePath, entry.disabledPath];
+        try {
+            await unlink(destination);
+        } catch {
+            // Destination does not exist; proceed cleanly
         }
+        await rename(source, destination);
         return { ok: true };
     } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) };

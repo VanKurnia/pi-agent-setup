@@ -36,7 +36,10 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
         name: "query_sqlite",
         label: "Query SQLite",
         description: "Execute safe, read-only SELECT queries on a local SQLite database file",
-        annotations: { readOnlyHint: true },
+        annotations: {
+            readOnlyHint: true,
+            idempotentHint: true,
+        },
         promptSnippet: "Query SQLite databases",
         promptGuidelines: [
             "Use query_sqlite when you need to inspect SQLite schema, counts, or table records.",
@@ -109,7 +112,10 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
         name: "query_mysql",
         label: "Query MySQL",
         description: "Execute safe, read-only queries on a MySQL database",
-        annotations: { readOnlyHint: true },
+        annotations: {
+            readOnlyHint: true,
+            idempotentHint: true,
+        },
         promptSnippet: "Query MySQL databases",
         promptGuidelines: [
             "Use query_mysql to view table data, schema, or descriptions on MySQL databases.",

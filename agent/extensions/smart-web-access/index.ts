@@ -39,6 +39,7 @@ import {
     type QueryStatus,
     type WebSearchDetails,
     webSearchOutputSchema,
+    webFetchOutputSchema,
     createBaseFetchToolParameterProperties,
     formatByteCount,
     isFileFetchResult,
@@ -501,6 +502,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                 }),
             ),
         }),
+        outputSchema: webFetchOutputSchema,
 
         renderCall(args, theme) {
             return createWebFetchCallComponent(args, theme);
@@ -574,8 +576,19 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                         errorText: fullError,
                         userErrorSummary: userSummary,
                     });
+                    const structuredContent = {
+                        url: (params.url as string) || "",
+                        finalUrl: result.finalUrl || (params.url as string) || "",
+                        title: "Error",
+                        content: fullError,
+                        wordCount: 0,
+                        statusCode: result.statusCode,
+                        isError: true,
+                    };
                     return {
                         content: [{ type: "text", text: fullError }],
+                        structuredContent: structuredContent as JsonValue,
+                        isError: true,
                         details: {
                             ...latestDetails,
                             error: true,
@@ -593,8 +606,23 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                     fetchResult: result,
                     progress: 1,
                 });
+                const isFile = isFileFetchResult(result);
+                const structuredContent = {
+                    url: result.url,
+                    finalUrl: result.finalUrl,
+                    title: result.title,
+                    content: result.content,
+                    wordCount: result.wordCount,
+                    site: result.site || undefined,
+                    author: result.author || undefined,
+                    published: result.published || undefined,
+                    filePath: isFile ? result.filePath : undefined,
+                    fileSize: isFile ? result.fileSize : undefined,
+                    isError: false,
+                };
                 return {
                     content: [{ type: "text", text: responseText }],
+                    structuredContent: structuredContent as JsonValue,
                     details: {
                         ...latestDetails,
                         status: "done",
@@ -615,8 +643,18 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                     errorText: message,
                     userErrorSummary: message,
                 });
+                const structuredContent = {
+                    url: (params.url as string) || "",
+                    finalUrl: (params.url as string) || "",
+                    title: "Error",
+                    content: message,
+                    wordCount: 0,
+                    isError: true,
+                };
                 return {
                     content: [{ type: "text", text: `Error: ${message}` }],
+                    structuredContent: structuredContent as JsonValue,
+                    isError: true,
                     details: {
                         ...latestDetails,
                         error: true,

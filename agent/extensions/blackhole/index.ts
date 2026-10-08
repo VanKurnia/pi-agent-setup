@@ -220,6 +220,10 @@ export default function (pi: ExtensionAPI): void {
     pi.registerTool({
         name: "recall",
         label: "Recall",
+        annotations: {
+            readOnlyHint: true,
+            idempotentHint: true,
+        },
         description:
             "Search session history and earlier lines omitted, file write/edit content by text/regex. " +
             "Expand entries (#N), drill-down file content (#N:path) or message text (#N:text) with paging, or aggregate touched files (mode:touched). " +

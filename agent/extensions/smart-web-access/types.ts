@@ -418,3 +418,19 @@ export const webSearchOutputSchema = Type.Object({
     ),
 });
 export type WebSearchOutput = Static<typeof webSearchOutputSchema>;
+
+export const webFetchOutputSchema = Type.Object({
+    url: Type.String({ description: "Requested URL" }),
+    finalUrl: Type.String({ description: "Final URL after redirects" }),
+    title: Type.String({ description: "Extracted document title" }),
+    content: Type.String({ description: "Extracted document text or error message" }),
+    wordCount: Type.Number({ description: "Word count of extracted document text" }),
+    site: Type.Optional(Type.String({ description: "Site name if extracted" })),
+    author: Type.Optional(Type.String({ description: "Author name if extracted" })),
+    published: Type.Optional(Type.String({ description: "Published date if extracted" })),
+    statusCode: Type.Optional(Type.Number({ description: "HTTP status code" })),
+    filePath: Type.Optional(Type.String({ description: "Local disk path for downloaded file" })),
+    fileSize: Type.Optional(Type.Number({ description: "Size of downloaded file in bytes" })),
+    isError: Type.Optional(Type.Boolean({ description: "Whether extraction failed" })),
+});
+export type WebFetchOutput = Static<typeof webFetchOutputSchema>;

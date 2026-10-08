@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { TUI, TuiMouseEvent, TuiMouseEventResult } from "@earendil-works/pi-tui";
-import { stripAnsi } from "./shared/strip-ansi.js";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 type Rgb = [number, number, number];
 
@@ -37,17 +37,13 @@ const ROW_LINES = [C12, `${B4}    ${C4}`, `${B8}    ${A4}`, `${B4}        ${A4}`
 // Precomputed 8-line logo (4 rows × 2 vertical scale).
 const LOGO_LINES = ROW_LINES.flatMap((line) => [line, line]);
 
-function getVisibleLength(text: string): number {
-    return [...stripAnsi(text)].length;
-}
-
 function centerLine(line: string, width: number): string {
-    const padding = " ".repeat(Math.max(0, Math.floor((width - getVisibleLength(line)) / 2)));
+    const padding = " ".repeat(Math.max(0, Math.floor((width - visibleWidth(line)) / 2)));
     return `${padding}${line}`;
 }
 
 function fitLineToWidth(line: string, width: number): string {
-    return getVisibleLength(line) <= width ? line : stripAnsi(line).slice(0, width);
+    return visibleWidth(line) <= width ? line : truncateToWidth(line, width);
 }
 
 function renderLogoLines(width: number): string[] {

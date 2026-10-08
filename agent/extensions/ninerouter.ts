@@ -381,6 +381,11 @@ export default function ninerouter(pi: ExtensionAPI) {
     pi.registerTool({
         name: "ninerouter_web_search",
         label: "9router Web Search",
+        annotations: {
+            readOnlyHint: true,
+            openWorldHint: true,
+            idempotentHint: true,
+        },
         description:
             "Fallback web search through your 9router instance. Use when web_search fails, times out, or returns nothing useful. Not the default search tool.",
         promptSnippet: "Fallback web search via 9router when web_search fails",
@@ -528,6 +533,11 @@ export default function ninerouter(pi: ExtensionAPI) {
     pi.registerTool({
         name: "ninerouter_web_fetch",
         label: "9router Web Fetch",
+        annotations: {
+            readOnlyHint: true,
+            openWorldHint: true,
+            idempotentHint: true,
+        },
         description:
             "Fallback URL fetch/extract through your 9router instance. Use when web_fetch fails on a URL. Not the default fetch tool.",
         promptSnippet: "Fallback URL fetch via 9router when web_fetch fails",
