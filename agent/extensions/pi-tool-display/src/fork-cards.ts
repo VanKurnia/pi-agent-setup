@@ -27,7 +27,7 @@ import {
     stateElapsedMs,
     isResultSeen,
     getToolsRenderConfig,
-} from "./pistyle/features/tools/boxed/index.js";
+} from "./pistyle/index.js";
 import { registerCleanup } from "./support.js";
 
 // from: db-query-card.ts
@@ -761,6 +761,8 @@ const COLLAPSED_RUN_LINES = 24;
 interface SubagentToolRow {
     tool?: unknown;
     args?: unknown;
+    durationMs?: unknown;
+    isError?: unknown;
 }
 interface SubagentProgress {
     status?: unknown;
@@ -929,8 +931,13 @@ function toolRowLines(row: SubagentRow, expanded: boolean, theme: BoxTheme): str
     for (const entry of shown) {
         const name = asString(entry?.tool) ?? "?";
         const args = asString(entry?.args);
+        const isError = Boolean(entry?.isError);
+        const durMs = asNumber(entry?.durationMs);
+        const durStr =
+            durMs !== undefined ? theme.fg("dim", ` (${formatElapsedMetric(theme, durMs)})`) : "";
+        const statusGlyph = isError ? theme.fg("error", "✗ ") : "";
         lines.push(
-            `${theme.fg("muted", "  ")}${theme.fg("accent", name)}${args ? ` ${theme.fg("dim", oneLine(args, 80))}` : ""}`,
+            `${theme.fg("muted", "  ")}${statusGlyph}${theme.fg("accent", name)}${args ? ` ${theme.fg("dim", oneLine(args, 80))}` : ""}${durStr}`,
         );
     }
     if (running && current) {

@@ -524,6 +524,7 @@ export default function registerSubagent(pi: ExtensionAPI) {
     pi.registerTool({
         name: "subagent",
         label: "Subagent",
+        exposure: "model-only",
         description:
             "Run a subagent to complete a task. Subagents have NO context from the current conversation — include all necessary context in the task description.",
         promptSnippet: "Run subagents for delegated tasks",

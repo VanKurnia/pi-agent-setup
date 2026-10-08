@@ -173,11 +173,14 @@ async function runAttempt(
                 break;
             }
             case "tool_execution_end": {
+                const endEvent = event as { durationMs?: number; isError?: boolean };
                 if (progress.currentTool) {
                     progress.recentTools.push({
                         tool: progress.currentTool,
                         args: progress.currentToolArgs || "",
                         argsObj: progress.currentToolArgsObj,
+                        durationMs: endEvent.durationMs,
+                        isError: endEvent.isError,
                     });
                     if (progress.recentTools.length > 20) {
                         progress.recentTools.splice(0, progress.recentTools.length - 20);
@@ -187,6 +190,14 @@ async function runAttempt(
                 progress.currentToolArgs = undefined;
                 progress.currentToolArgsObj = undefined;
                 fireUpdate();
+                break;
+            }
+            case "agent_settled": {
+                if ((event as { aborted?: boolean }).aborted) {
+                    progress.status = "failed";
+                    progress.error ||= "Subagent run was aborted";
+                    fireUpdate();
+                }
                 break;
             }
             case "agent_end": {

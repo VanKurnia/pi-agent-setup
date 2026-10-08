@@ -4,6 +4,6 @@
   "dependencies": {
     "@ff-labs/pi-fff": "^0.11.0",
     "pi-x-ide": "^1.20.1",
-    "pi-zentui": "^0.29.2"
+    "pi-zentui": "^0.29.3"
   }
 }

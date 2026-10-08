@@ -29,6 +29,8 @@ export interface ToolEvent {
     tool: string;
     args: string; // preview string (backward compat)
     argsObj?: Record<string, unknown>; // full args object for richer rendering
+    durationMs?: number;
+    isError?: boolean;
 }
 
 export interface AgentProgress {

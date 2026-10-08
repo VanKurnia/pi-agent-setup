@@ -19,22 +19,29 @@ export default function sessionMgr(pi: ExtensionAPI): void {
     pi.registerTool({
         name: "rename_session",
         label: "Rename session",
+        annotations: { idempotentHint: true },
         description: "Set the display name of the current session (shown in the session selector).",
         promptSnippet: "Rename the current session with rename_session",
         parameters: Type.Object({
             name: Type.String({ description: "New display name for the current session." }),
+        }),
+        outputSchema: Type.Object({
+            renamed: Type.Boolean(),
+            name: Type.String(),
         }),
         async execute(_toolCallId, params) {
             const name = params.name.trim();
             if (name.length === 0) {
                 return {
                     content: [{ type: "text" as const, text: "Name cannot be empty." }],
+                    isError: true,
                     details: {},
                 };
             }
             pi.setSessionName(name);
             return {
                 content: [{ type: "text" as const, text: `Session renamed to "${name}".` }],
+                structuredContent: { renamed: true, name },
                 details: {},
             };
         },

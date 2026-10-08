@@ -13,7 +13,7 @@ import {
     resetBashTreeRegistry,
     resetBatchRegistry,
     resetGrepRegistry,
-} from "./pistyle/features/tools/boxed/index.js";
+} from "./pistyle/index.js";
 import {
     isDbQueryTool,
     renderDbQueryCall,
@@ -54,6 +54,7 @@ import {
     type Component,
     type DefaultTextStyle,
     type MarkdownTheme,
+    type TuiMouseEvent,
 } from "@earendil-works/pi-tui";
 
 // from: pistyle-bridge.ts
@@ -200,7 +201,34 @@ function renderPistyleToolResult(
 // That is no longer necessary - `renderShell: "self"` selects Pi's
 // `selfRenderContainer` (a bare `Container` with no paddingX/paddingY/bgFn)
 // instead of `contentBox` (a `Box(1, 1, theme.bg("toolPendingBg"))`).
-// See .plans/015 for the source-level equivalence.
+function withOutputPad(component: Component, outputPad: number | undefined): Component {
+    if (!outputPad || outputPad <= 0) return component;
+    const pad = " ".repeat(outputPad);
+    return {
+        invalidate() {
+            component.invalidate();
+        },
+        render(width: number): string[] {
+            const innerWidth = Math.max(1, width - outputPad * 2);
+            const lines = component.render(innerWidth);
+            return lines.map((line) => (line.length > 0 ? `${pad}${line}` : line));
+        },
+        handleInput(data: string) {
+            component.handleInput?.(data);
+        },
+        handleMouse(event: TuiMouseEvent) {
+            if (!component.handleMouse) return undefined;
+            return component.handleMouse({
+                ...event,
+                x: Math.max(0, event.x - outputPad),
+            });
+        },
+        get wantsKeyRelease() {
+            return component.wantsKeyRelease;
+        },
+    };
+}
+
 export function registerPistyleToolRenderer(pi: ExtensionAPI, getConfig: ConfigGetter): void {
     pi.registerToolRenderer((toolName, next) => {
         const config = getConfig();
@@ -210,22 +238,28 @@ export function registerPistyleToolRenderer(pi: ExtensionAPI, getConfig: ConfigG
         return {
             renderShell: "self",
             renderCall: (args, theme, context) =>
-                renderPistyleToolCall(
-                    toolName,
-                    args as Record<string, unknown>,
-                    theme,
-                    context,
-                    config,
-                ) as Component,
+                withOutputPad(
+                    renderPistyleToolCall(
+                        toolName,
+                        args as Record<string, unknown>,
+                        theme,
+                        context,
+                        config,
+                    ) as Component,
+                    (context as { outputPad?: number })?.outputPad,
+                ),
             renderResult: (result, options, theme, context) =>
-                renderPistyleToolResult(
-                    toolName,
-                    result,
-                    options,
-                    theme,
-                    context,
-                    config,
-                ) as Component,
+                withOutputPad(
+                    renderPistyleToolResult(
+                        toolName,
+                        result,
+                        options,
+                        theme,
+                        context,
+                        config,
+                    ) as Component,
+                    (context as { outputPad?: number })?.outputPad,
+                ),
         };
     });
 }

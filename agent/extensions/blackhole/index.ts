@@ -14,6 +14,7 @@ import {
 } from "./compaction.js";
 import {
     ANSI_BLUE,
+    ANSI_GREEN,
     ANSI_ORANGE,
     ANSI_RESET,
     ANSI_WHITE,
@@ -34,15 +35,24 @@ export default function (pi: ExtensionAPI): void {
     let autoCompactionController: AbortController | null = null;
     let compactInFlight = false;
 
-    pi.on("agent_start", () => {
+    function abortInFlightCompaction(): void {
         if (autoCompactionController) {
             autoCompactionController.abort();
             autoCompactionController = null;
             compactInFlight = false;
         }
+    }
+
+    pi.on("agent_start", () => {
+        abortInFlightCompaction();
     });
 
-    pi.on("agent_end", async (_event, ctx) => {
+    pi.on("agent_settled", async (event, ctx) => {
+        if ((event as { aborted?: boolean }).aborted) {
+            abortInFlightCompaction();
+            return;
+        }
+
         const currentConfig = loadBlackholeConfig();
         if (currentConfig.compaction === "off" || currentConfig.compaction === "manual") return;
         if (compactInFlight) return;
@@ -75,8 +85,8 @@ export default function (pi: ExtensionAPI): void {
             notifyWorkerAction(
                 pi,
                 "compaction",
-                `${ANSI_BLUE}󰃢 [blackhole:compaction]${ANSI_RESET}${ANSI_WHITE} - threshold reached (${ANSI_RESET}${ANSI_ORANGE}~${tokens.toLocaleString()} tokens${ANSI_RESET}${ANSI_WHITE}); auto-compacting session${ANSI_RESET}`,
-                `${ANSI_WHITE}Context usage (${ANSI_RESET}${ANSI_ORANGE}${tokens.toLocaleString()}${ANSI_RESET}${ANSI_WHITE} / ${contextWindow.toLocaleString()}) exceeded threshold (${threshold.toLocaleString()}). Triggering VCC compaction...${ANSI_RESET}`,
+                `${ANSI_ORANGE}󰃢${ANSI_RESET} ${ANSI_BLUE}[blackhole:compaction]${ANSI_RESET}${ANSI_WHITE} - threshold reached (${ANSI_RESET}${ANSI_GREEN}~${tokens.toLocaleString()} tokens${ANSI_RESET}${ANSI_WHITE}); auto-compacting session${ANSI_RESET}`,
+                `${ANSI_WHITE}Context usage (${ANSI_RESET}${ANSI_GREEN}${tokens.toLocaleString()}${ANSI_RESET}${ANSI_WHITE} / ${contextWindow.toLocaleString()}) exceeded threshold (${threshold.toLocaleString()}). Triggering VCC compaction...${ANSI_RESET}`,
             );
         }
 

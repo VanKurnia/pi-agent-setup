@@ -158,6 +158,7 @@ export function formatChunkEntries(
 
 export const ANSI_BLUE = "\x1b[38;2;122;162;247m";
 export const ANSI_ORANGE = "\x1b[38;2;255;158;100m";
+export const ANSI_GREEN = "\x1b[38;2;158;206;106m";
 export const ANSI_WHITE = "\x1b[38;2;230;235;255m";
 export const ANSI_RESET = "\x1b[39m";
 
@@ -288,7 +289,7 @@ async function runReflectorWorker(
             notifyWorkerAction(
                 pi,
                 "reflector",
-                `${ANSI_BLUE} [blackhole:reflector]${ANSI_RESET}${ANSI_WHITE} - synthesized ${ANSI_RESET}${ANSI_ORANGE}${newReflections.length} reflection(s)${ANSI_RESET}${ANSI_WHITE} from observations${ANSI_RESET}`,
+                `${ANSI_ORANGE}${ANSI_RESET} ${ANSI_BLUE}[blackhole:reflector]${ANSI_RESET}${ANSI_WHITE} - synthesized ${ANSI_RESET}${ANSI_GREEN}${newReflections.length} reflection(s)${ANSI_RESET}${ANSI_WHITE} from observations${ANSI_RESET}`,
                 newReflections
                     .map(
                         (r) =>
@@ -335,8 +336,8 @@ function runDropperWorker(
             notifyWorkerAction(
                 pi,
                 "dropper",
-                `${ANSI_BLUE}󰃢 [blackhole:dropper]${ANSI_RESET}${ANSI_WHITE} - pruned ${ANSI_RESET}${ANSI_ORANGE}${droppedCount} older observation(s)${ANSI_RESET}${ANSI_WHITE} (${ANSI_RESET}${ANSI_ORANGE}${state.observations.length} remaining${ANSI_RESET}${ANSI_WHITE})${ANSI_RESET}`,
-                `${ANSI_WHITE}Pool pressure relieved down to target tokens; ${ANSI_RESET}${ANSI_ORANGE}${state.observations.length} active observations${ANSI_RESET}${ANSI_WHITE} preserved.${ANSI_RESET}`,
+                `${ANSI_ORANGE}󰃢${ANSI_RESET} ${ANSI_BLUE}[blackhole:dropper]${ANSI_RESET}${ANSI_WHITE} - pruned ${ANSI_RESET}${ANSI_GREEN}${droppedCount} older observation(s)${ANSI_RESET}${ANSI_WHITE} (${ANSI_RESET}${ANSI_GREEN}${state.observations.length} remaining${ANSI_RESET}${ANSI_WHITE})${ANSI_RESET}`,
+                `${ANSI_WHITE}Pool pressure relieved down to target tokens; ${ANSI_RESET}${ANSI_GREEN}${state.observations.length} active observations${ANSI_RESET}${ANSI_WHITE} preserved.${ANSI_RESET}`,
             );
         }
     }
@@ -428,7 +429,7 @@ export async function runBackgroundConsolidation(
                                 notifyWorkerAction(
                                     pi,
                                     "observer",
-                                    `${ANSI_BLUE} [blackhole:observer]${ANSI_RESET}${ANSI_WHITE} - recorded ${ANSI_RESET}${ANSI_ORANGE}${newObservations.length} observation(s)${ANSI_RESET}`,
+                                    `${ANSI_ORANGE}${ANSI_RESET} ${ANSI_BLUE}[blackhole:observer]${ANSI_RESET}${ANSI_WHITE} - recorded ${ANSI_RESET}${ANSI_GREEN}${newObservations.length} observation(s)${ANSI_RESET}`,
                                     newObservations
                                         .map(
                                             (o) =>

@@ -400,3 +400,21 @@ export function createBatchFetchToolParameterProperties(
         ),
     };
 }
+
+export const webSearchOutputSchema = Type.Object({
+    queries: Type.Array(Type.String()),
+    results: Type.Array(
+        Type.Object({
+            query: Type.String(),
+            ok: Type.Boolean(),
+            error: Type.Optional(Type.String()),
+            links: Type.Array(
+                Type.Object({
+                    title: Type.String(),
+                    url: Type.String(),
+                }),
+            ),
+        }),
+    ),
+});
+export type WebSearchOutput = Static<typeof webSearchOutputSchema>;

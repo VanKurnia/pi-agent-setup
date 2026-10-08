@@ -66,8 +66,23 @@ export default function (pi: ExtensionAPI) {
     });
 
     // ── before_agent_start: inject vault context once per session ──
-    pi.on("before_agent_start", async (_event, _ctx) => {
+    pi.on("before_agent_start", async (_event, ctx) => {
         if (hasInjectedVault) return;
+
+        // Check if active branch already has vault context from a previous turn or resumed session
+        const branch = (ctx?.sessionManager?.getBranch?.() || []) as Array<{
+            type?: string;
+            customType?: string;
+            message?: { customType?: string };
+        }>;
+        const alreadyInjected = branch.some((entry) => {
+            const msg = entry?.message ?? entry;
+            return msg?.customType === "obsidian-vault";
+        });
+        if (alreadyInjected) {
+            hasInjectedVault = true;
+            return;
+        }
 
         // 1. Detect vault path from config (no auto-prompt)
         if (!vaultPath) {

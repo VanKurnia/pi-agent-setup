@@ -10,6 +10,7 @@ Run them from the repo root. All scripts require `bash` + `npm` on `PATH`
 | [`update.sh`](#updatesh) | Fresh-clone updater for the workspace (used by `/update-setup`) |
 | [`patch-speeed-home.sh`](#patch-speeed-homesh) | Re-apply pi-speeed Windows HOME fix (used by `install.sh`, `update.sh`) |
 | [`patch-host-deps.sh`](#patch-host-depssh) | Move host-provided packages from `dependencies` to `peerDependencies` in installed extensions (used by `install.sh`, `update.sh`) |
+| [`bench-om.mjs`](#bench-ommjs) | Benchmark Blackhole Observational Memory token compression & prompt cache stability |
 
 ---
 
@@ -150,3 +151,31 @@ reinstalls them from unchanged registry metadata anyway, and every such specifie
 resolves to the host's bundles, so the copies are inert.
 
 Non-fatal by contract: always exits 0, prints `✓`/`⚠` itself.
+
+---
+
+## `bench-om.mjs`
+
+Effectiveness benchmark and verification harness for Blackhole's Observational Memory (OM) engine. Replays real session history or synthetic workloads against Mastra AI Observational Memory research standards.
+
+Evaluates:
+- **Token Compression Ratio**: Raw tokens vs compacted observations + reflections.
+- **Prompt Cache Stability**: Percentage of turns where the observation prefix is 100% stable/cacheable.
+- **Cadence & Threshold Gating**: Measures trigger frequencies for Observer, Reflector, and Dropper.
+
+### Usage
+
+```bash
+# Auto-detect and benchmark the largest real session file
+node .script/bench-om.mjs
+
+# Benchmark a specific session file
+node .script/bench-om.mjs --session agent/sessions/.../session.jsonl
+
+# Run a synthetic multi-turn coding workload
+node .script/bench-om.mjs --synthetic 200
+
+# Override token cadence thresholds
+node .script/bench-om.mjs --observe-tokens 20000 --reflect-tokens 60000
+```
+

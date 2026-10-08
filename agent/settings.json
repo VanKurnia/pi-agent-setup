@@ -1,10 +1,16 @@
 {
   "packages": [
     "npm:@ff-labs/pi-fff",
-    "npm:pi-x-ide",
-    "npm:pi-zentui",
+    {
+      "source": "npm:pi-x-ide",
+      "extensions": []
+    },
+    "npm:pi-zentui"
   ],
   "theme": "tokyo-night",
+  "defaultProvider": "9router",
+  "defaultModel": "Dev",
+  "defaultThinkingLevel": "off",
   "defaultTools": [
     "read",
     "powershell",
@@ -12,7 +18,7 @@
     "write",
     "+codemode"
   ],
-  "lastChangelogVersion": "1.0.2",
+  "lastChangelogVersion": "1.1.0",
   "enableInstallTelemetry": false,
   "treeFilterMode": "user-only",
   "quietStartup": "header",
@@ -24,5 +30,8 @@
   "tuiMode": "fullscreen",
   "outputPad": 1,
   "fullscreenScrollbar": "always",
-  "httpIdleTimeoutMs": 300000
+  "httpIdleTimeoutMs": 300000,
+  "editorPaddingX": 0,
+  "doubleEscapeAction": "tree",
+  "fullscreenExitOutput": "transcript"
 }

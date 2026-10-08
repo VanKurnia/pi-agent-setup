@@ -41,7 +41,7 @@ import {
     formatToolName,
     formatToolParamLines,
     selectRenderLines,
-} from "../../../shared/index.js";
+} from "./shared/index.js";
 import { Component } from "@earendil-works/pi-tui";
 import { getLanguageFromPath, highlightCode } from "@earendil-works/pi-coding-agent";
 
@@ -675,6 +675,7 @@ export interface BoxedToolContext {
     readonly showImages: boolean;
     readonly isError: boolean;
     readonly lastComponent?: unknown;
+    readonly durationMs?: number;
 }
 /** Result view delivered to result renderers: { content, details }. */
 export interface BoxedToolResult {
@@ -769,7 +770,7 @@ export function noteBoxedResultPhase(context: BoxedToolContext, isPartial: boole
     return firstResultPass;
 }
 export function stateElapsedMs(context: BoxedToolContext): number | undefined {
-    return getStateElapsedMs(context.state);
+    return context.durationMs ?? getStateElapsedMs(context.state);
 }
 /** State slot a diff result renderer publishes its stats into so the call
  *  renderer can append them to the box header (`path · +3 -0`) on the same
@@ -4948,7 +4949,6 @@ const bashTool: BoxedToolDefinition = {
         );
     },
 };
-
 
 // from: pistyle\features\tools\boxed\batch.ts
 

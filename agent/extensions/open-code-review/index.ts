@@ -333,6 +333,7 @@ export default function openCodeReview(pi: ExtensionAPI): void {
     pi.registerTool({
         name: "ocr_review",
         label: "OCR Review",
+        annotations: { readOnlyHint: true },
         description:
             "Run Open Code Review on workspace changes, a single commit, or a ref range. " +
             "Returns structured line-level findings as JSON. Use preview=true to inspect scope without LLM usage.",
@@ -356,6 +357,7 @@ export default function openCodeReview(pi: ExtensionAPI): void {
     pi.registerTool({
         name: "ocr_scan",
         label: "OCR Scan",
+        annotations: { readOnlyHint: true },
         description:
             "Review entire files without needing a diff. " +
             "Scans the whole repository by default, or target specific paths. " +
@@ -379,6 +381,7 @@ export default function openCodeReview(pi: ExtensionAPI): void {
     pi.registerTool({
         name: "ocr_health",
         label: "OCR Health",
+        annotations: { readOnlyHint: true, idempotentHint: true },
         description:
             "Check the installed Open Code Review version and verify its configured LLM connection. " +
             "Use this to diagnose OCR setup issues before running reviews.",

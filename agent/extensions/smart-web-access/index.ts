@@ -38,6 +38,7 @@ import {
     type QueryProgress,
     type QueryStatus,
     type WebSearchDetails,
+    webSearchOutputSchema,
     createBaseFetchToolParameterProperties,
     formatByteCount,
     isFileFetchResult,
@@ -382,11 +383,18 @@ export function createWebFetchResultComponent(
 // Extension Entry Point
 // =============================================================================
 
+type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
+
 export default function smartWebAccessExtension(pi: ExtensionAPI): void {
     // ── 1. web_search ───────────────────────────────────────────────────────────
     pi.registerTool<typeof searchParametersSchema, WebSearchDetails>({
         name: "web_search",
         label: "web_search",
+        annotations: {
+            readOnlyHint: true,
+            openWorldHint: true,
+            idempotentHint: true,
+        },
         description:
             "Search the web and return each query's results as readable markdown -- title, URL and snippet " +
             "per result -- followed by a summary of every result link, to open with " +
@@ -401,6 +409,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                 "extra angles would change the answer.",
         ],
         parameters: searchParametersSchema,
+        outputSchema: webSearchOutputSchema,
 
         renderCall(args, theme) {
             const queryCount = args.searches.length;
@@ -417,8 +426,24 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
             const result = await executeWebSearch(params.searches, ctx.cwd, (progressByQuery) => {
                 onUpdate?.({ content: [], details: { progressByQuery } });
             });
+            const emptyLinks: Array<{ title: string; url: string }> = [];
+            const results = (result.details?.progressByQuery || []).map((q) => {
+                const res = q.result;
+                if (!res) {
+                    return { query: q.query, ok: false, error: "no response", links: emptyLinks };
+                }
+                if (res.ok) {
+                    return {
+                        query: q.query,
+                        ok: true,
+                        links: res.links.map((l) => ({ title: l.title, url: l.url })),
+                    };
+                }
+                return { query: q.query, ok: false, error: res.error, links: emptyLinks };
+            });
             return {
                 content: [{ type: "text", text: result.text }],
+                structuredContent: { queries: params.searches, results } as JsonValue,
                 details: result.details,
             };
         },
@@ -459,6 +484,11 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
     pi.registerTool({
         name: "web_fetch",
         label: "web_fetch",
+        annotations: {
+            readOnlyHint: true,
+            openWorldHint: true,
+            idempotentHint: true,
+        },
         description: toolDescription,
         promptSnippet:
             "web_fetch(url, browser?, os?, headers?, maxChars?, timeoutMs?, format?, removeImages?, includeReplies?, proxy?, verbose?): fetch browser-fingerprinted readable web content with full agent metadata and a compact pi preview",

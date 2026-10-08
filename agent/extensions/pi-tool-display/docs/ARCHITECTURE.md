@@ -109,7 +109,7 @@ patch, so the table look would be lost.
   the same cost db-viewer's own renderer pays today.
 
 Routing lives in `pistyle-bridge.ts`, not in the vendored dispatcher registry: a pi-style re-port
-replaces `src/pistyle/features/tools/boxed/index.ts` wholesale, and the bridge is documented as
+replaces `src/pistyle/index.ts` wholesale, and the bridge is documented as
 re-port-independent (`MAINTENANCE.md`).
 
 ## Expansion

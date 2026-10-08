@@ -34,7 +34,7 @@ Boot-static (transpiled on every boot):
 
 | File | KB | Contents |
 | --- | --- | --- |
-| `src/pistyle/features/tools/boxed/index.ts` | 288 | every boxed tool renderer (read/write/edit/find/grep/ls/bash/git/gh/batch/turn-summary/fallback) and the dispatcher |
+| `src/pistyle/index.ts` | 288 | every boxed tool renderer (read/write/edit/find/grep/ls/bash/git/gh/batch/turn-summary/fallback) and the dispatcher |
 | `src/pistyle/shared/index.ts` | 114 | box drawing, ANSI, diff, render budget, theme extras |
 | `src/wiring.ts` | 57 | the bridge, the renderer patch, MCP decoration, thinking labels, user-message box |
 | `src/fork-cards.ts` | 41 | db-query, OCR and subagent cards |
@@ -70,6 +70,7 @@ regenerate a merge from a list of sources if you need to split one back apart.
   that the compact renderer path and the config fields that fed it were removed here; only the MCP
   decoration in `wiring.ts` is still derived from upstream, plus the vendored pistyle tree.
 - `pi-style`: re-run the port steps in `docs/INTEGRATION.md`, then re-apply the fork deltas listed in
+  pi-style module and edit inside that section, or split the file back with `.script/merge.mjs`.
   `FORK.md`. The ported files land inside the merged `pistyle/shared/index.ts` and
-  `pistyle/features/tools/boxed/index.ts`; look for the `// from:` marker naming the original
+  `pistyle/index.ts`; look for the `// from:` marker naming the original
   pi-style module and edit inside that section, or split the file back with `.script/merge.mjs`.
