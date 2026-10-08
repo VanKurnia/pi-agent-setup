@@ -26,8 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (7 -> `support.ts`), and the core wiring (5 -> `wiring.ts`).
 
   Byte size is unchanged (~515 KB boot-static) — this buys file count, not volume. Each merged file
-  keeps `// from: <original>` section markers; `.script/merge.mjs` and `.script/merge-finish.mjs`
-  regenerate a merge from a source list, and `.script/smoke-tool-display.mjs` exercises 11 render
+  keeps `// from: <original>` section markers, and `.script/smoke-tool-display.mjs` exercises 11 render
   paths (read/bash/edit/write/grep/ls/find/unknown/ocr/db/subagent) as a regression check.
 
   Symbols renamed to avoid collisions introduced by the shared scope: the dispatcher is now

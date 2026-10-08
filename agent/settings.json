@@ -8,9 +8,9 @@
     "npm:pi-zentui"
   ],
   "theme": "tokyo-night",
-  "defaultProvider": "9router",
-  "defaultModel": "Dev",
-  "defaultThinkingLevel": "off",
+  "defaultProvider": "opencode-go",
+  "defaultModel": "muse-spark-1.3-contributor",
+  "defaultThinkingLevel": "xhigh",
   "defaultTools": [
     "read",
     "powershell",

@@ -11,6 +11,7 @@ Run them from the repo root. All scripts require `bash` + `npm` on `PATH`
 | [`patch-speeed-home.sh`](#patch-speeed-homesh) | Re-apply pi-speeed Windows HOME fix (used by `install.sh`, `update.sh`) |
 | [`patch-host-deps.sh`](#patch-host-depssh) | Move host-provided packages from `dependencies` to `peerDependencies` in installed extensions (used by `install.sh`, `update.sh`) |
 | [`bench-om.mjs`](#bench-ommjs) | Benchmark Blackhole Observational Memory token compression & prompt cache stability |
+| [`preview-system-prompt.mjs`](#preview-system-promptmjs) | Render pi's system prompt from the installed build (`--list`, `--section`, `--out`) |
 
 ---
 
@@ -178,4 +179,33 @@ node .script/bench-om.mjs --synthetic 200
 # Override token cadence thresholds
 node .script/bench-om.mjs --observe-tokens 20000 --reflect-tokens 60000
 ```
+
+---
+
+## `preview-system-prompt.mjs`
+
+Renders the system prompt pi would build, using the REAL builder from the
+installed pi (`agent/install/releases/<ver>/.../dist/core/system-prompt.js` —
+the compiled form of `packages/coding-agent/src/core/system-prompt.ts` on GitHub).
+Also reuses pi's own `loadProjectContextFiles`, `loadSkills`, and built-in tool
+definitions. Extension-contributed snippets/guidelines/sections resolve at
+runtime, so those are noted as placeholders in `--show-sources` output.
+
+```bash
+node .script/preview-system-prompt.mjs --list --show-sources --stats
+node .script/preview-system-prompt.mjs --section addendum
+node .script/preview-system-prompt.mjs --out tmp/system-prompt.txt
+node .script/preview-system-prompt.mjs --cwd C:/path/to/project --list
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--cwd <dir>` | Working directory to preview for (default: repo root) |
+| `--agent-dir <dir>` | Agent dir (default: `<repo>/agent`) |
+| `--pi-dir <dir>` | Override pi package dir |
+| `--list` | List section names + sizes instead of full prompt |
+| `--section <name>` | Print one section (`preamble`, `tools`, `rules`, `docs`, `addendum`, `project_context`, `skills`, `cwd`) |
+| `--out <file>` | Write prompt to file instead of stdout |
+| `--show-sources` | Print resolved sources to stderr |
+| `--stats` | Print char counts per section to stderr |
 

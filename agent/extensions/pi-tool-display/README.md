@@ -55,8 +55,8 @@ Lazy (only on `/tool-display`): `config-modal.ts`, `zellij-modal.ts`, `settings-
 - `config.json` — live configuration, edited by `/tool-display`.
 
 The merged files carry `// ==== // from: <original>` section markers naming their source modules, so
-you can still find the code you are looking for. `.script/merge.mjs` and `.script/merge-finish.mjs`
-regenerate a merge from a list of sources if you need to split one back apart.
+you can still find the code you are looking for. The merged files are the source of truth now -
+edit them in place.
 
 ## Use
 
@@ -70,7 +70,6 @@ regenerate a merge from a list of sources if you need to split one back apart.
   that the compact renderer path and the config fields that fed it were removed here; only the MCP
   decoration in `wiring.ts` is still derived from upstream, plus the vendored pistyle tree.
 - `pi-style`: re-run the port steps in `docs/INTEGRATION.md`, then re-apply the fork deltas listed in
-  pi-style module and edit inside that section, or split the file back with `.script/merge.mjs`.
   `FORK.md`. The ported files land inside the merged `pistyle/shared/index.ts` and
   `pistyle/index.ts`; look for the `// from:` marker naming the original
-  pi-style module and edit inside that section, or split the file back with `.script/merge.mjs`.
+  pi-style module and edit inside that section.
