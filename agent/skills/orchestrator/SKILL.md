@@ -90,7 +90,7 @@ for the target project.
 
 - **Tiny targeted edits** where you already know the exact file and line — just do it directly.
 - **Anything requiring user interaction** — subagents cannot call `ask_user_question` and cannot prompt the user. All necessary instructions, context, constraints, and decision paths must be supplied upfront in the task description.
-- **Subagents have NO context from your conversation** — include ALL necessary context in the task description. File paths, patterns, constraints, expected output format.
+- **Subagents get a read-only parent snapshot (VCC) auto-attached** — include only task-specific context NOT in the snapshot. File paths, patterns, constraints, expected output format. Children can drill deeper with `recall` `source=parent`.
 
 ## Implementation Discipline
 

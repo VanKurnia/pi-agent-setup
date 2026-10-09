@@ -81,9 +81,7 @@ agent/hindsight.json
 hindsight
 hindsight.json
 
-
 # Locally-modified extensions (machine-specific, not tracked)
-agent/extensions/herdr-agent-state.ts
 agent/extensions/rtk.ts
 agent/extensions/browser-tools/declarations.d.ts
 agent/models-store.json

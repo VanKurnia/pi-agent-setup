@@ -1,6 +1,6 @@
 # PR: Beri Subagent Snapshot VCC dari Parent Context
 
-Status: TODO
+Status: DONE + VERIFIED IN PRODUCTION (09-10-26 — snapshot attaches with real content; scout probe confirmed Files Touched + commits + OM present, no placeholder)
 
 ## Ringkasan
 

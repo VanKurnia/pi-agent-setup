@@ -11,6 +11,7 @@ Run them from the repo root. All scripts require `bash` + `npm` on `PATH`
 | [`patch-speeed-home.sh`](#patch-speeed-homesh) | Re-apply pi-speeed Windows HOME fix (used by `install.sh`, `update.sh`) |
 | [`patch-host-deps.sh`](#patch-host-depssh) | Move host-provided packages from `dependencies` to `peerDependencies` in installed extensions (used by `install.sh`, `update.sh`) |
 | [`bench-om.mjs`](#bench-ommjs) | Benchmark Blackhole Observational Memory token compression & prompt cache stability |
+| [`test/`](#test) | Temp behavior tests loading real TS modules via jiti (no model calls) |
 | [`preview-system-prompt.mjs`](#preview-system-promptmjs) | Render pi's system prompt from the installed build (`--list`, `--section`, `--out`) |
 
 ---
@@ -179,6 +180,27 @@ node .script/bench-om.mjs --synthetic 200
 # Override token cadence thresholds
 node .script/bench-om.mjs --observe-tokens 20000 --reflect-tokens 60000
 ```
+
+---
+
+## `test/`
+
+Temp behavior tests (not CI). Each loads the real extension TS via pi's
+jiti-loader with repo-local aliases — no hardcoded install paths, no model
+calls, no session writes.
+
+```bash
+node .script/test/subagent/snapshot.test.mjs
+node .script/test/subagent/recall.test.mjs
+node .script/test/subagent/dispatch.test.mjs
+```
+
+| Test | Covers |
+| --- | --- |
+| `subagent/snapshot.test.mjs` | Delegation snapshot: VCC build from parent messages, empty-session passthrough, attach marker + idempotency, `{previous}` neutralization under chain templating, 6000-char truncation, single/parallel/chain/hybrid fan-out without input mutation, unknown-phase passthrough |
+| `subagent/recall.test.mjs` | Child recall of parent memory: default stays in own session, `source=parent` keyword/#N/#N:text/touched/scope=all reads, unmapped-session graceful message, 4000-char cap, link register/resolve/unregister lifecycle, loader-isolation survival via `globalThis` |
+| `subagent/dispatch.test.mjs` | Dispatcher wiring without models (SDK `createAgentSession` stubbed): snapshot attach + link visibility during the run + cleanup after dispose, empty-parent passthrough, parallel fan-out, retry-then-cleanup, unknown-agent failure |
+| `subagent/helpers.mjs` | Shared harness (jiti setup, `.js`-shape imports, message builders, case runner) — not a test itself |
 
 ---
 

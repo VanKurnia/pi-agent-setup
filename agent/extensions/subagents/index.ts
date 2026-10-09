@@ -526,7 +526,7 @@ export default function registerSubagent(pi: ExtensionAPI) {
         label: "Subagent",
         exposure: "model-only",
         description:
-            "Run a subagent to complete a task. Subagents have NO context from the current conversation — include all necessary context in the task description.",
+            "Run a subagent to complete a task. A read-only VCC snapshot of the parent session (files touched, recent commits, observations) is auto-attached as reference — include only task-specific context not already in the snapshot.",
         promptSnippet: "Run subagents for delegated tasks",
         promptGuidelines: [
             "Parallel tool calls are your primary parallelism mechanism — put multiple independent read/fetch/search calls in one function_calls block. Don't use subagents to parallelize simple I/O.",
@@ -534,7 +534,8 @@ export default function registerSubagent(pi: ExtensionAPI) {
             "Single fact lookup on the web? Call web_search directly. Need 2+ searches, source comparison, or synthesis? Delegate to scout.",
             "For multiple independent subagent tasks, use parallel mode with tasks[] array",
             "For multi-phase workflows (scout → implement → verify), use hybrid mode with hybrid[] array — phases execute sequentially, each phase feeds the next via {previous}.",
-            "Subagents have NO context from the current conversation — include ALL necessary context in the task description",
+            "Subagents receive an auto-attached read-only parent snapshot (VCC) as reference — include only task-specific context NOT already in the snapshot (goal, constraints, decision paths, expected output format)",
+            "Scout/worker children can drill deeper than the snapshot with recall source=parent (parent history + OM, read-only, explicit opt-in per call)",
             "Provide a short title (max 5 words) per task for the progress widget; omit it and the UI falls back to the first 5 words of task",
         ],
         parameters: SubagentParams,

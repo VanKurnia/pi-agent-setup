@@ -1,6 +1,6 @@
 # Recall Parent History dari Child Subagent
 
-Status: TODO
+Status: DONE + VERIFIED IN PRODUCTION (09-10-26 — recall source:parent returns parent matches in a live child run; transport reworked from module-Map to globalThis after host loader isolation was proven, 10/10 jiti tests green incl. an isolation-topology test)
 
 ## Masalah
 
@@ -10,7 +10,7 @@ Child subagent mulai dari session kosong. Tool `recall` milik child hanya membac
 
 Jangan minta model mengisi `parent_session_id` manual — rapuh (model harus copy opaque id). Carrier-nya dispatcher, bukan model:
 
-1. **Session-map di dispatcher.** Tepat setelah `createAgentSession` return di `runAttempt` (`subagents/src/run.ts`), catat `Map<childSessionId, parentSessionId>`. Hapus di `finally { session.dispose() }` yang sudah ada. ~15 baris.
+1. **Session-map di dispatcher.** Tepat setelah `createAgentSession` return di `runAttempt` (`subagents/src/run.ts`), catat link child→parent. Store Tunggal: helper `set/get/deleteParentLinkGlobal` di `shared/cross-extension-api.ts` berbasis `globalThis` — BUKAN module-level Map, karena loader host membangun tiap extension dengan instance jiti sendiri + `moduleCache:false` sehingga module state tidak pernah menyeberang antar extension. Hapus di `finally { session.dispose() }` yang sudah ada.
 2. **`recall` resolve identitas saat eksekusi.** Kunci map dengan `ctx.sessionManager.getSessionId()`. Param opsional `source: current | parent` sebagai override; default tetap `current` — parent selalu eksplisit, tidak pernah implisit.
 3. **Dua jalur baca:**
    - Observasi/refleksi parent (hex-ID): gratis — `readPendingState(parentSessionId)` baca file JSON di disk, sudah works lintas session (`blackhole/om.ts`).
@@ -27,11 +27,13 @@ Implement ini kalau observasi menunjukkan child sering mentok ("snapshot tidak c
 
 ## Acceptance Criteria
 
-- [ ] Default `recall` tetap membaca session sendiri (backward compatible).
-- [ ] `source=parent` membaca history + OM parent, tanpa mengubah session mana pun.
-- [ ] Tidak ada id yang harus dihafal/dicopy model — pemetaan dipegang dispatcher.
-- [ ] Cap 4000 chars yang sudah ada berlaku untuk hasil parent.
-- [ ] Map dibersihkan saat child dispose (tidak ada leak antar run).
+- [x] Default `recall` tetap membaca session sendiri (backward compatible).
+- [x] `source=parent` membaca history + OM parent, tanpa mengubah session mana pun.
+- [x] Tidak ada id yang harus dihafal/dicopy model — pemetaan dipegang dispatcher.
+- [x] Cap 4000 chars yang sudah ada berlaku untuk hasil parent.
+- [x] Map dibersihkan saat child dispose (tidak ada leak antar run).
+- [x] Link resolve lintas isolasi modul loader (globalThis; recall fallback registry→global, 09-10-26).
+- [x] Dispatcher wiring (snapshot attach × link lifecycle × retry × modes) covered model-free oleh `.script/test/subagent/dispatch.test.mjs` via stubbed `createAgentSession` (5/5, 09-10-26).
 
 ## Hubungan dengan PR Snapshot
 

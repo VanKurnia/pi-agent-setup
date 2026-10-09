@@ -6,6 +6,8 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
+import { getExtensionApi, getParentLinkGlobal } from "../shared/cross-extension-api.js";
+import type { SubagentParentLink, SubagentsApi } from "../subagents/src/core.js";
 import { getAutoCompactThreshold, loadBlackholeConfig } from "./config.js";
 import {
     collectTouchedFiles,
@@ -227,12 +229,14 @@ export default function (pi: ExtensionAPI): void {
         description:
             "Search session history and earlier lines omitted, file write/edit content by text/regex. " +
             "Expand entries (#N), drill-down file content (#N:path) or message text (#N:text) with paging, or aggregate touched files (mode:touched). " +
-            "Responses are capped at a character budget; #N:text / #N:path page the full stored payload.",
+            "Responses are capped at a character budget; #N:text / #N:path page the full stored payload. " +
+            "Subagent children can pass source:'parent' to drill into the delegating parent session instead of their own.",
         promptSnippet:
-            "Search session history + file write/edit content by text/regex. #N expand, #N:path / #N:text drill-down with optional :offset:limit or :full, mode:file/touched.",
+            "Search session history + file write/edit content by text/regex. #N expand, #N:path / #N:text drill-down with optional :offset:limit or :full, mode:file/touched. source:parent reads the delegating parent session (subagent children only).",
         promptGuidelines: [
             "Use recall — literal text/regex search across session history and file write/edit content. #N expands an entry; #N:path with optional :offset:limit or :full drills down into file content; #N:text pages a message body; 12-char hex ids recover observation/reflection sources. mode:file for file-content-only, mode:touched for aggregated files-by-path. scope:'all' to search the full session. If no results, try fewer terms or a regex pattern.",
             "Use recall — when a drill-down path matches multiple files, options are listed. Narrow with a more specific path substring. Only full-file writes are indexed for text search (edit diffs are not).",
+            "Use recall — source:'parent' reads the delegating parent session's history + OM instead of your own. Only works inside a subagent child run; default stays 'current' so parent reads are always explicit, never implicit.",
         ],
         parameters: Type.Object({
             query: Type.Optional(
@@ -264,15 +268,59 @@ export default function (pi: ExtensionAPI): void {
                         "What content to search. hybrid (default) = all session content. file = file content only. touched = files-by-path summary with entry indices.",
                 }),
             ),
+            source: Type.Optional(
+                StringEnum(["current", "parent"] as const, {
+                    description:
+                        "Which session to read. current (default) = own session. parent = delegating parent session; only resolves inside a subagent child run.",
+                }),
+            ),
         }),
         async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
             const maxChars = config.recallResponseMaxChars || 4000;
+            // Recall target: own session by default; delegating parent on
+            // source:"parent". The child->parent link is registered by the
+            // subagent dispatcher per run and cleared on dispose — parent reads
+            // are always explicit and mutate neither session.
+            const childSessionId: string = ctx.sessionManager?.getSessionId?.() || "";
+            let targetManager: any = ctx.sessionManager;
+            let omSessionId = childSessionId;
+            let readCwd: string = ctx.cwd;
+            if (params.source === "parent") {
+                const api = getExtensionApi<SubagentsApi>("subagents");
+                // Registry first; globalThis fallback covers loader module
+                // isolation (per-extension jiti instances) and children that
+                // never load the provider extension at all.
+                const link =
+                    api?.resolveParentLink(childSessionId) ??
+                    getParentLinkGlobal<SubagentParentLink>(childSessionId);
+                if (!link?.parentSessionManager) {
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: api
+                                    ? `No parent session linked to this session (child: ${childSessionId || "unknown"}). source:"parent" only works inside a subagent child run dispatched from a parent session.`
+                                    : 'Subagents extension API not available in this session and no parent link found; source:"parent" needs a dispatcher-registered parent link.',
+                            },
+                        ],
+                        details: undefined,
+                    };
+                }
+                targetManager = link.parentSessionManager;
+                omSessionId = link.parentSessionId;
+                readCwd = link.parentCwd || ctx.cwd;
+            }
             const messages = (
                 params.scope === "all"
-                    ? (ctx.sessionManager?.getEntries?.() || [])
+                    ? (
+                          (targetManager?.getEntries?.() || []) as Array<{
+                              type?: string;
+                              message?: unknown;
+                          }>
+                      )
                           .filter((e) => e.type === "message" && "message" in e)
                           .map((e) => (e as { message: unknown }).message)
-                    : ctx.sessionManager?.buildSessionProjection?.()?.messages || []
+                    : targetManager?.buildSessionProjection?.()?.messages || []
             ) as Array<{
                 role?: string;
                 content?: unknown;
@@ -281,8 +329,7 @@ export default function (pi: ExtensionAPI): void {
 
             // 1. Hex Memory ID lookup (12-char hex)
             if (/^[a-f0-9]{12}$/.test(query)) {
-                const sessionId = ctx.sessionManager?.getSessionId?.() || "";
-                const state = readPendingState(sessionId);
+                const state = readPendingState(omSessionId);
                 const obs = state.observations.find((o) => o.id === query);
                 const ref = state.reflections.find((r) => r.id === query);
                 if (obs || ref) {
@@ -295,7 +342,7 @@ export default function (pi: ExtensionAPI): void {
 
             // 2. Touched files aggregation (mode: "touched")
             if (params.mode === "touched") {
-                const touched = collectTouchedFiles(messages, ctx.cwd);
+                const touched = collectTouchedFiles(messages, readCwd);
                 const text =
                     touched.length > 0
                         ? `Files touched in session (${touched.length}):\n${touched.map((f) => `- ${f}`).join("\n")}`

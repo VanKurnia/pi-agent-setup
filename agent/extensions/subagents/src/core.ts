@@ -6,9 +6,15 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fileURLToPath } from "node:url";
 import type { Model } from "@earendil-works/pi-ai";
-import { registerExtensionApi } from "../../shared/cross-extension-api.js";
+import {
+    deleteParentLinkGlobal,
+    getParentLinkGlobal,
+    registerExtensionApi,
+    setParentLinkGlobal,
+} from "../../shared/cross-extension-api.js";
 
 // ── Agent config types ──────────────────────────────────────────────────
 export type AgentScope = "user" | "project" | "both";
@@ -114,6 +120,18 @@ export interface FilechangesApi {
 export interface SubagentsApi {
     registerAgent: (config: AgentConfig) => void;
     unregisterAgent: (name: string) => void;
+    resolveParentLink: (childSessionId: string) => SubagentParentLink | undefined;
+}
+
+/**
+ * Link from a child subagent session back to its delegating parent.
+ * Held only for the child's lifetime (registered on session creation,
+ * cleared on dispose) so `recall` can drill into parent memory on demand.
+ */
+export interface SubagentParentLink {
+    parentSessionId: string;
+    parentCwd: string;
+    parentSessionManager: SessionManager;
 }
 
 /**
@@ -203,10 +221,30 @@ export function refreshAgents(newAgents: AgentConfig[]): void {
     agents = newAgents;
 }
 
+// ── Child -> parent session links (recall parent memory) ───────────────────
+// Single store: the globalThis-backed helpers. A module-level Map would be
+// invisible to other extension instances under the loader's per-extension
+// module isolation, and the child session may not load this extension at all.
+export function registerChildSession(childSessionId: string, link: SubagentParentLink): void {
+    setParentLinkGlobal(childSessionId, link);
+}
+
+export function unregisterChildSession(childSessionId: string): void {
+    deleteParentLinkGlobal(childSessionId);
+}
+
+export function resolveParentLink(childSessionId: string): SubagentParentLink | undefined {
+    return getParentLinkGlobal<SubagentParentLink>(childSessionId);
+}
+
 // Expose registration functions via the cross-extension API registry so other
 // extensions (loaded via jiti, which creates separate module instances) can
 // access the shared agents array.
-registerExtensionApi<SubagentsApi>("subagents", { registerAgent, unregisterAgent });
+registerExtensionApi<SubagentsApi>("subagents", {
+    registerAgent,
+    unregisterAgent,
+    resolveParentLink,
+});
 
 // ── Persisted settings ──────────────────────────────────────────────────
 export interface SubagentsSettings {
