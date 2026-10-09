@@ -25,11 +25,10 @@ import { basename, dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { showPicker } from "../shared/picker.js";
-import { shortenHome } from "../shared/text-format.js";
+import { normalizeDir, shortenHome } from "../shared/text-format.js";
 import {
     fileStamp,
     listSessionFiles,
-    normalizeDir,
     parseSessionHeader,
     readFileHead,
     readSessionCwd,

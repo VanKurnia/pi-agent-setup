@@ -12,7 +12,7 @@ import { Container, Key, Markdown, SelectList, Text, matchesKey } from "@earendi
 import { writeFile, rm, mkdir, readFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { registerExtensionApi } from "../shared/cross-extension-api.js";
-import type { FilechangesApi } from "../subagents/src/core.js";
+import type { FilechangesApi } from "../shared/filechanges-api.js";
 
 // ── Inlined from tracker.ts (file deleted) ───────────────────────────
 // ── Types ──────────────────────────────────────────────
@@ -55,6 +55,16 @@ function stripAtPrefix(p: string): string {
     return p.startsWith("@") ? p.slice(1) : p;
 }
 
+/**
+ * Normalize a tool-provided file path into absolute + cwd-relative forms.
+ *
+ * Strips one leading "@" (pi mention syntax); `absPath` is always
+ * `resolve(cwd, cleaned)`. `relPath` is the cwd-relative slash-normalized
+ * form when inside cwd, else falls back to the cleaned raw input
+ * (slash-normalized). Outside-cwd files are intentionally tracked under
+ * that absolute/cleaned form and round-trip on a stable cwd.
+ * Empty input yields `relPath ""`; callers must skip empty paths.
+ */
 function normalizeToolPath(cwd: string, raw: string): { absPath: string; relPath: string } {
     const cleaned = stripAtPrefix(raw);
     const absPath = resolve(cwd, cleaned);
@@ -271,7 +281,7 @@ export class FileChangeTracker {
 
             if (entry.customType === ENTRY_BASELINE) {
                 const data = entry.data as any;
-                if (!data?.path) continue;
+                if (typeof data?.path !== "string" || data.path.trim() === "") continue;
                 const { absPath, relPath } = normalizeToolPath(cwd, data.path);
                 this.baselines.set(relPath, {
                     path: relPath,
@@ -285,7 +295,7 @@ export class FileChangeTracker {
 
             if (entry.customType === ENTRY_UNTRACK) {
                 const data = entry.data as any;
-                if (!data?.path) continue;
+                if (typeof data?.path !== "string" || data.path.trim() === "") continue;
                 const { relPath } = normalizeToolPath(cwd, data.path);
                 this.baselines.delete(relPath);
                 this.tracked.delete(relPath);
@@ -695,7 +705,11 @@ export default function (pi: ExtensionAPI) {
     // Capture before snapshots for edit/write
     pi.on("tool_call", async (event, ctx) => {
         if (isToolCallEventType("edit", event) || isToolCallEventType("write", event)) {
-            const { absPath, relPath } = normalizeToolPath(ctx.cwd, event.input.path);
+            const rawPath = event.input.path;
+            // Ignore empty tool paths; nothing to track.
+            if (typeof rawPath !== "string" || rawPath.trim() === "") return;
+            const { absPath, relPath } = normalizeToolPath(ctx.cwd, rawPath);
+            if (!relPath) return;
             const before = await readTextOrNull(absPath);
             tracker.setPending(event.toolCallId, relPath, absPath, before);
         }

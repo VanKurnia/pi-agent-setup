@@ -100,18 +100,9 @@ export interface Details {
     projectAgentsDir?: string | null;
 }
 
-/**
- * API that the filechanges extension exposes to subagents.
- * Registered via `ExtensionAPI.registerExtensionApi('filechanges', ...)`.
- */
-export interface FilechangesApi {
-    trackFile: (
-        ctx: any,
-        relPath: string,
-        absPath: string,
-        originalContent: string | null,
-    ) => Promise<void>;
-}
+// Re-exported from shared so existing importers keep working; the interface
+// is owned by agent/extensions/shared/filechanges-api.ts.
+export type { FilechangesApi } from "../../shared/filechanges-api.js";
 
 /**
  * API that the subagents extension exposes to other extensions.

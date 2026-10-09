@@ -25,15 +25,7 @@ import {
     type SessionInfoEntry,
 } from "@earendil-works/pi-coding-agent";
 import { promptForName, showPicker } from "../shared/picker.js";
-import { shortenHome } from "../shared/text-format.js";
-
-// =============================================================================
-// Path Helpers
-// =============================================================================
-
-export function normalizeDir(p: string): string {
-    return p.replace(/\\/g, "/").toLowerCase();
-}
+import { normalizeDir, shortenHome } from "../shared/text-format.js";
 
 // =============================================================================
 // Session File Primitives

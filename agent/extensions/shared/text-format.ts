@@ -1,5 +1,5 @@
 /**
- * Shared text-formatting helpers used by the status widgets.
+ * Shared text-formatting and path helpers used across extensions.
  */
 
 import { homedir } from "node:os";
@@ -10,6 +10,11 @@ export function shortenHome(p: string): string {
     const home = homedir().replace(/\\/g, "/");
     const normalized = p.replace(/\\/g, "/");
     return normalized.startsWith(home) ? `~${normalized.slice(home.length)}` : p;
+}
+
+/** Normalize a directory path for case-insensitive prefix comparison (Windows). */
+export function normalizeDir(p: string): string {
+    return p.replace(/\\/g, "/").toLowerCase();
 }
 
 export function formatDuration(ms: number): string {
