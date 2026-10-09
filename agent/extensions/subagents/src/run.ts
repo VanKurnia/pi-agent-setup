@@ -21,8 +21,10 @@ import {
 } from "./core.js";
 import {
     createAgentSession,
+    createCodemodeExtension,
     DEFAULT_MAX_BYTES,
     DEFAULT_MAX_LINES,
+    DefaultResourceLoader,
     getAgentDir,
     SessionManager,
     truncateTail,
@@ -193,9 +195,17 @@ async function runAttempt(
         if (session) session.abort().catch(() => {});
     };
     try {
+        // SDK sessions omit builtin codemode; register it so agents listing codemode can use it.
+        const resourceLoader = new DefaultResourceLoader({
+            cwd,
+            agentDir,
+            extensionFactories: [createCodemodeExtension({ mode: "on" })],
+        });
+        await resourceLoader.reload();
         const sessionResult = await createAgentSession({
             cwd,
             agentDir,
+            resourceLoader,
             tools: agent.tools.length > 0 ? agent.tools : undefined,
             model,
             thinkingLevel,
