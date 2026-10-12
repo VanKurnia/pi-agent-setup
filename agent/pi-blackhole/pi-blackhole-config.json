@@ -1,0 +1,83 @@
+{
+  "agentMaxTurns": 16,
+  "compactAfterPreset": "default",
+  "compactAfterRatio": 0.75,
+  "compactAfterTokens": 254000,
+  "compaction": "auto",
+  "compactionEngine": "blackhole",
+  "compactionSummaryMode": "default",
+  "debug": false,
+  "debugLog": false,
+  "dropperFallbackModels": [
+    {
+      "_comment": "Dropper fallback: same local model after cooldown.",
+      "cooldownHours": 6,
+      "id": "session-compaction",
+      "provider": "9router",
+      "thinking": "off"
+    }
+  ],
+  "dropperInputMaxTokens": 120000,
+  "dropperModel": {
+    "_comment": "Dropper primary: 9router session-compaction.",
+    "cooldownHours": 12,
+    "id": "session-compaction",
+    "provider": "9router",
+    "thinking": "off"
+  },
+  "dropperPoolFullnessThreshold": 0.1,
+  "dropperPressureThreshold": 0.7,
+  "fullFoldAlways": true,
+  "memory": true,
+  "midRunCompaction": "off",
+  "model": {
+    "_comment": "Base model (last fallback before session model): 9router session-compaction per @agent/models.json.",
+    "cooldownHours": 6,
+    "id": "session-compaction",
+    "provider": "9router",
+    "thinking": "low"
+  },
+  "observationsPoolMaxTokens": 45000,
+  "observationsPoolTargetTokens": 22000,
+  "observeAfterTokens": 25400,
+  "observerChunkMaxTokens": 60000,
+  "observerFallbackModels": [
+    {
+      "_comment": "Observer fallback: same local model after cooldown.",
+      "cooldownHours": 6,
+      "id": "session-compaction",
+      "provider": "9router",
+      "thinking": "off"
+    }
+  ],
+  "observerModel": {
+    "_comment": "Observer primary: 9router session-compaction.",
+    "cooldownHours": 12,
+    "id": "session-compaction",
+    "provider": "9router",
+    "thinking": "low"
+  },
+  "observerPreambleMaxTokens": 0,
+  "reflectAfterTokens": 60000,
+  "reflectorFallbackModels": [
+    {
+      "_comment": "Reflector fallback: same local model after cooldown.",
+      "cooldownHours": 6,
+      "id": "session-compaction",
+      "provider": "9router",
+      "thinking": "low"
+    }
+  ],
+  "reflectorInputMaxTokens": 120000,
+  "reflectorModel": {
+    "_comment": "Reflector primary: 9router session-compaction (254k ctx fits reflectorInputMaxTokens 120000).",
+    "cooldownHours": 12,
+    "id": "session-compaction",
+    "provider": "9router",
+    "thinking": "low"
+  },
+  "retainedToolOutputMaxTokens": 30000,
+  "sessionFallback": true,
+  "skipForProviders": [],
+  "tailBehavior": "pi-default"
+}

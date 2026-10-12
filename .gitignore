@@ -11,9 +11,11 @@ agent/9router-config.json
 .pi/
 agent/sessions/
 agent/bin/
+agent/cache/
 agent/install/
 agent/auth.json
-agent/pi-blackhole/
+agent/pi-blackhole/*
+!agent/pi-blackhole/pi-blackhole-config.json
 agent/fff/
 agent/thinking-fold.json
 git/
