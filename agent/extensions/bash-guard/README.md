@@ -28,29 +28,29 @@ which pi-subagents injects into every spawned process.
 Spawned subagents have no UI (stdin is `/dev/null`), so prompting is impossible. Instead,
 a focused set of catastrophic/unrecoverable operations is hard-blocked with no user interaction:
 
-| Pattern | Reason |
-|---|---|
-| `rm -r` / `-rf` / `-Rf` | Recursive deletion |
-| `sudo` | Elevated privileges |
-| `curl\|sh`, `wget\|sh` | Pipe to shell (remote code execution) |
-| `mkfs*`, `newfs_*` | Filesystem formatting |
-| `wipefs` | Disk signature wipe |
-| `diskutil erase/zeroDisk/secureErase/reformat` | Destructive disk operation |
-| `dd of=/dev/…` | Raw disk write |
-| `parted`, `fdisk`, `gdisk`, `sgdisk` | Partition table management |
-| `cryptsetup` | Disk encryption management |
-| `zpool` | ZFS pool management |
-| `shutdown`, `reboot`, `halt`, `poweroff` | System power operation |
-| `terraform destroy` | Infrastructure teardown |
-| `kubectl delete` | Kubernetes resource deletion |
-| `aws s3 rm --recursive` | Bulk S3 deletion |
-| `git commit` | Main-session operation |
-| `git pull` | Main-session operation |
-| `git push` | Main-session operation |
-| `git reset --hard` | Discard all uncommitted changes |
-| `git clean -f` | Delete untracked files |
-| `git reflog expire` | Remove recovery history |
-| `git gc --prune` | Prune unreachable objects |
+| Pattern                                        | Reason                                |
+| ---------------------------------------------- | ------------------------------------- |
+| `rm -r` / `-rf` / `-Rf`                        | Recursive deletion                    |
+| `sudo`                                         | Elevated privileges                   |
+| `curl\|sh`, `wget\|sh`                         | Pipe to shell (remote code execution) |
+| `mkfs*`, `newfs_*`                             | Filesystem formatting                 |
+| `wipefs`                                       | Disk signature wipe                   |
+| `diskutil erase/zeroDisk/secureErase/reformat` | Destructive disk operation            |
+| `dd of=/dev/…`                                 | Raw disk write                        |
+| `parted`, `fdisk`, `gdisk`, `sgdisk`           | Partition table management            |
+| `cryptsetup`                                   | Disk encryption management            |
+| `zpool`                                        | ZFS pool management                   |
+| `shutdown`, `reboot`, `halt`, `poweroff`       | System power operation                |
+| `terraform destroy`                            | Infrastructure teardown               |
+| `kubectl delete`                               | Kubernetes resource deletion          |
+| `aws s3 rm --recursive`                        | Bulk S3 deletion                      |
+| `git commit`                                   | Main-session operation                |
+| `git pull`                                     | Main-session operation                |
+| `git push`                                     | Main-session operation                |
+| `git reset --hard`                             | Discard all uncommitted changes       |
+| `git clean -f`                                 | Delete untracked files                |
+| `git reflog expire`                            | Remove recovery history               |
+| `git gc --prune`                               | Prune unreachable objects             |
 
 All other commands (including routine git operations) pass through unaffected.
 

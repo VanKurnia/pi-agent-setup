@@ -95,7 +95,7 @@ Routing lives in `pistyle-bridge.ts` next to the db-viewer card, for the same re
 ## db-viewer query card (fork addition)
 
 `query_sqlite` / `query_mysql` (db-viewer) route to `src/db-query-card.ts` instead of the fallback
-card. Two reasons: the fallback *call* card prints every argument — including the credentials inside
+card. Two reasons: the fallback _call_ card prints every argument — including the credentials inside
 `connectionString` — and db-viewer's own `renderResult` (a markdown box table) is bypassed by the
 patch, so the table look would be lost.
 
@@ -126,7 +126,7 @@ Status is carried by the title glyph (`✓` success / `✗` error / `󱦟` runni
 color: `boxFrameColor` in `shared/box.ts` renders a settled box fully in the theme `success` green,
 a failed one in `error` red, and keeps the frame dim while the call is pending, running or streaming
 (`isPartial`/`isPending` gate it — `running` stays true after a call settles). The frame tracks the
-*tool result*, not a payload's own conclusion: a `gh run view` card can be green while its log shows
+_tool result_, not a payload's own conclusion: a `gh run view` card can be green while its log shows
 a failed job, whose `✗` glyph carries that state. The git per-file frames use the same helper for
 their top border and body. The running label (`󰐊 Running · 12.4s`, see `formatBoxedRunningStatus`) is
 green and ticks in the footer. Both running glyphs are Nerd Font icons — `RUNNING_TITLE_GLYPH`
@@ -158,7 +158,7 @@ component that resolves renderers; this fork does the same, guarded:
   itself is then filled with the base background (`TOOL_CARD_BG_HEX`)
 
 Registered renderers (`wrapToolRenderersForPistyle` in `src/tool-overrides.ts`) remain as a
-belt-and-braces path: they cover tools registered *after* load (via the `pi.registerTool`
+belt-and-braces path: they cover tools registered _after_ load (via the `pi.registerTool`
 interceptor) and any environment where the patch cannot install.
 
 ## State and lifecycle
@@ -172,19 +172,19 @@ interceptor) and any environment where the patch cannot install.
 
 ## Config surface added by this fork
 
-| Key | Where | Effect |
-| --- | --- | --- |
-| `boxedToolCalls` | `types.ts`, `config-store.ts`, `config-modal.ts`, `presets.ts` | selects pi-style cards vs compact rows |
-| `collapseAfterTurn` | same files, plus `pistyle-bridge.ts` | mapped into pi-style's session config; **only effective in pi-style mode** |
+| Key                 | Where                                                          | Effect                                                                     |
+| ------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `boxedToolCalls`    | `types.ts`, `config-store.ts`, `config-modal.ts`, `presets.ts` | selects pi-style cards vs compact rows                                     |
+| `collapseAfterTurn` | same files, plus `pistyle-bridge.ts`                           | mapped into pi-style's session config; **only effective in pi-style mode** |
 
 Mapping into pi-style's own session config (`pistyle-bridge.ts`):
 
-| pi-style field | source |
-| --- | --- |
-| `maxCollapsedLines` | `previewLines` |
-| `maxExpandedLines` | `expandedPreviewMaxLines` |
+| pi-style field                | source                      |
+| ----------------------------- | --------------------------- |
+| `maxCollapsedLines`           | `previewLines`              |
+| `maxExpandedLines`            | `expandedPreviewMaxLines`   |
 | `nerdFonts`, `batchOpenGlyph` | `ZENTUI_NERD_FONTS !== "0"` |
-| `collapseAfterTurn` | `collapseAfterTurn` |
+| `collapseAfterTurn`           | `collapseAfterTurn`         |
 
 ## Performance contract
 

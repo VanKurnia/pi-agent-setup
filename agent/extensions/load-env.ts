@@ -14,37 +14,37 @@ const piConfigDir = process.env.PI_CONFIG_DIR || ".pi";
 const envPath = join(homedir(), piConfigDir, ".env");
 
 if (existsSync(envPath)) {
-  try {
-    const content = readFileSync(envPath, "utf-8");
-    for (const line of content.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const index = trimmed.indexOf("=");
-      if (index === -1) continue;
-      const key = trimmed.slice(0, index).trim();
-      let val = trimmed.slice(index + 1).trim();
-      // Strip inline comments: only outside of quotes
-      // If not quoted, strip everything after first " #"
-      const unquoted = !val.startsWith('"') && !val.startsWith("'");
-      if (unquoted) {
-        const commentIdx = val.indexOf(" #");
-        if (commentIdx !== -1) val = val.slice(0, commentIdx);
-      }
-      // Strip surrounding quotes
-      if (
-        (val.startsWith('"') && val.endsWith('"')) ||
-        (val.startsWith("'") && val.endsWith("'"))
-      ) {
-        val = val.slice(1, -1);
-      }
-      // Always set — .env is the single source of truth
-      process.env[key] = val;
+    try {
+        const content = readFileSync(envPath, "utf-8");
+        for (const line of content.split(/\r?\n/)) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith("#")) continue;
+            const index = trimmed.indexOf("=");
+            if (index === -1) continue;
+            const key = trimmed.slice(0, index).trim();
+            let val = trimmed.slice(index + 1).trim();
+            // Strip inline comments: only outside of quotes
+            // If not quoted, strip everything after first " #"
+            const unquoted = !val.startsWith('"') && !val.startsWith("'");
+            if (unquoted) {
+                const commentIdx = val.indexOf(" #");
+                if (commentIdx !== -1) val = val.slice(0, commentIdx);
+            }
+            // Strip surrounding quotes
+            if (
+                (val.startsWith('"') && val.endsWith('"')) ||
+                (val.startsWith("'") && val.endsWith("'"))
+            ) {
+                val = val.slice(1, -1);
+            }
+            // Always set — .env is the single source of truth
+            process.env[key] = val;
+        }
+    } catch {
+        // Silent fail — .env loading is best-effort
     }
-  } catch {
-    // Silent fail — .env loading is best-effort
-  }
 }
 
 export default function (_pi: any) {
-  // No-op extension — env loading happens at import time above
+    // No-op extension — env loading happens at import time above
 }

@@ -34,9 +34,9 @@ import { getExtensionApi } from "../shared/cross-extension-api.js";
 
 const api = getExtensionApi<PlanArtifactApi>("plan-artifact");
 if (api) {
-  api.isRunning();   // boolean
-  api.getUrl();      // string | null
-  api.getSummary();  // string | null
+    api.isRunning(); // boolean
+    api.getUrl(); // string | null
+    api.getSummary(); // string | null
 }
 ```
 

@@ -14,12 +14,12 @@ This directory **is** the install: the extension is no longer pulled from npm or
 
 ## What was cleaned up
 
-| File | Change |
-| --- | --- |
-| `agent/settings.json` | removed `npm:pi-tool-display` from `packages` |
-| `agent/npm/package.json` | removed the `pi-tool-display` dependency |
-| `agent/npm/package-lock.json` | removed the `pi-tool-display` entry |
-| `agent/npm/node_modules/pi-tool-display` | deleted (reinstallable) |
+| File                                     | Change                                        |
+| ---------------------------------------- | --------------------------------------------- |
+| `agent/settings.json`                    | removed `npm:pi-tool-display` from `packages` |
+| `agent/npm/package.json`                 | removed the `pi-tool-display` dependency      |
+| `agent/npm/package-lock.json`            | removed the `pi-tool-display` entry           |
+| `agent/npm/node_modules/pi-tool-display` | deleted (reinstallable)                       |
 
 Do not re-add the dependency: with both copies present, two extensions would register renderers for
 the same tools.
@@ -32,14 +32,14 @@ the code itself. The boot-time graph is now 8 modules; everything else is loaded
 
 Boot-static (transpiled on every boot):
 
-| File | KB | Contents |
-| --- | --- | --- |
-| `src/pistyle/index.ts` | 288 | every boxed tool renderer (read/write/edit/find/grep/ls/bash/git/gh/batch/turn-summary/fallback) and the dispatcher |
-| `src/pistyle/shared/index.ts` | 114 | box drawing, ANSI, diff, render budget, theme extras |
-| `src/wiring.ts` | 57 | the bridge, the renderer patch, MCP decoration, thinking labels, user-message box |
-| `src/fork-cards.ts` | 41 | db-query, OCR and subagent cards |
-| `src/support.ts` | 20 | config store, tool metadata, debug logger, agent dir, disposables |
-| `src/index.ts` | 2 | the extension entry point |
+| File                          | KB  | Contents                                                                                                            |
+| ----------------------------- | --- | ------------------------------------------------------------------------------------------------------------------- |
+| `src/pistyle/index.ts`        | 288 | every boxed tool renderer (read/write/edit/find/grep/ls/bash/git/gh/batch/turn-summary/fallback) and the dispatcher |
+| `src/pistyle/shared/index.ts` | 114 | box drawing, ANSI, diff, render budget, theme extras                                                                |
+| `src/wiring.ts`               | 57  | the bridge, the renderer patch, MCP decoration, thinking labels, user-message box                                   |
+| `src/fork-cards.ts`           | 41  | db-query, OCR and subagent cards                                                                                    |
+| `src/support.ts`              | 20  | config store, tool metadata, debug logger, agent dir, disposables                                                   |
+| `src/index.ts`                | 2   | the extension entry point                                                                                           |
 
 Lazy (only on `/tool-display`): `config-modal.ts`, `zellij-modal.ts`, `settings-inspector-modal.ts`,
 `presets.ts`, `modal-icons.ts`, `render-utils.ts`.

@@ -1,42 +1,42 @@
 {
-  "name": "pi-cbm",
-  "version": "1.2.1",
-  "description": "Extension that exposes `codebase-memory-mcp` as native Pi tools, adds auto-indexing and deliberate obtimizations for agent-workflows and token saving.",
-  "type": "module",
-  "main": "./src/index.ts",
-  "files": [
-    "src/",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "typecheck": "tsc --noEmit"
-  },
-  "pi": {
-    "extensions": [
-      "./src/index.ts"
-    ]
-  },
-  "keywords": [
-    "pi-package",
-    "pi-extension",
-    "codebase-memory",
-    "code-intelligence"
-  ],
-  "author": "",
-  "license": "MIT",
-  "homepage": "https://github.com/alexykn/pi-cbm#readme",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/alexykn/pi-cbm.git"
-  },
-  "bugs": {
-    "url": "https://github.com/alexykn/pi-cbm/issues"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*",
-    "typebox": "*"
-  }
+    "name": "pi-cbm",
+    "version": "1.2.1",
+    "description": "Extension that exposes `codebase-memory-mcp` as native Pi tools, adds auto-indexing and deliberate obtimizations for agent-workflows and token saving.",
+    "type": "module",
+    "main": "./src/index.ts",
+    "files": [
+        "src/",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "typecheck": "tsc --noEmit"
+    },
+    "pi": {
+        "extensions": [
+            "./src/index.ts"
+        ]
+    },
+    "keywords": [
+        "pi-package",
+        "pi-extension",
+        "codebase-memory",
+        "code-intelligence"
+    ],
+    "author": "",
+    "license": "MIT",
+    "homepage": "https://github.com/alexykn/pi-cbm#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/alexykn/pi-cbm.git"
+    },
+    "bugs": {
+        "url": "https://github.com/alexykn/pi-cbm/issues"
+    },
+    "peerDependencies": {
+        "@earendil-works/pi-ai": "*",
+        "@earendil-works/pi-coding-agent": "*",
+        "@earendil-works/pi-tui": "*",
+        "typebox": "*"
+    }
 }

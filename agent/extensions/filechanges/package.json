@@ -1,9 +1,11 @@
 {
-  "name": "pi-filechanges",
-  "private": true,
-  "type": "module",
-  "dependencies": {},
-  "pi": {
-    "extensions": ["./index.ts"]
-  }
+    "name": "pi-filechanges",
+    "private": true,
+    "type": "module",
+    "dependencies": {},
+    "pi": {
+        "extensions": [
+            "./index.ts"
+        ]
+    }
 }

@@ -20,7 +20,15 @@ export default tseslint.config(
     // dist, build) plus the disabled extensions; the rest covers git-ignored
     // scratch directories and vendored JS.
     {
-        ignores: ["tmp/", "agent/tmp/", "**/*.js", ...devScope],
+        ignores: [
+            "tmp/",
+            "agent/tmp/",
+            "**/*.js",
+            // Vendor-managed pi integration: herdr rewrites this file on install/update
+            // (see its header), so its @ts-nocheck cannot be fixed in-file.
+            "agent/extensions/herdr-agent-state.ts",
+            ...devScope,
+        ],
     },
     js.configs.recommended,
     ...tseslint.configs.recommended,

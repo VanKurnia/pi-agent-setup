@@ -15,9 +15,9 @@ Tracks files changed (modified/created) by **pi** via the built-in `edit` and `w
 1. Reload pi: `/reload`
 2. Make changes through pi (using `edit`/`write`)
 3. Run:
-   - `/filechanges` to inspect
-   - `/filechanges-accept` to accept (clear log)
-   - `/filechanges-decline` to decline (revert)
+    - `/filechanges` to inspect
+    - `/filechanges-accept` to accept (clear log)
+    - `/filechanges-decline` to decline (revert)
 
 ### Non-interactive usage
 

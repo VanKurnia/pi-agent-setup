@@ -56,13 +56,13 @@ Responsibilities, in order:
 2. `primeTheme(theme)` — `setFullTheme(theme)` only when the theme object identity changes.
 3. Tool routing:
 
-| Tool | Renderer |
-| --- | --- |
-| `read`, `write`, `edit`, `bash` | pi-style dispatcher (dedicated boxed card) |
-| `powershell` | alias → `bash` card |
-| every other tool | pi-style **boxed fallback** card (`renderFallbackCall`/`renderFallbackResult`) |
+| Tool                            | Renderer                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| `read`, `write`, `edit`, `bash` | pi-style dispatcher (dedicated boxed card)                                     |
+| `powershell`                    | alias → `bash` card                                                            |
+| every other tool                | pi-style **boxed fallback** card (`renderFallbackCall`/`renderFallbackResult`) |
 
-Routing deliberately bypasses pi-style's `grep`/`find`/`ls` renderers: those are *boxless* tree
+Routing deliberately bypasses pi-style's `grep`/`find`/`ls` renderers: those are _boxless_ tree
 panels, and this setup wants one framed look for every tool.
 
 4. `resetPistyleRegistries()` — clears pi-style's registries plus the bridge's guards.
@@ -80,11 +80,11 @@ flag-gated dispatcher (falls through to the compact renderer when the flag is of
 
 ## 5. Renderer-selection patch (`src/pistyle-tool-patch.ts`)
 
-The seam that actually covers *every* tool. Wraps
+The seam that actually covers _every_ tool. Wraps
 `ToolExecutionComponent.prototype.getCallRenderer` / `getResultRenderer`:
 
 - the selector takes **no arguments** and returns the tool's renderer → call it with `[]` once, then
-  wrap the *returned renderer* (this distinction was a real bug — see `PITFALLS.md`)
+  wrap the _returned renderer_ (this distinction was a real bug — see `PITFALLS.md`)
 - flag on → return pi-style's card for the tool name on the component (`instance.toolName`)
 - flag off → call the original renderer unchanged
 - `neutralizeToolContainer(instance)` zeroes container padding and neutralises its background

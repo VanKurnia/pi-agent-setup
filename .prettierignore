@@ -1,0 +1,5 @@
+# npm-generated lockfiles — npm rewrites these in its own formatting.
+**/package-lock.json
+
+# herdr writes this file on install/update (see its header); never format it.
+agent/extensions/herdr-agent-state.ts

@@ -9,7 +9,7 @@ visible, yet no error surfaced in the session.
 
 **Root cause** — pi's theme resolves color names through `tokenAnsi`, which **throws**
 `Unknown theme color: <token>` (`dist/modes/interactive/theme/theme.js`). Two invalid names were used
-in a row: `"white"` (not a schema key) and `"brightText"` (a *variable* inside `tokyo-night.json`,
+in a row: `"white"` (not a schema key) and `"brightText"` (a _variable_ inside `tokyo-night.json`,
 not a theme color key). Every boxed header render threw; pi catches renderer errors and falls back to
 its native rendering, so the failure was invisible.
 
@@ -36,7 +36,7 @@ content inside the frame. If a custom box is ever reintroduced: never silently d
 
 **Symptom** — the first boxed attempt was called "ugly"; it looked nothing like pi-style.
 
-**Root cause** — the look was approximated from pi-style's *documentation* (rounded corners, glyph
+**Root cause** — the look was approximated from pi-style's _documentation_ (rounded corners, glyph
 sets) instead of its source. Details that carry the aesthetic — 2-space side padding, title embedded
 in the top border, metadata in the bottom border, dim frame, status background tint — were all missed.
 
@@ -84,7 +84,7 @@ wrapping as the fallback path for environments where the patch cannot install.
 
 **Symptom** — patch installed but produced no change (or wrong arguments) for every tool.
 
-**Root cause** — pi's `getCallRenderer()` takes **no arguments** and *returns* the renderer; the first
+**Root cause** — pi's `getCallRenderer()` takes **no arguments** and _returns_ the renderer; the first
 patch version passed the render arguments into the selector instead of into the returned renderer.
 
 **Fix** — call the selector once with `[]`, then invoke the renderer it returns with
@@ -94,7 +94,7 @@ patch version passed the render arguments into the selector instead of into the 
 
 **Symptom** — aliasing `ffgrep` → `grep` produced a tree panel with no frame.
 
-**Root cause** — pi-style renders `grep`/`find`/`ls` as *boxless* tree panels by design.
+**Root cause** — pi-style renders `grep`/`find`/`ls` as _boxless_ tree panels by design.
 
 **Fix** — only `read`/`write`/`edit`/`bash` (plus the `powershell` alias) use dedicated renderers;
 everything else goes to the boxed fallback card, so every tool is framed the same way.
@@ -115,7 +115,7 @@ only when the theme object identity changes; both guards reset in `resetPistyleR
 **Symptom** — a bash card shows a garbage glyph (`<?>`) next to the literal `… (truncated)`, and
 that line's right border sits one or more columns off the rest of the box.
 
-**Root cause** — the line clamp cut by *raw string length* (`line.slice(0, 2000)`). When the cut
+**Root cause** — the line clamp cut by _raw string length_ (`line.slice(0, 2000)`). When the cut
 lands inside an SGR sequence, the half-written escape stays in the string: terminals render it as
 garbage, and the width parser either swallows the following text or miscounts it, so the box fill
 overshoots or falls short. Reproduced deterministically: a mostly-escape line rendered **4 columns
