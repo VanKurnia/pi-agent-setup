@@ -7,13 +7,7 @@ import { execSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import {
-    ROOT,
-    createTestJiti,
-    importProd,
-    runCases,
-    toolMsg,
-} from "./helpers.mjs";
+import { ROOT, createTestJiti, importProd, runCases, toolMsg } from "./helpers.mjs";
 
 const jiti = await createTestJiti();
 
@@ -51,28 +45,28 @@ const fillPrevious = (task, previous) => task.replace(/\{previous\}/g, () => pre
 const cases = [];
 const test = (name, fn) => cases.push([name, fn]);
 
-test("snapshot lists touched files + recent commits", () => {
+test("snapshot lists touched files + recent commits", async () => {
     const ctx = makeCtx([toolMsg("agent/extensions/subagents/src/run.ts"), toolMsg("README.md")]);
-    const snap = createDelegationSnapshot(ctx);
+    const snap = await createDelegationSnapshot(ctx);
     assert.ok(snap.includes("### Files Touched"), "missing Files Touched");
     assert.ok(snap.includes("agent/extensions/subagents/src/run.ts"), "missing touched path");
     if (gitOk) assert.ok(snap.includes("### Recent Commits"), "missing Recent Commits");
     else console.log("    (skip commits assertion: not a git checkout)");
 });
 
-test("empty session in non-git dir yields empty snapshot", () => {
+test("empty session in non-git dir yields empty snapshot", async () => {
     const bare = mkdtempSync(resolve(tmpdir(), "snap-empty-"));
-    const snap = createDelegationSnapshot(makeCtx([], "nope", bare));
+    const snap = await createDelegationSnapshot(makeCtx([], "nope", bare));
     assert.equal(snap, "");
 });
 
-test("missing OM session adds no Active Context section", () => {
-    const snap = createDelegationSnapshot(makeCtx([toolMsg("a/b.ts")]));
+test("missing OM session adds no Active Context section", async () => {
+    const snap = await createDelegationSnapshot(makeCtx([toolMsg("a/b.ts")]));
     assert.ok(!snap.includes("### Active Context"), "unexpected OM section without pending file");
 });
 
-test("attach preserves head, adds marker block, is idempotent", () => {
-    const snap = createDelegationSnapshot(makeCtx([toolMsg("a/b.ts")]));
+test("attach preserves head, adds marker block, is idempotent", async () => {
+    const snap = await createDelegationSnapshot(makeCtx([toolMsg("a/b.ts")]));
     assert.ok(snap, "need non-empty snapshot for this case");
     const task = "Review the fuzzy-search normalization";
     const once = attachDelegationSnapshot(task, snap);
@@ -88,8 +82,8 @@ test("attach preserves head, adds marker block, is idempotent", () => {
     );
 });
 
-test("{previous} inside snapshot survives chain templating", () => {
-    const snap = createDelegationSnapshot(makeCtx([toolMsg("src/{previous}/x.ts")]));
+test("{previous} inside snapshot survives chain templating", async () => {
+    const snap = await createDelegationSnapshot(makeCtx([toolMsg("src/{previous}/x.ts")]));
     assert.ok(!snap.includes("{previous}"), "raw token leaked into snapshot");
     assert.ok(snap.includes("{ previous }"), "expected neutralized token");
     const combined = attachDelegationSnapshot("Do X with {previous} data", snap);
@@ -99,11 +93,13 @@ test("{previous} inside snapshot survives chain templating", () => {
     assert.ok(filled.startsWith("Do X with PREV-OUTPUT data"), "task templating still works");
 });
 
-test("oversized snapshot is truncated at cap", () => {
+test("oversized snapshot is truncated at cap", async () => {
     const msgs = Array.from({ length: 400 }, (_, i) =>
-        toolMsg(`some/very/long/component/path/number-${String(i).padStart(3, "0")}/module-file.ts`),
+        toolMsg(
+            `some/very/long/component/path/number-${String(i).padStart(3, "0")}/module-file.ts`,
+        ),
     );
-    const snap = createDelegationSnapshot(makeCtx(msgs));
+    const snap = await createDelegationSnapshot(makeCtx(msgs));
     assert.ok(snap.length > MAX, "fixture too small to trigger truncation");
     assert.ok(snap.length <= MAX + 64, `snapshot not capped: ${snap.length}`);
     assert.ok(snap.endsWith("... (snapshot truncated)"), "missing truncation suffix");
@@ -113,7 +109,12 @@ test("apply covers single/parallel/chain/hybrid with one shared snapshot", () =>
     const SNAP = "SHARED-SNAPSHOT";
     const fixtures = {
         single: { agent: "scout", task: "map auth" },
-        parallel: { tasks: [{ agent: "scout", task: "a" }, { agent: "scout", task: "b" }] },
+        parallel: {
+            tasks: [
+                { agent: "scout", task: "a" },
+                { agent: "scout", task: "b" },
+            ],
+        },
         chain: { chain: [{ agent: "worker", task: "step1 {previous}" }] },
         hybrid: {
             hybrid: [

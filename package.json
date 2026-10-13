@@ -11,6 +11,8 @@
     "lint:fix": "node .script/dev-scope.mjs --quiet && eslint agent/extensions/ --fix",
     "format": "prettier --write agent/extensions/",
     "format:check": "prettier --check agent/extensions/",
+    "test": "node .script/test/run-all.mjs",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
     "prepare": "husky && node .script/dev-scope.mjs --quiet"
   },
   "devDependencies": {
