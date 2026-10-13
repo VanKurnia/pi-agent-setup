@@ -66,7 +66,9 @@ export default function (pi: ExtensionAPI) {
     });
 
     // ── before_agent_start: inject vault context once per session ──
-    pi.on("before_agent_start", async (_event, ctx) => {
+    pi.on("before_agent_start", async (event, ctx) => {
+        // User runs only: skip custom triggerTurn runs (v1.2.0).
+        if (event.messageType !== "user") return;
         if (hasInjectedVault) return;
 
         // Check if active branch already has vault context from a previous turn or resumed session

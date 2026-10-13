@@ -72,7 +72,9 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
         hasInjectedDbConnections = false;
     });
 
-    pi.on("before_agent_start", async (_event, ctx) => {
+    pi.on("before_agent_start", async (event, ctx) => {
+        // User runs only: skip custom triggerTurn runs (v1.2.0).
+        if (event.messageType !== "user") return;
         if (hasInjectedDbConnections) return;
         const branch = (ctx?.sessionManager?.getBranch?.() || []) as Array<{
             type?: string;
