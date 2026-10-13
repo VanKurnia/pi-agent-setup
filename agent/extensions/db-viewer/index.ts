@@ -73,8 +73,9 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
     });
 
     pi.on("before_agent_start", async (event, ctx) => {
-        // User runs only: skip custom triggerTurn runs (v1.2.0).
-        if (event.messageType !== "user") return;
+        // Runs from pi.sendMessage(..., { triggerTurn: true }) carry messageType "custom"
+        // on pi >= 1.2.0; older runtimes omit the field, so treat absence as a user run.
+        if ("messageType" in event && event.messageType !== "user") return;
         if (hasInjectedDbConnections) return;
         const branch = (ctx?.sessionManager?.getBranch?.() || []) as Array<{
             type?: string;
