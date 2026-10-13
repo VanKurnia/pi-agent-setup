@@ -32,8 +32,23 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
-import { compileVccSummary } from "../../blackhole/compaction.js";
-import { buildOmCompactionSummary } from "../../blackhole/om.js";
+// Blackhole's summary modules are needed only when a subagent is dispatched.
+// Loaded lazily (once per extension instance) so boot does not evaluate them;
+// `typeof import(...)` keeps the exact signatures without a runtime import.
+type SnapshotModules = {
+    compileVccSummary: typeof import("../../blackhole/compaction.js").compileVccSummary;
+    buildOmCompactionSummary: typeof import("../../blackhole/om.js").buildOmCompactionSummary;
+};
+
+let snapshotModules: Promise<SnapshotModules> | undefined;
+const loadSnapshotModules = (): Promise<SnapshotModules> =>
+    (snapshotModules ??= Promise.all([
+        import("../../blackhole/compaction.js"),
+        import("../../blackhole/om.js"),
+    ]).then(([compaction, om]) => ({
+        compileVccSummary: compaction.compileVccSummary,
+        buildOmCompactionSummary: om.buildOmCompactionSummary,
+    })));
 
 // ── Delegation snapshot (read-only VCC, frozen at invoke time) ───────────────
 /**
@@ -45,8 +60,9 @@ import { buildOmCompactionSummary } from "../../blackhole/om.js";
 export const SNAPSHOT_MAX_CHARS = 6000;
 export const SNAPSHOT_MARKER = "Reference context";
 
-export function createDelegationSnapshot(ctx: any): string {
+export async function createDelegationSnapshot(ctx: any): Promise<string> {
     try {
+        const { compileVccSummary, buildOmCompactionSummary } = await loadSnapshotModules();
         const sessionId: string = ctx?.sessionManager?.getSessionId?.() ?? "";
         const messages = (ctx?.sessionManager?.buildSessionProjection?.()?.messages ??
             []) as Array<{
@@ -199,6 +215,11 @@ async function runAttempt(
         const resourceLoader = new DefaultResourceLoader({
             cwd,
             agentDir,
+            // The agent's .md body is its system prompt (AgentConfig.systemPrompt).
+            // Appended via the override so discovered append sources (APPEND_SYSTEM.md)
+            // survive — the plain appendSystemPrompt option replaces them.
+            appendSystemPromptOverride: (base) =>
+                agent.systemPrompt?.trim() ? [...base, agent.systemPrompt] : base,
             extensionFactories: [createCodemodeExtension({ mode: "on" })],
         });
         await resourceLoader.reload();
@@ -1034,7 +1055,7 @@ export function buildSubagentExecute(settings: SettingsManager) {
 
         // Delegation snapshot: built ONCE per tool call, reused by every child
         // in the batch. Read-only VCC (no compact, no mutation of parent).
-        const snapshot = createDelegationSnapshot(ctx);
+        const snapshot = await createDelegationSnapshot(ctx);
         if (snapshot) params = applyDelegationSnapshot(params, snapshot);
 
         // Child -> parent recall link: built ONCE per tool call, registered per

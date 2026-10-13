@@ -151,44 +151,6 @@ export interface UpdateSetupApi {
     runUpdate: () => Promise<string>;
 }
 
-/** Subagent lifecycle event channels emitted via pi.events */
-export const SUBAGENT_EVENTS = {
-    CREATED: "subagents:created",
-    COMPLETED: "subagents:completed",
-    FAILED: "subagents:failed",
-} as const;
-
-/** Payload for subagents:created event */
-export interface SubagentCreatedEvent {
-    agentId: string;
-    agentName: string;
-    task: string;
-    mode: "single" | "parallel" | "chain" | "hybrid";
-    agentScope: string;
-    timestamp: number;
-}
-
-/** Payload for subagents:completed event */
-export interface SubagentCompletedEvent {
-    agentId: string;
-    agentName: string;
-    task: string;
-    output: string;
-    usage: { input: number; output: number; turns: number; cost: number };
-    durationMs: number;
-    timestamp: number;
-}
-
-/** Payload for subagents:failed event */
-export interface SubagentFailedEvent {
-    agentId: string;
-    agentName: string;
-    task: string;
-    error: string;
-    durationMs: number;
-    timestamp: number;
-}
-
 // ── Agent registry ──────────────────────────────────────────────────────
 let agents: AgentConfig[] = [];
 

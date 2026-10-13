@@ -19,11 +19,7 @@ import {
     refreshAgents,
     SettingsManager,
     substituteEnv,
-    SUBAGENT_EVENTS,
     THINKING_LEVELS,
-    type SubagentCompletedEvent,
-    type SubagentCreatedEvent,
-    type SubagentFailedEvent,
 } from "./src/core.js";
 import { buildSubagentExecute } from "./src/run.js";
 import {
@@ -395,7 +391,7 @@ export default function registerSubagent(pi: ExtensionAPI) {
         resetSubagentWidgetState();
     });
 
-    // Wire lifecycle events via pi.events
+    // Wrap execution so progress snapshots fan out to the live widget.
     const executeWithEvents = async (
         toolCallId: string,
         params: any,
@@ -403,83 +399,6 @@ export default function registerSubagent(pi: ExtensionAPI) {
         onUpdate: any,
         ctx: any,
     ) => {
-        const mode = params.hybrid
-            ? "hybrid"
-            : params.chain
-              ? "chain"
-              : params.tasks
-                ? "parallel"
-                : "single";
-
-        // Emit CREATED event for each agent in this invocation
-        if (params.hybrid) {
-            for (const phase of params.hybrid) {
-                if (phase.mode === "single") {
-                    pi.events.emit(SUBAGENT_EVENTS.CREATED, {
-                        agentId: `${toolCallId}-${phase.agent}`,
-                        agentName: phase.agent,
-                        task: phase.task || "",
-                        mode: "hybrid",
-                        agentScope: params.agentScope ?? "user",
-                        timestamp: Date.now(),
-                    } satisfies SubagentCreatedEvent);
-                } else if (phase.mode === "parallel") {
-                    for (const t of phase.tasks) {
-                        pi.events.emit(SUBAGENT_EVENTS.CREATED, {
-                            agentId: `${toolCallId}-${t.agent}`,
-                            agentName: t.agent,
-                            task: t.task || "",
-                            mode: "hybrid",
-                            agentScope: params.agentScope ?? "user",
-                            timestamp: Date.now(),
-                        } satisfies SubagentCreatedEvent);
-                    }
-                } else if (phase.mode === "chain") {
-                    for (const s of phase.tasks) {
-                        pi.events.emit(SUBAGENT_EVENTS.CREATED, {
-                            agentId: `${toolCallId}-${s.agent}`,
-                            agentName: s.agent,
-                            task: s.task || "",
-                            mode: "hybrid",
-                            agentScope: params.agentScope ?? "user",
-                            timestamp: Date.now(),
-                        } satisfies SubagentCreatedEvent);
-                    }
-                }
-            }
-        } else if (params.agent) {
-            pi.events.emit(SUBAGENT_EVENTS.CREATED, {
-                agentId: toolCallId,
-                agentName: params.agent,
-                task: params.task || "",
-                mode,
-                agentScope: params.agentScope ?? "user",
-                timestamp: Date.now(),
-            } satisfies SubagentCreatedEvent);
-        } else if (params.tasks) {
-            for (const t of params.tasks) {
-                pi.events.emit(SUBAGENT_EVENTS.CREATED, {
-                    agentId: `${toolCallId}-${t.agent}`,
-                    agentName: t.agent,
-                    task: t.task || "",
-                    mode,
-                    agentScope: params.agentScope ?? "user",
-                    timestamp: Date.now(),
-                } satisfies SubagentCreatedEvent);
-            }
-        } else if (params.chain) {
-            for (const s of params.chain) {
-                pi.events.emit(SUBAGENT_EVENTS.CREATED, {
-                    agentId: `${toolCallId}-${s.agent}`,
-                    agentName: s.agent,
-                    task: s.task || "",
-                    mode: "chain",
-                    agentScope: params.agentScope ?? "user",
-                    timestamp: Date.now(),
-                } satisfies SubagentCreatedEvent);
-            }
-        }
-
         // Fan progress snapshots to the above-editor widget; entries clear on return.
         const widgetOnUpdate = (upd: any) => {
             updateSubagentWidget(ctx, toolCallId, upd?.details?.results);
@@ -490,32 +409,6 @@ export default function registerSubagent(pi: ExtensionAPI) {
             result = await execute(toolCallId, params, signal, widgetOnUpdate, ctx);
         } finally {
             finishSubagentWidget(ctx, toolCallId);
-        }
-
-        // Emit completed/failed events per result
-        if (result?.details?.results) {
-            for (const r of result.details.results) {
-                if (r.exitCode === 0 && !r.progress?.error) {
-                    pi.events.emit(SUBAGENT_EVENTS.COMPLETED, {
-                        agentId: `${toolCallId}-${r.agent}`,
-                        agentName: r.agent,
-                        task: r.task,
-                        output: r.output || "",
-                        usage: r.usage || { input: 0, output: 0, turns: 0, cost: 0 },
-                        durationMs: r.progress?.durationMs || 0,
-                        timestamp: Date.now(),
-                    } satisfies SubagentCompletedEvent);
-                } else {
-                    pi.events.emit(SUBAGENT_EVENTS.FAILED, {
-                        agentId: `${toolCallId}-${r.agent}`,
-                        agentName: r.agent,
-                        task: r.task,
-                        error: r.progress?.error || r.output || "Unknown error",
-                        durationMs: r.progress?.durationMs || 0,
-                        timestamp: Date.now(),
-                    } satisfies SubagentFailedEvent);
-                }
-            }
         }
 
         return result;

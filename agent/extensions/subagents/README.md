@@ -2,39 +2,51 @@
 
 A pi extension that registers a single `subagent` tool with two agents:
 
-`~/.pi/agent/subagents.json` is the single source of truth for per-agent model and thinking level — edit it via `/subagents:settings`. If the file is missing, the first `subagent` invocation creates it, seeded with the active session model. Agent `.md` frontmatter does not carry a model.
+`~/.pi/agent/subagents.json` is the single source of truth for per-agent model and thinking level — edit it via `/subagents:settings`. If the file is missing, the first `subagent` invocation creates it, seeded with the active session model. Agent `.md` frontmatter may declare a fallback `model:`; once `subagents.json` has an entry for an agent, that entry wins (the file is seeded with the active session model on first use).
 
-| Agent | Tools | Model | Purpose |
-|-------|-------|-------|---------|
-| **scout** | read, grep, find, ls, web_search, web_fetch | via `/subagents:settings` | Fast codebase recon + lightweight web research |
-| **worker** | read, write, edit, bash | via `/subagents:settings` | Code changes |
-| — | git status, git diff, git log, etc. | — | Git operations (via terminal) |
-| — | query_sqlite, query_mysql | — | Database queries (via db-viewer) |
+| Agent      | Tools                                                                                                                             | Model                     | Purpose                                        |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ---------------------------------------------- |
+| **scout**  | read, ffgrep, fffind, recall, bash, query_sqlite, query_mysql, web_search, web_fetch, ninerouter_web_search, ninerouter_web_fetch | via `/subagents:settings` | Fast codebase recon + lightweight web research |
+| **worker** | read, write, edit, bash, ffgrep, fffind, recall, query_sqlite, query_mysql, codemode                                              | via `/subagents:settings` | Code changes                                   |
+| —          | git status, git diff, git log, etc.                                                                                               | —                         | Git operations (via terminal)                  |
+| —          | query_sqlite, query_mysql                                                                                                         | —                         | Database queries (via db-viewer)               |
 
 ## Usage
 
 **Single mode:**
+
 ```json
 { "agent": "scout", "task": "Find all auth-related files in src/" }
 ```
 
 **Parallel mode:**
+
 ```json
-{ "tasks": [
-  { "agent": "scout", "task": "Map the database layer" },
-  { "agent": "scout", "task": "Best practices for connection pooling (web research)" }
-]}
+{
+    "tasks": [
+        { "agent": "scout", "task": "Map the database layer" },
+        { "agent": "scout", "task": "Best practices for connection pooling (web research)" }
+    ]
+}
 ```
 
-Max 4 concurrent subagents (configurable). Each runs as an isolated `pi` process with no inherited context — all context must be in the task description.
+Max 4 concurrent subagents (configurable in `subagents.json` or via `/subagents:settings`). Each runs as an in-process one-shot SDK session (`createAgentSession` with an in-memory session) with no inherited conversation — attach all context to the task; a read-only parent snapshot is added automatically.
+
+The tool also supports `chain` (sequential steps with `{previous}` substitution) and `hybrid` (ordered single/parallel/chain phases).
 
 ## Config
 
-Optional `config.json` next to `index.ts`:
+`~/.pi/agent/subagents.json` (created on first use, editable via `/subagents:settings`):
 
 ```json
-{ "maxConcurrency": 4 }
+{
+    "maxConcurrency": 4,
+    "agentModels": { "scout": "provider/model" },
+    "agentThinking": { "worker": "high" }
+}
 ```
+
+`agentModels` values must be `provider/model`; `agentThinking` must be one of the thinking levels listed in `src/core.ts` (`THINKING_LEVELS`).
 
 ## UI
 
@@ -60,6 +72,7 @@ You are an agent that does a specific thing...
 ```
 
 Frontmatter fields:
+
 - **name** (required) — unique agent name, used in `{ agent: "my-agent" }` calls
 - **description** — short description
 - **tools** — comma-separated list of tools the agent needs (builtin or extension)
@@ -73,69 +86,22 @@ Pi loads extensions via jiti, which creates separate module instances. Register 
 
 ```typescript
 import { registerExtensionApi } from "../shared/cross-extension-api.js";
-import type { AgentConfig } from "../subagents/src/types.js";
+import type { AgentConfig } from "../subagents/src/core.js";
 
-registerExtensionApi<{ registerAgent: (config: AgentConfig) => void; unregisterAgent: (name: string) => void }>("subagents", { registerAgent, unregisterAgent });
+registerExtensionApi<{
+    registerAgent: (config: AgentConfig) => void;
+    unregisterAgent: (name: string) => void;
+}>("subagents", { registerAgent, unregisterAgent });
 ```
 
-The `globalThis.__pi_subagents` bridge pattern below is still viable for runtime interop when module imports are not available (e.g., dynamically loaded script contexts):
-
-```typescript
-import { parseFrontmatter } from "@mariozechner/pi-coding-agent";
-import * as fs from "node:fs";
-import * as path from "node:path";
-
-import { fileURLToPath } from "node:url";
-
-interface AgentConfig {
-  name: string;
-  description: string;
-  tools: string[];
-  model: string;
-  systemPrompt: string;
-  filePath: string;
-}
-
-const AGENTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "agents");
-
-function registerMyAgents(): void {
-  const subagents = (globalThis as any).__pi_subagents as
-    | { registerAgent: (config: AgentConfig) => void; unregisterAgent: (name: string) => void }
-    | undefined;
-  if (!subagents) return; // subagents extension not loaded
-
-  for (const entry of fs.readdirSync(AGENTS_DIR)) {
-    if (!entry.endsWith(".md")) continue;
-    const filePath = path.join(AGENTS_DIR, entry);
-    const content = fs.readFileSync(filePath, "utf-8");
-    const { frontmatter, body } = parseFrontmatter<Record<string, string>>(content);
-    if (!frontmatter.name) continue;
-
-    const tools = (frontmatter.tools || "").split(",").map(t => t.trim()).filter(Boolean);
-    try {
-      subagents.registerAgent({
-        name: frontmatter.name,
-        description: frontmatter.description || "",
-        tools,
-        model: frontmatter.model || "anthropic/claude-sonnet-4-6",
-        systemPrompt: body,
-        filePath,
-      });
-    } catch {
-      // Already registered — skip
-    }
-  }
-}
-```
-
-Call `registerMyAgents()` when your extension activates (e.g. in a command handler). The agents become available to the `subagent` tool immediately.
+**Known limitation**: `registerExtensionApi`/`getExtensionApi` share a module-instance-private registry — pi loads each extension with its own jiti instance, so it does not cross extension boundaries in production (see the header of `agent/extensions/shared/cross-extension-api.ts`). Cross-extension agent registration therefore does not currently work and is tracked as a deferred finding in `.plans/README.md`.
 
 ### 3. Custom tool support
 
 Tools listed in agent configs are passed to `createAgentSession()`. Built-in tools
-(`read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`) work automatically.
+(`read`, `write`, `edit`, `bash`) work automatically.
 Extension-provided tools registered via `pi.registerTool()` in the main session
-are also available in subagent processes through the pi SDK's session creation.
+are also available in subagent sessions through the pi SDK's session creation.
 If an agent needs a tool that isn't available, verify it's registered as a pi
 extension in the main session.
 
@@ -147,3 +113,7 @@ subagents/
 ├── agents/            # Built-in agent configs (frontmatter + system prompt)
 └── src/               # Execution core, dispatcher, and rendering
 ```
+
+## Dependencies
+
+The delegation snapshot reads blackhole's `compileVccSummary` and `buildOmCompactionSummary` through a lazy import. If the blackhole extension is disabled or removed, the snapshot degrades to empty (the task still runs).
