@@ -23,6 +23,26 @@ assert.equal(typeof createDelegationSnapshot, "function");
 assert.equal(typeof attachDelegationSnapshot, "function");
 assert.equal(typeof applyDelegationSnapshot, "function");
 
+// ── Snapshot provider (shared/blackhole-api.ts) ────────────────────────────
+// The consumer resolves the provider at call time, so register the real one by
+// loading blackhole the same way production does. The factory only registers
+// hooks/tools, so a bare stub is enough.
+const blackholeMod = await importProd(jiti, "agent/extensions/blackhole/index.js");
+const blackholeFactory = blackholeMod.default ?? blackholeMod;
+assert.equal(typeof blackholeFactory, "function", "blackhole factory missing");
+const blackholePiStub = {
+    on: () => {},
+    registerTool: () => {},
+    registerCommand: () => {},
+    registerMessageRenderer: () => {},
+    registerEntryRenderer: () => {},
+};
+blackholeFactory(blackholePiStub);
+const sharedApi = await importProd(jiti, "agent/extensions/shared/blackhole-api.js");
+const { getBlackholeSnapshotApi, setBlackholeSnapshotApi } = sharedApi;
+assert.equal(typeof getBlackholeSnapshotApi, "function");
+assert.ok(getBlackholeSnapshotApi(), "blackhole factory did not register the snapshot provider");
+
 // ── Stubs ─────────────────────────────────────────────────────────────────
 const makeCtx = (messages, sessionId = "test-no-such-session", cwd = ROOT) => ({
     cwd,
@@ -93,16 +113,17 @@ test("{previous} inside snapshot survives chain templating", async () => {
     assert.ok(filled.startsWith("Do X with PREV-OUTPUT data"), "task templating still works");
 });
 
-test("oversized snapshot is truncated at cap", async () => {
-    const msgs = Array.from({ length: 400 }, (_, i) =>
+test("oversized snapshot stays inside its budget with every section", async () => {
+    const msgs = Array.from({ length: 900 }, (_, i) =>
         toolMsg(
             `some/very/long/component/path/number-${String(i).padStart(3, "0")}/module-file.ts`,
         ),
     );
     const snap = await createDelegationSnapshot(makeCtx(msgs));
-    assert.ok(snap.length > MAX, "fixture too small to trigger truncation");
-    assert.ok(snap.length <= MAX + 64, `snapshot not capped: ${snap.length}`);
-    assert.ok(snap.endsWith("... (snapshot truncated)"), "missing truncation suffix");
+    assert.ok(snap.length > MAX, "fixture too small to exceed the snapshot budget");
+    assert.ok(snap.length <= MAX + 64, `snapshot over budget: ${snap.length}`);
+    assert.ok(snap.includes("### Files Touched"), "files section missing from a large snapshot");
+    assert.ok(snap.endsWith("... (summary truncated)"), "missing truncation suffix");
 });
 
 test("apply covers single/parallel/chain/hybrid with one shared snapshot", () => {
@@ -139,6 +160,42 @@ test("apply covers single/parallel/chain/hybrid with one shared snapshot", () =>
         for (const t of collect(out)) assert.ok(t.includes(SNAP), `${mode}: task missing snapshot`);
         assert.deepEqual(params, before, `${mode}: input params were mutated`);
     }
+});
+
+test("absent provider yields an empty snapshot instead of throwing", async () => {
+    setBlackholeSnapshotApi(undefined);
+    try {
+        const snap = await createDelegationSnapshot(makeCtx([toolMsg("src/a.ts")]));
+        assert.equal(snap, "", "missing provider must degrade to an empty snapshot");
+    } finally {
+        blackholeFactory(blackholePiStub);
+    }
+});
+
+test("injected provider feeds the OM section without touching the agent dir", async () => {
+    setBlackholeSnapshotApi({
+        compileVccSummary: ({ omSummary }) =>
+            omSummary ? `### Active Context & Insights\n${omSummary}` : "### Files Touched\n- x.ts",
+        buildOmCompactionSummary: () => "- [aaaaaaaaaaaa] remembered fact",
+    });
+    try {
+        const snap = await createDelegationSnapshot(makeCtx([toolMsg("src/a.ts")]));
+        assert.ok(snap.includes("### Active Context & Insights"), "OM section missing");
+        assert.ok(snap.includes("remembered fact"), "OM payload missing");
+    } finally {
+        blackholeFactory(blackholePiStub);
+    }
+});
+
+test("provider survives loader module isolation via globalThis", async () => {
+    // Production topology: per-extension jiti instances with moduleCache:false,
+    // so the shared module must hand the provider over through globalThis.
+    const jitiIso = await createTestJiti(undefined, { moduleCache: false });
+    const iso = await jitiIso.import(resolve(ROOT, "agent/extensions/shared/blackhole-api.ts"));
+    const api = iso.getBlackholeSnapshotApi();
+    assert.ok(api, "isolated instance must still see the provider");
+    assert.equal(typeof api.compileVccSummary, "function");
+    assert.equal(typeof api.buildOmCompactionSummary, "function");
 });
 
 test("apply ignores unknown hybrid phase and empty snapshot", () => {

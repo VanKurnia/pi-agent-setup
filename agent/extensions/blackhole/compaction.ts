@@ -7,6 +7,8 @@ export interface CompileInput {
     previousSummary?: string;
     cwd?: string;
     omSummary?: string;
+    /** Composed-summary budget in characters. Defaults to SUMMARY_MAX_CHARS. */
+    maxChars?: number;
 }
 
 export function extractGitCommits(cwd?: string): string[] {
@@ -53,32 +55,103 @@ export function collectTouchedFiles(
     return Array.from(files).filter(Boolean);
 }
 
+/** Default composed-summary budget (~2k tokens); a caller may pass a larger one. */
+export const SUMMARY_MAX_CHARS = 8000;
+
+/** Share of the budget the memory section may take before the others yield. */
+const OM_BUDGET_SHARE = 0.6;
+
+const CARRY_MAX_LINES = 12;
+const EXCERPT_MAX_CHARS = 1500;
+const EXCERPT_MESSAGE_CHARS = 400;
+
+/** Bullet lines from any summary text ("- …"), trimmed. */
+function bulletLines(text: string): string[] {
+    return text
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.startsWith("- "));
+}
+
+/** Bounded, newest-last extractive slice of the conversation being summarized. */
+function buildTranscriptExcerpt(messages: Array<{ role?: string; content?: unknown }>): string[] {
+    const lines: string[] = [];
+    let used = 0;
+    for (let i = messages.length - 1; i >= 0 && used < EXCERPT_MAX_CHARS; i--) {
+        const msg = messages[i];
+        if (msg?.role !== "user" && msg?.role !== "assistant") continue;
+        const text = (
+            Array.isArray(msg.content)
+                ? msg.content.map((c) => (c as { text?: string })?.text || "").join(" ")
+                : String(msg.content || "")
+        )
+            .replace(/\s+/g, " ")
+            .trim();
+        if (text.length < 20) continue;
+        const slice = text.slice(0, EXCERPT_MESSAGE_CHARS);
+        lines.unshift(`- ${msg.role}: ${slice}`);
+        used += slice.length;
+    }
+    return lines;
+}
+
 export function compileVccSummary(input: CompileInput): string {
+    const budget = input.maxChars ?? SUMMARY_MAX_CHARS;
+    const touched = collectTouchedFiles(input.messages, input.cwd);
+    const commits = extractGitCommits(input.cwd);
+
     const sections: string[] = [];
 
-    // 1. Files & Changes
-    const touched = collectTouchedFiles(input.messages, input.cwd);
+    // Memory leads, but only up to its share: the structural sections below and
+    // the transcript excerpt must survive the budget.
+    const memory = input.omSummary?.trim() ?? "";
+    if (memory) {
+        const memoryBudget = Math.floor(budget * OM_BUDGET_SHARE);
+        const body =
+            memory.length > memoryBudget
+                ? `${memory.slice(0, memoryBudget)}\n... (memory truncated)`
+                : memory;
+        sections.push(`### Active Context & Insights\n${body}`);
+    }
+
+    const excerpt = buildTranscriptExcerpt(input.messages);
+    if (excerpt.length > 0) {
+        sections.push(`### Recent Conversation\n${excerpt.join("\n")}`);
+    }
+
+    // Carry forward only decisions/insights that are not already present, capped
+    // and de-duplicated — never re-embed the previous summary verbatim (that
+    // ratchets the summary past pi's own context budget).
+    const alreadyPresent = new Set<string>([
+        ...(input.omSummary ? bulletLines(input.omSummary) : []),
+        ...excerpt,
+        ...touched.map((f) => `- ${f}`),
+        ...commits.map((c) => `- ${c}`),
+    ]);
+    const carried: string[] = [];
+    for (const line of bulletLines(input.previousSummary || "")) {
+        if (carried.length >= CARRY_MAX_LINES) break;
+        // A bare path bullet carries no decision; it must not consume the carry budget.
+        if (/^- [^\s]+$/.test(line)) continue;
+        if (alreadyPresent.has(line)) continue;
+        alreadyPresent.add(line);
+        carried.push(line);
+    }
+    if (carried.length > 0) {
+        sections.push(`### Carried Context\n${carried.join("\n")}`);
+    }
+
     if (touched.length > 0) {
         sections.push(`### Files Touched\n${touched.map((f) => `- ${f}`).join("\n")}`);
     }
-
-    // 2. Git Commits
-    const commits = extractGitCommits(input.cwd);
     if (commits.length > 0) {
         sections.push(`### Recent Commits\n${commits.map((c) => `- ${c}`).join("\n")}`);
     }
 
-    // 3. Observational Memory (if provided)
-    if (input.omSummary?.trim()) {
-        sections.push(`### Active Context & Insights\n${input.omSummary.trim()}`);
-    }
-
-    // 4. Carry over previous summary sections if available
-    if (input.previousSummary?.trim()) {
-        sections.push(`### Previous Context\n${input.previousSummary.trim()}`);
-    }
-
-    return sections.join("\n\n---\n\n");
+    const summary = sections.join("\n\n---\n\n");
+    return summary.length > budget
+        ? `${summary.slice(0, budget)}\n... (summary truncated)`
+        : summary;
 }
 
 export interface SessionEntryLike {

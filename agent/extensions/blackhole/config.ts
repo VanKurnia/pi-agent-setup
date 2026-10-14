@@ -7,35 +7,27 @@ export interface ConfiguredModel {
     provider?: string;
     id?: string;
     thinking?: ModelThinkingLevel;
-    cooldownHours?: number;
 }
 
 export interface BlackholeConfig {
-    debug?: boolean;
     showWorkerMessages?: boolean;
     compaction?: "auto" | "manual" | "off";
     compactionEngine?: "blackhole" | "pi-default";
     compactAfterTokens?: number;
     compactAfterRatio?: number;
     compactReserveTokens?: number;
-    compactAfterPreset?: string;
     memory?: boolean;
     observeAfterTokens?: number;
     reflectAfterTokens?: number;
     observationsPoolMaxTokens?: number;
     observationsPoolTargetTokens?: number;
-    reflectorInputMaxTokens?: number;
-    dropperInputMaxTokens?: number;
+    /** Token cap for the reflection pool (summaries + worker preambles). */
+    reflectionsPoolMaxTokens?: number;
     dropperPressureThreshold?: number;
     observerChunkMaxTokens?: number;
-    agentMaxTurns?: number;
     model?: ConfiguredModel;
     observerModel?: ConfiguredModel;
-    observerFallbackModels?: ConfiguredModel[];
     reflectorModel?: ConfiguredModel;
-    reflectorFallbackModels?: ConfiguredModel[];
-    dropperModel?: ConfiguredModel;
-    dropperFallbackModels?: ConfiguredModel[];
     recallResponseMaxChars?: number;
 }
 
@@ -48,11 +40,9 @@ export const DEFAULT_CONFIG: BlackholeConfig = {
     reflectAfterTokens: 80000,
     observationsPoolMaxTokens: 40000,
     observationsPoolTargetTokens: 20000,
-    reflectorInputMaxTokens: 120000,
-    dropperInputMaxTokens: 120000,
+    reflectionsPoolMaxTokens: 8000,
     dropperPressureThreshold: 0.7,
     observerChunkMaxTokens: 60000,
-    agentMaxTurns: 16,
     recallResponseMaxChars: 4000,
 };
 

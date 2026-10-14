@@ -7,6 +7,7 @@ import type {
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { getExtensionApi, getParentLinkGlobal } from "../shared/cross-extension-api.js";
+import { setBlackholeSnapshotApi } from "../shared/blackhole-api.js";
 import type { SubagentParentLink, SubagentsApi } from "../subagents/src/core.js";
 import { getAutoCompactThreshold, loadBlackholeConfig } from "./config.js";
 import {
@@ -27,8 +28,70 @@ import {
     registerConsolidationHooks,
 } from "./om.js";
 
+/** Build a case-insensitive regex; an invalid pattern falls back to a literal search. */
+function safeRegex(query: string): RegExp {
+    try {
+        return new RegExp(query, "i");
+    } catch {
+        return new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    }
+}
+
+interface DrillWindow {
+    selector: string;
+    offset: number;
+    limit?: number;
+    full: boolean;
+}
+
+/**
+ * Parse the `#N:<selector>[:<offset>:<limit>|:full]` drill-down syntax. Trailing
+ * segments only count as a window when they are `full` or two numbers, so paths
+ * keeps their colons intact.
+ */
+function parseDrillWindow(raw: string): DrillWindow {
+    const parts = raw.split(":");
+    const last = parts[parts.length - 1] ?? "";
+    let full = false;
+    let offset = 0;
+    let limit: number | undefined;
+    if (last === "full") {
+        full = true;
+        parts.pop();
+    } else if (/^\d+$/.test(last) && /^\d+$/.test(parts[parts.length - 2] ?? "")) {
+        limit = Number(parts.pop());
+        offset = Number(parts.pop());
+    }
+    return { selector: parts.join(":").trim(), full, offset, limit };
+}
+
+/**
+ * One window of a drill-down payload plus the range it covers, so a caller can page
+ * through a long entry instead of only ever seeing its head.
+ */
+function windowPayload(
+    body: string,
+    window: DrillWindow,
+    continueHint: string,
+    maxChars: number,
+): string {
+    if (window.full) {
+        return `${body}\n[chars 0-${body.length} of ${body.length}]`;
+    }
+    const start = Math.min(window.offset, body.length);
+    const size = Math.min(window.limit ?? maxChars, maxChars);
+    const end = Math.min(start + size, body.length);
+    const next = end < body.length ? ` — continue with ${continueHint}:${end}:${size}` : "";
+    return `${body.slice(start, end)}\n[chars ${start}-${end} of ${body.length}]${next}`;
+}
+
 export default function (pi: ExtensionAPI): void {
     const config = loadBlackholeConfig();
+
+    // Publish the snapshot provider for cross-extension consumers (subagents'
+    // delegation snapshot). Global-backed: the module registry does not cross
+    // extension boundaries under the loader's per-extension jiti instances.
+    setBlackholeSnapshotApi({ compileVccSummary, buildOmCompactionSummary });
 
     // ── 1. Background Workers (Observational Memory) ──
     registerConsolidationHooks(pi);
@@ -37,11 +100,16 @@ export default function (pi: ExtensionAPI): void {
     let autoCompactionController: AbortController | null = null;
     let compactInFlight = false;
 
+    /** Release the auto-compaction latch and its abort handle. */
+    function releaseLatch(): void {
+        compactInFlight = false;
+        autoCompactionController = null;
+    }
+
     function abortInFlightCompaction(): void {
         if (autoCompactionController) {
             autoCompactionController.abort();
-            autoCompactionController = null;
-            compactInFlight = false;
+            releaseLatch();
         }
     }
 
@@ -97,9 +165,18 @@ export default function (pi: ExtensionAPI): void {
                 await new Promise((resolve) => setTimeout(resolve, 0));
 
                 let isIdle = false;
+                const IDLE_WAIT_MAX_MS = 120_000;
+                const idleDeadline = Date.now() + IDLE_WAIT_MAX_MS;
                 while (!isIdle) {
                     if (signal.aborted) return;
                     if (ctx.sessionManager?.getSessionId?.() !== sessionId) return;
+                    if (Date.now() > idleDeadline) {
+                        // Session stayed busy; release the latch so a later
+                        // agent_settled can try again instead of disabling
+                        // auto-compaction for the rest of the session.
+                        releaseLatch();
+                        return;
+                    }
 
                     isIdle = ctx.isIdle ? ctx.isIdle() : true;
                     if (!isIdle) {
@@ -132,14 +209,23 @@ export default function (pi: ExtensionAPI): void {
                         : rawTokensSinceLastCompaction(currentBranch);
                 if (currentTokens < threshold) return;
 
+                // Handed to the host: detach the abort handle but keep the latch
+                // held until the host reports completion.
                 autoCompactionController = null;
+
+                const COMPACTION_SETTLE_TIMEOUT_MS = 600_000;
+                // The host may never report completion: release the latch anyway,
+                // so one stuck compaction cannot disable every future one.
+                const settleTimer = setTimeout(releaseLatch, COMPACTION_SETTLE_TIMEOUT_MS);
 
                 ctx.compact?.({
                     onComplete: () => {
-                        compactInFlight = false;
+                        clearTimeout(settleTimer);
+                        releaseLatch();
                     },
                     onError: (err) => {
-                        compactInFlight = false;
+                        clearTimeout(settleTimer);
+                        releaseLatch();
                         const msg = err?.message || String(err);
                         if (
                             msg === "Compaction cancelled" ||
@@ -152,8 +238,7 @@ export default function (pi: ExtensionAPI): void {
                     },
                 });
             } catch {
-                compactInFlight = false;
-                autoCompactionController = null;
+                releaseLatch();
             }
         })();
     });
@@ -166,11 +251,19 @@ export default function (pi: ExtensionAPI): void {
             ctx: ExtensionContext,
         ): Promise<SessionBeforeCompactResult | void> => {
             if (config.compaction === "off") return;
+            // "pi-default" defers to the host's own summarizer.
+            if (config.compactionEngine === "pi-default") return;
             const sessionId = ctx.sessionManager?.getSessionId?.();
             const omSummary = sessionId ? buildOmCompactionSummary(sessionId) : "";
-            const messages = (event.preparation?.messagesToSummarize ||
-                ctx.sessionManager?.buildSessionProjection?.()?.messages ||
-                []) as Array<{
+            // A split turn passes its earlier part separately
+            // (compaction.d.ts: turnPrefixMessages); without it, file edits made
+            // before the split disappear from ### Files Touched.
+            const messages = [
+                ...(event.preparation?.turnPrefixMessages || []),
+                ...(event.preparation?.messagesToSummarize ||
+                    ctx.sessionManager?.buildSessionProjection?.()?.messages ||
+                    []),
+            ] as Array<{
                 role?: string;
                 content?: unknown;
             }>;
@@ -228,21 +321,21 @@ export default function (pi: ExtensionAPI): void {
         },
         description:
             "Search session history and earlier lines omitted, file write/edit content by text/regex. " +
-            "Expand entries (#N), drill-down file content (#N:path) or message text (#N:text) with paging, or aggregate touched files (mode:touched). " +
-            "Responses are capped at a character budget; #N:text / #N:path page the full stored payload. " +
+            "Expand entries (#N); read one entry's text (#N:text) or a tool-call payload (#N:file, #N:<path>) with paging (:offset:limit, :full); aggregate touched files (mode:touched). " +
+            "Each drill-down window reports [chars X-Y of N] so the next window can be requested; :full returns the whole payload. " +
             "Subagent children can pass source:'parent' to drill into the delegating parent session instead of their own.",
         promptSnippet:
-            "Search session history + file write/edit content by text/regex. #N expand, #N:path / #N:text drill-down with optional :offset:limit or :full, mode:file/touched. source:parent reads the delegating parent session (subagent children only).",
+            "Search session history + file write/edit content by text/regex. #N expand, #N:text / #N:file / #N:<path> drill-down with :offset:limit or :full, mode:file/touched. source:parent reads the delegating parent session (subagent children only).",
         promptGuidelines: [
             "Use recall — literal text/regex search across session history and file write/edit content. #N expands an entry; #N:path with optional :offset:limit or :full drills down into file content; #N:text pages a message body; 12-char hex ids recover observation/reflection sources. mode:file for file-content-only, mode:touched for aggregated files-by-path. scope:'all' to search the full session. If no results, try fewer terms or a regex pattern.",
-            "Use recall — when a drill-down path matches multiple files, options are listed. Narrow with a more specific path substring. Only full-file writes are indexed for text search (edit diffs are not).",
+            "Use recall — when a drill-down path matches multiple files, options are listed. Narrow with a more specific path substring. mode:file searches tool-call payloads (write/edit arguments) and message text.",
             "Use recall — source:'parent' reads the delegating parent session's history + OM instead of your own. Only works inside a subagent child run; default stays 'current' so parent reads are always explicit, never implicit.",
         ],
         parameters: Type.Object({
             query: Type.Optional(
                 Type.String({
                     description:
-                        "Text/regex search; #N expands entry; #N:path drills file (#N:file auto-selects); #N:text pages a message body; #N:path:full all lines; #N:path:offset:limit range; 12-char hex for observations. Only full-file writes indexed.",
+                        "Text/regex search; #N expands entry; #N:text reads a message body; #N:file / #N:<path> reads a tool-call payload; append :offset:limit or :full to page a long entry; 12-char hex recovers an observation/reflection. mode:file searches tool-call payloads (write/edit arguments) and message text.",
                 }),
             ),
             expand: Type.Optional(
@@ -350,11 +443,11 @@ export default function (pi: ExtensionAPI): void {
                 return { content: [{ type: "text", text }], details: undefined };
             }
 
-            // 3. Entry drill-down (#N:text or #N:path)
+            // 3. Entry drill-down (#N:text, #N:file or #N:<path>), optionally windowed
             const drillDownMatch = query.match(/^#(\d+):(.+)$/);
             if (drillDownMatch) {
                 const idx = Number.parseInt(drillDownMatch[1], 10);
-                const target = drillDownMatch[2].trim();
+                const drill = parseDrillWindow(drillDownMatch[2].trim());
                 const msg = messages[idx];
                 if (!msg) {
                     return {
@@ -362,33 +455,44 @@ export default function (pi: ExtensionAPI): void {
                         details: undefined,
                     };
                 }
-                if (target.startsWith("text")) {
+                const continueHint = `#${idx}:${drill.selector}`;
+                if (drill.selector.startsWith("text")) {
                     const body = Array.isArray(msg.content)
                         ? msg.content.map((c) => (c as { text?: string })?.text || "").join("\n")
                         : String(msg.content || "");
                     return {
-                        content: [{ type: "text", text: body.slice(0, maxChars) }],
+                        content: [
+                            {
+                                type: "text",
+                                text: windowPayload(body, drill, continueHint, maxChars),
+                            },
+                        ],
                         details: undefined,
                     };
                 }
                 if (Array.isArray(msg.content)) {
+                    const callArgs = (b: unknown): Record<string, unknown> | undefined => {
+                        const block = b as {
+                            arguments?: Record<string, unknown>;
+                            args?: Record<string, unknown>;
+                        };
+                        return (block?.arguments || block?.args) as
+                            Record<string, unknown> | undefined;
+                    };
                     const tc = msg.content.find((b) => {
-                        const args =
-                            (
-                                b as {
-                                    arguments?: Record<string, unknown>;
-                                    args?: Record<string, unknown>;
-                                }
-                            ).arguments || (b as { args?: Record<string, unknown> }).args;
-                        const p = String(args?.path || args?.file || "");
-                        return p.includes(target);
+                        const args = callArgs(b);
+                        if (!args) return false;
+                        const p = String(args.path || args.file || args.filePath || "");
+                        if (!p) return false;
+                        return drill.selector === "file" ? true : p.includes(drill.selector);
                     });
                     if (tc) {
+                        const body = JSON.stringify(tc, null, 2);
                         return {
                             content: [
                                 {
                                     type: "text",
-                                    text: JSON.stringify(tc, null, 2).slice(0, maxChars),
+                                    text: windowPayload(body, drill, continueHint, maxChars),
                                 },
                             ],
                             details: undefined,
@@ -456,24 +560,48 @@ export default function (pi: ExtensionAPI): void {
             }
 
             // 6. Paginated keyword/regex search with mode filter
-            const candidateMessages =
-                params.mode === "file"
-                    ? messages
-                          .map((m, idx) => ({ m, idx }))
-                          .filter(({ m }) => {
-                              if (!Array.isArray(m.content)) return false;
-                              return m.content.some(
-                                  (b) => (b as { type?: string })?.type === "toolCall",
-                              );
+            // Text a message contributes to a search: its text blocks plus, for
+            // mode:"file", the JSON of its tool-call arguments (where write/edit
+            // file content lives).
+            const messageSearchText = (
+                m: { content?: unknown },
+                includeToolArgs: boolean,
+            ): string =>
+                Array.isArray(m.content)
+                    ? m.content
+                          .map((c) => {
+                              const block = c as {
+                                  type?: string;
+                                  text?: string;
+                                  arguments?: unknown;
+                                  args?: unknown;
+                              };
+                              if (
+                                  includeToolArgs &&
+                                  block?.type === "toolCall" &&
+                                  (block.arguments || block.args)
+                              ) {
+                                  return JSON.stringify(block.arguments ?? block.args);
+                              }
+                              return block?.text || "";
                           })
-                    : messages.map((m, idx) => ({ m, idx }));
+                          .join(" ")
+                    : String(m.content || "");
 
-            const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+            // mode:"file" only searches messages that carry tool-call payloads.
+            const candidateMessages = messages
+                .map((m, idx) => ({ m, idx }))
+                .filter(
+                    ({ m }) =>
+                        params.mode !== "file" ||
+                        (Array.isArray(m.content) &&
+                            m.content.some((b) => (b as { type?: string })?.type === "toolCall")),
+                );
+
+            const regex = safeRegex(query);
             const hits: string[] = [];
             for (const { m, idx } of candidateMessages) {
-                const text = Array.isArray(m.content)
-                    ? m.content.map((c) => (c as { text?: string })?.text || "").join(" ")
-                    : String(m.content || "");
+                const text = messageSearchText(m, params.mode === "file");
                 if (regex.test(text)) {
                     hits.push(`[#${idx} ${m.role || "unknown"}]: ${text.slice(0, 200)}...`);
                 }

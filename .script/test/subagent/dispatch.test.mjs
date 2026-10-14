@@ -7,13 +7,7 @@
 // retry behavior. No model calls, no session writes.
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import {
-    ROOT,
-    createTestJiti,
-    importProd,
-    runCases,
-    toolMsg,
-} from "./helpers.mjs";
+import { ROOT, createTestJiti, importProd, runCases, toolMsg } from "./helpers.mjs";
 
 const stubPath = resolve(ROOT, ".script/test/subagent/stubs/pi-sdk.stub.mjs");
 // Default module cache stays ON so the stub shares module instances
@@ -25,6 +19,26 @@ const run = await importProd(jiti, "agent/extensions/subagents/src/run.js");
 const shared = await importProd(jiti, "agent/extensions/shared/cross-extension-api.js");
 const stub = await jiti.import(stubPath);
 assert.equal(typeof run.buildSubagentExecute, "function", "dispatcher missing");
+
+// The delegation snapshot needs a registered provider (agent/extensions/shared/
+// blackhole-api.ts). This suite tests dispatcher wiring, so it registers a stub
+// that only reports touched paths — importing the real blackhole factory here
+// would pull the whole extension through the stubbed pi SDK.
+const sharedBlackhole = await importProd(jiti, "agent/extensions/shared/blackhole-api.js");
+sharedBlackhole.setBlackholeSnapshotApi({
+    compileVccSummary: ({ messages }) => {
+        const paths = [];
+        for (const msg of messages) {
+            if (!Array.isArray(msg?.content)) continue;
+            for (const block of msg.content) {
+                const path = block?.arguments?.path ?? block?.args?.path;
+                if (typeof path === "string" && path) paths.push(path);
+            }
+        }
+        return paths.length ? `### Files Touched\n${paths.map((p) => `- ${p}`).join("\n")}` : "";
+    },
+    buildOmCompactionSummary: () => "",
+});
 
 // Hermetic agent: dynamic registrations override file-based discovery, so the
 // test never depends on which agent .md files exist on disk. Empty model

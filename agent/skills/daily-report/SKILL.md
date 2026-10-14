@@ -1,7 +1,7 @@
 ---
 name: daily-report
 description: Menyusun laporan harian kerja (daily work report) dalam Bahasa Indonesia formal dengan istilah teknis tetap dalam Bahasa Inggris. Format WhatsApp siap kirim dengan section Progress dan Kendala sebagai wajib, serta On Going Task dan Backlog sebagai opsional. Tidak melakukan penyimpanan otomatis ke vault.
-disable_model_invocation: true
+disable-model-invocation: true
 ---
 
 # Laporan Harian Kerja — Daily Report

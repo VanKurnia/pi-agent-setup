@@ -116,4 +116,4 @@ subagents/
 
 ## Dependencies
 
-The delegation snapshot reads blackhole's `compileVccSummary` and `buildOmCompactionSummary` through a lazy import. If the blackhole extension is disabled or removed, the snapshot degrades to empty (the task still runs).
+The delegation snapshot resolves blackhole's snapshot provider through the shared contract in `agent/extensions/shared/blackhole-api.ts` (`setBlackholeSnapshotApi` / `getBlackholeSnapshotApi`, `globalThis`-backed because the loader isolates each extension's module registry). When blackhole is not loaded or the provider is absent, the snapshot degrades to empty and the task still runs.

@@ -32,23 +32,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
-// Blackhole's summary modules are needed only when a subagent is dispatched.
-// Loaded lazily (once per extension instance) so boot does not evaluate them;
-// `typeof import(...)` keeps the exact signatures without a runtime import.
-type SnapshotModules = {
-    compileVccSummary: typeof import("../../blackhole/compaction.js").compileVccSummary;
-    buildOmCompactionSummary: typeof import("../../blackhole/om.js").buildOmCompactionSummary;
-};
-
-let snapshotModules: Promise<SnapshotModules> | undefined;
-const loadSnapshotModules = (): Promise<SnapshotModules> =>
-    (snapshotModules ??= Promise.all([
-        import("../../blackhole/compaction.js"),
-        import("../../blackhole/om.js"),
-    ]).then(([compaction, om]) => ({
-        compileVccSummary: compaction.compileVccSummary,
-        buildOmCompactionSummary: om.buildOmCompactionSummary,
-    })));
+import { getBlackholeSnapshotApi, type BlackholeSnapshotApi } from "../../shared/blackhole-api.js";
 
 // ── Delegation snapshot (read-only VCC, frozen at invoke time) ───────────────
 /**
@@ -57,31 +41,34 @@ const loadSnapshotModules = (): Promise<SnapshotModules> =>
  * mutates the parent. Child stays a fresh one-shot session; only this
  * string is appended to its task as reference material.
  */
-export const SNAPSHOT_MAX_CHARS = 6000;
+/**
+ * Budget for the delegation snapshot (~6k tokens). It is handed to the provider as
+ * `maxChars`, so every section is composed inside it instead of the consumer
+ * truncating a prefix and losing the structural sections entirely.
+ */
+export const SNAPSHOT_MAX_CHARS = 24000;
 export const SNAPSHOT_MARKER = "Reference context";
 
 export async function createDelegationSnapshot(ctx: any): Promise<string> {
     try {
-        const { compileVccSummary, buildOmCompactionSummary } = await loadSnapshotModules();
+        const api: BlackholeSnapshotApi | undefined = getBlackholeSnapshotApi();
+        if (!api) return "";
         const sessionId: string = ctx?.sessionManager?.getSessionId?.() ?? "";
         const messages = (ctx?.sessionManager?.buildSessionProjection?.()?.messages ??
             []) as Array<{
             role?: string;
             content?: unknown;
         }>;
-        const snapshot = compileVccSummary({
+        const snapshot = api.compileVccSummary({
             messages,
             cwd: ctx?.cwd,
-            omSummary: sessionId ? buildOmCompactionSummary(sessionId) : "",
+            omSummary: sessionId ? api.buildOmCompactionSummary(sessionId) : "",
+            maxChars: SNAPSHOT_MAX_CHARS,
         });
         if (!snapshot || !snapshot.trim()) return "";
-        const capped =
-            snapshot.length > SNAPSHOT_MAX_CHARS
-                ? snapshot.slice(0, SNAPSHOT_MAX_CHARS) + "\n... (snapshot truncated)"
-                : snapshot;
         // Neutralize the chain template token so a later fillPrevious() over the
         // combined string can never rewrite the frozen reference.
-        return capped.replace(/\{previous\}/g, "{ previous }");
+        return snapshot.replace(/\{previous\}/g, "{ previous }");
     } catch {
         return "";
     }

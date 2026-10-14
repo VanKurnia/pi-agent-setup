@@ -5,14 +5,7 @@
 // `recall` tool with stub sessions. No model calls, no session writes.
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import {
-    ROOT,
-    createTestJiti,
-    importProd,
-    runCases,
-    textMsg,
-    toolMsg,
-} from "./helpers.mjs";
+import { ROOT, createTestJiti, importProd, runCases, textMsg, toolMsg } from "./helpers.mjs";
 
 // The default module cache stays ON: child->parent links live in a
 // shared cross-extension registry, so the test must share module instances
@@ -38,6 +31,7 @@ const pi = {
         tools[t.name] = t;
     },
     registerMessageRenderer: () => {},
+    registerEntryRenderer: () => {},
     sendMessage: () => {},
     events: { emit: () => {}, on: () => () => {} },
 };
@@ -191,7 +185,4 @@ test("unknown hex id falls through without throwing", async () => {
 });
 
 // ── Run ───────────────────────────────────────────────────────────────────
-await runCases(
-    cases,
-    "    (skip parent OM-file inclusion: would write to the real agent dir)",
-);
+await runCases(cases, "    (skip parent OM-file inclusion: would write to the real agent dir)");

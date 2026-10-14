@@ -14,7 +14,7 @@ This skill is the **default session governor** — it applies to every turn, not
 - **Worry about context limits** — gives you the discipline to explore with targeted calls and verify at known file:line instead of reading whole files
 - **Fix a bug** — prescribes observe → hypothesize → verify → fix, not guess-and-pray
 - **Claim something is done** — requires a concrete verification command and its output
-- **Write output** — keeps it concise, no fluff, run stop-slop on anything over 2 sentences
+- **Write output** — keeps it concise, no fluff, run a slop pass on anything over 2 sentences
 - **Get asked to /improve or /grill-me** — those skills reference this one as the top-level orchestrator
 
 In short: if you're executing a user request in a codebase, this skill applies.
@@ -104,7 +104,7 @@ Prioritize technical accuracy over validation. No "Great question!" or "You're a
 
 ### Cut the Slop
 
-Any prose longer than 2 sentences that isn't a tool result or error gets a stop-slop pass before delivery. Run the quick checks from [stop-slop](../stop-slop/SKILL.md): kill adverbs, break formulaic rhythms, remove throat-clearing, cut em-dashes, put the reader in the room. Orchestrator keeps it concise; stop-slop keeps it human.
+Any prose longer than 2 sentences that isn't a tool result or error gets a slop pass before delivery. Run the quick checks: kill adverbs, break formulaic rhythms, remove throat-clearing, cut em-dashes, put the reader in the room. Orchestrator keeps it concise; the slop pass keeps it human.
 
 ### Investigate Before Fixing
 
