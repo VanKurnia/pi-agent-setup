@@ -11,16 +11,194 @@
 </p>
 
 <p align="center">
-  Personal configuration, extensions, skills, and prompts for
-  <a href="https://pi.dev">pi</a> — the terminal AI coding assistant.
+  Minimal Opinionated <a href="https://pi.dev">Pi</a> Coding Agent Setup,
+  Optimized for Work & Minimal Resource Usages
 </p>
 
 <p align="center">
+  <a href="#why-this-setup">Why This Setup</a> •
   <a href="#quick-setup">Quick Setup</a> •
-  <a href="#whats-included">What's Included</a> •
   <a href="#configuration">Configuration</a> •
   <a href="#custom-models">Custom Models</a>
 </p>
+
+---
+
+## Why This Setup
+
+Three decisions shape this configuration.
+
+### 1. A context window that survives long sessions
+
+[`blackhole`](agent/extensions/blackhole/) — four `.ts` files — compacts context instead of
+dropping it, by combining two mechanisms:
+
+- **Observational Memory**, modelled on
+  [Mastra's OM research](https://mastra.ai/research/observational-memory) — 84.23% on LongMemEval
+  with `gpt-4o`, 94.87% with `gpt-5-mini`: a background **Observer** and **Reflector** turn raw
+  history into a dense observation log that lives in the context window. Here the observer wakes at
+  25k unobserved tokens, the reflector at 80k, and the observation pool stays bounded (40k render
+  budget, trimmed toward 20k under pressure) so memory can never crowd out the session.
+
+  <img src="https://mastra.ai/_next/image?url=%2Fimages%2Fresearch%2Fom-gpt4o-overall.jpeg&amp;w=1920&amp;q=75" alt="Mastra Observational Memory — LongMemEval results with gpt-4o" width="720">
+- **VCC summaries** — the sectioned summary format from upstream `pi-vcc`, based on
+  [VCC — View-oriented Conversation Compiler](https://arxiv.org/abs/2603.29678) (Stanford), which
+  lowers agent traces into structured, role-annotated views instead of handing them to a reflector
+  as plain text or JSON. One summary per compaction: memory first, then recent conversation,
+  carried context, files touched, recent commits. It is always composed inside a fixed budget, with
+  memory capped at a share so no single section starves the others.
+
+<figure id="S3.T1" class="ltx_table">
+
+<div class="ltx_flex_cell ltx_flex_size_1">
+<p id="S3.T1.6" class="ltx_p ltx_figure_panel ltx_align_center">(b) Claude Code 2.1.81: claude-sonnet-4-6 (generator) + claude-sonnet-4-6 (reflector)</p></div><div class="ltx_flex_break"></div><div class="ltx_flex_cell ltx_flex_size_1">
+<div id="S3.T1.7" class="ltx_inline-block ltx_figure_panel ltx_align_center ltx_transformed_outer" style="width:345.0pt;height:31.1pt;vertical-align:-14.3pt;"><span class="ltx_transformed_inner" style="transform:translate(-168.7pt,15.2pt) scale(0.505629514663051,0.505629514663051) ;">
+<table id="S3.T1.7.1" class="ltx_tabular ltx_guessed_headers ltx_align_middle">
+<tbody class="ltx_tbody">
+<tr id="S3.T1.7.1.1" class="ltx_tr">
+<th id="S3.T1.7.1.1.1" class="ltx_td ltx_th ltx_th_row ltx_border_tt"></th>
+<th id="S3.T1.7.1.1.2" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_tt" colspan="4">TN task_goal</th>
+<th id="S3.T1.7.1.1.3" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_tt" colspan="4">TN scenario_goal</th>
+<th id="S3.T1.7.1.1.4" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_tt" colspan="4">TC task_goal</th>
+<th id="S3.T1.7.1.1.5" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_tt" colspan="4">TC scenario_goal</th>
+<th id="S3.T1.7.1.1.6" class="ltx_td ltx_th ltx_th_column ltx_border_tt"></th>
+<th id="S3.T1.7.1.1.7" class="ltx_td ltx_th ltx_th_column ltx_border_tt"></th>
+<td id="S3.T1.7.1.1.8" class="ltx_td ltx_border_tt"></td></tr>
+<tr id="S3.T1.7.1.2" class="ltx_tr">
+<th id="S3.T1.7.1.2.1" class="ltx_td ltx_align_left ltx_th ltx_th_column ltx_th_row">Method</th>
+<th id="S3.T1.7.1.2.2" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">all</th>
+<th id="S3.T1.7.1.2.3" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">d1</th>
+<th id="S3.T1.7.1.2.4" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">d2</th>
+<th id="S3.T1.7.1.2.5" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">d3</th>
+<th id="S3.T1.7.1.2.6" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">all</th>
+<th id="S3.T1.7.1.2.7" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">d1</th>
+<th id="S3.T1.7.1.2.8" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">d2</th>
+<th id="S3.T1.7.1.2.9" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">d3</th>
+<th id="S3.T1.7.1.2.10" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">all</th>
+<th id="S3.T1.7.1.2.11" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">d1</th>
+<th id="S3.T1.7.1.2.12" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">d2</th>
+<th id="S3.T1.7.1.2.13" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">d3</th>
+<th id="S3.T1.7.1.2.14" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">all</th>
+<th id="S3.T1.7.1.2.15" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">d1</th>
+<th id="S3.T1.7.1.2.16" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">d2</th>
+<th id="S3.T1.7.1.2.17" class="ltx_td ltx_align_center ltx_th ltx_th_column ltx_border_t">d3</th>
+<th id="S3.T1.7.1.2.18" class="ltx_td ltx_align_center ltx_th ltx_th_column">T tok</th>
+<th id="S3.T1.7.1.2.19" class="ltx_td ltx_align_center ltx_th ltx_th_column">T/a</th>
+<th id="S3.T1.7.1.2.20" class="ltx_td ltx_align_center ltx_th ltx_th_column">Mem</th></tr>
+<tr id="S3.T1.7.1.3" class="ltx_tr">
+<th id="S3.T1.7.1.3.1" class="ltx_td ltx_align_left ltx_th ltx_th_row ltx_border_t">Baseline</th>
+<td id="S3.T1.7.1.3.2" class="ltx_td ltx_align_center ltx_border_t">73.2</td>
+<td id="S3.T1.7.1.3.3" class="ltx_td ltx_align_center ltx_border_t">77.2</td>
+<td id="S3.T1.7.1.3.4" class="ltx_td ltx_align_center ltx_border_t">58.3</td>
+<td id="S3.T1.7.1.3.5" class="ltx_td ltx_align_center ltx_border_t">81.0</td>
+<td id="S3.T1.7.1.3.6" class="ltx_td ltx_align_center ltx_border_t">67.9</td>
+<td id="S3.T1.7.1.3.7" class="ltx_td ltx_align_center ltx_border_t">73.7</td>
+<td id="S3.T1.7.1.3.8" class="ltx_td ltx_align_center ltx_border_t">50.0</td>
+<td id="S3.T1.7.1.3.9" class="ltx_td ltx_align_center ltx_border_t">76.2</td>
+<td id="S3.T1.7.1.3.10" class="ltx_td ltx_align_center ltx_border_t">61.4</td>
+<td id="S3.T1.7.1.3.11" class="ltx_td ltx_align_center ltx_border_t">61.1</td>
+<td id="S3.T1.7.1.3.12" class="ltx_td ltx_align_center ltx_border_t">59.3</td>
+<td id="S3.T1.7.1.3.13" class="ltx_td ltx_align_center ltx_border_t">63.1</td>
+<td id="S3.T1.7.1.3.14" class="ltx_td ltx_align_center ltx_border_t">50.4</td>
+<td id="S3.T1.7.1.3.15" class="ltx_td ltx_align_center ltx_border_t">45.8</td>
+<td id="S3.T1.7.1.3.16" class="ltx_td ltx_align_center ltx_border_t">50.0</td>
+<td id="S3.T1.7.1.3.17" class="ltx_td ltx_align_center ltx_border_t">52.3</td>
+<td id="S3.T1.7.1.3.18" class="ltx_td ltx_align_center ltx_border_t">—</td>
+<td id="S3.T1.7.1.3.19" class="ltx_td ltx_align_center ltx_border_t">—</td>
+<td id="S3.T1.7.1.3.20" class="ltx_td ltx_align_center ltx_border_t">—</td></tr>
+<tr id="S3.T1.7.1.4" class="ltx_tr">
+<th id="S3.T1.7.1.4.1" class="ltx_td ltx_align_left ltx_th ltx_th_row">JSON</th>
+<td id="S3.T1.7.1.4.2" class="ltx_td ltx_align_center">90.5</td>
+<td id="S3.T1.7.1.4.3" class="ltx_td ltx_align_center"><span id="S3.T1.7.1.4.3.1" class="ltx_text ltx_font_bold">98.2</span></td>
+<td id="S3.T1.7.1.4.4" class="ltx_td ltx_align_center">91.7</td>
+<td id="S3.T1.7.1.4.5" class="ltx_td ltx_align_center">82.5</td>
+<td id="S3.T1.7.1.4.6" class="ltx_td ltx_align_center">82.1</td>
+<td id="S3.T1.7.1.4.7" class="ltx_td ltx_align_center"><span id="S3.T1.7.1.4.7.1" class="ltx_text ltx_font_bold">94.7</span></td>
+<td id="S3.T1.7.1.4.8" class="ltx_td ltx_align_center">81.2</td>
+<td id="S3.T1.7.1.4.9" class="ltx_td ltx_align_center">71.4</td>
+<td id="S3.T1.7.1.4.10" class="ltx_td ltx_align_center">71.0</td>
+<td id="S3.T1.7.1.4.11" class="ltx_td ltx_align_center">86.1</td>
+<td id="S3.T1.7.1.4.12" class="ltx_td ltx_align_center">66.7</td>
+<td id="S3.T1.7.1.4.13" class="ltx_td ltx_align_center">68.7</td>
+<td id="S3.T1.7.1.4.14" class="ltx_td ltx_align_center">60.4</td>
+<td id="S3.T1.7.1.4.15" class="ltx_td ltx_align_center">75.0</td>
+<td id="S3.T1.7.1.4.16" class="ltx_td ltx_align_center">54.0</td>
+<td id="S3.T1.7.1.4.17" class="ltx_td ltx_align_center">60.0</td>
+<td id="S3.T1.7.1.4.18" class="ltx_td ltx_align_center">20.5M</td>
+<td id="S3.T1.7.1.4.19" class="ltx_td ltx_align_center">115K</td>
+<td id="S3.T1.7.1.4.20" class="ltx_td ltx_align_center">23.4K</td></tr>
+<tr id="S3.T1.7.1.5" class="ltx_tr">
+<th id="S3.T1.7.1.5.1" class="ltx_td ltx_align_left ltx_th ltx_th_row ltx_border_bb">VCC</th>
+<td id="S3.T1.7.1.5.2" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.2.1" class="ltx_text ltx_font_bold">92.9</span></td>
+<td id="S3.T1.7.1.5.3" class="ltx_td ltx_align_center ltx_border_bb">96.5</td>
+<td id="S3.T1.7.1.5.4" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.4.1" class="ltx_text ltx_font_bold">95.8</span></td>
+<td id="S3.T1.7.1.5.5" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.5.1" class="ltx_text ltx_font_bold">87.3</span></td>
+<td id="S3.T1.7.1.5.6" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.6.1" class="ltx_text ltx_font_bold">89.3</span></td>
+<td id="S3.T1.7.1.5.7" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.7.1" class="ltx_text ltx_font_bold">94.7</span></td>
+<td id="S3.T1.7.1.5.8" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.8.1" class="ltx_text ltx_font_bold">93.8</span></td>
+<td id="S3.T1.7.1.5.9" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.9.1" class="ltx_text ltx_font_bold">81.0</span></td>
+<td id="S3.T1.7.1.5.10" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.10.1" class="ltx_text ltx_font_bold">74.3</span></td>
+<td id="S3.T1.7.1.5.11" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.11.1" class="ltx_text ltx_font_bold">88.9</span></td>
+<td id="S3.T1.7.1.5.12" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.12.1" class="ltx_text ltx_font_bold">68.7</span></td>
+<td id="S3.T1.7.1.5.13" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.13.1" class="ltx_text ltx_font_bold">73.3</span></td>
+<td id="S3.T1.7.1.5.14" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.14.1" class="ltx_text ltx_font_bold">63.3</span></td>
+<td id="S3.T1.7.1.5.15" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.15.1" class="ltx_text ltx_font_bold">79.2</span></td>
+<td id="S3.T1.7.1.5.16" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.16.1" class="ltx_text ltx_font_bold">56.0</span></td>
+<td id="S3.T1.7.1.5.17" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.17.1" class="ltx_text ltx_font_bold">63.1</span></td>
+<td id="S3.T1.7.1.5.18" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.18.1" class="ltx_text ltx_font_bold">8.8M</span></td>
+<td id="S3.T1.7.1.5.19" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.19.1" class="ltx_text ltx_font_bold">49K</span></td>
+<td id="S3.T1.7.1.5.20" class="ltx_td ltx_align_center ltx_border_bb"><span id="S3.T1.7.1.5.20.1" class="ltx_text ltx_font_bold">15.5K</span></td></tr>
+</tbody>
+</table>
+</span></div></div>
+</figure>
+
+The payoff: better, faster compaction that stays bounded as a session ages — and a `recall` tool
+that searches the full transcript (message text and tool-call payloads) whenever the summary is not
+enough. Memory moves forward; it does not evaporate.
+
+### 2. Two subagents — minimal, foreground, context-aware
+
+[`subagents`](agent/extensions/subagents/) registers exactly two agents:
+
+- **`scout`** — read-only recon: codebase mapping, fact-checking, lightweight web research.
+- **`worker`** — the main agent's working toolset, for actual changes.
+
+Both run as foreground one-shot in-process sessions: no detached background agents, no polling for
+results. Each is handed a **read-only VCC snapshot of the parent** at delegation time — files
+touched, recent commits, live observations — and can drill into the parent's own history with
+`recall source:'parent'` when that is not enough. Delegation without the usual context loss: the
+context-isolated-thread design [AOrchestra](https://arxiv.org/abs/2602.03786) credits with
+mitigating context rot.
+
+<img src="https://arxiv.org/html/2602.03786v2/diff.png" alt="AOrchestra Figure 2: sub-agent-as-tools designs compared — context-isolated threads, static predefined roles, and on-demand specialization" width="720">
+
+*Figure 2 of [AOrchestra](https://arxiv.org/abs/2602.03786) — context-isolated threads vs static predefined roles.*
+
+Two measurements bound the claim: [MAST](https://arxiv.org/abs/2503.13657) measured **41%–86.7%**
+failure rates across 7 state-of-the-art open-source multi-agent systems (1600+ annotated traces) —
+the case for a small cast. AOrchestra reports **+16.28%** relative over its strongest baseline on
+GAIA, SWE-Bench and Terminal-Bench with curated per-sub-agent context, but it spawns sub-agents
+dynamically rather than fixing two, and neither paper measures this repository's `scout`/`worker`.
+
+### 3. A workflow built on `improve`
+
+The working loop follows [shadcn/improve](https://github.com/shadcn/improve) — audit with your
+strongest model, write plans, execute with a cheaper one — wired into the tools that already exist
+here: recon fans out to parallel `scout`s, plans land in `.plans/` (browsable through
+`plan-artifact`), probes live in `.plans/probes/`, and execution is dispatched to `worker`
+subagents. The plan is the handoff artifact: the planner/executor split
+[Plan-and-Act](https://arxiv.org/abs/2503.09572) formalizes for long-horizon tasks.
+
+<img src="https://arxiv.org/html/2503.09572v1/System_Diagram.png" alt="Plan-and-Act Figure 1: a Planner turns the user query into a structured multi-step plan, a separate Executor turns each step into environment actions, and observations trigger replanning" width="720">
+
+*Figure 1 of [Plan-and-Act](https://arxiv.org/abs/2503.09572) — the Planner writes structured plans, a separate Executor implements them.*
+
+Planner/executor separation is what carries long-horizon work
+([Plan-and-Act](https://arxiv.org/abs/2503.09572): **57.58%** on WebArena-Lite, **81.36%** on
+WebVoyager); the cost argument is separate ([FrugalGPT](https://arxiv.org/abs/2305.05176): GPT-4-level
+results at up to **98%** lower cost). Neither measures this loop — Plan-and-Act trains both roles,
+FrugalGPT routes queries rather than splitting them.
 
 ---
 
@@ -55,101 +233,6 @@ bash install.sh
 
 - **`/login`** — authenticate with your provider (API key or subscription)
 - **Nerd Font** — required for icons in the TUI. Without one, you'll see garbled characters in menus and dialogs. [Download here](https://www.nerdfonts.com/font-downloads).
-
----
-
-## Troubleshooting
-
-| Problem                                  | Fix                                                                                             |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `bash` not found                         | Install [Git for Windows](https://git-scm.com/download/win). Pi auto-detects Git Bash.          |
-| Extension not loading                    | Run `bash install.sh` to reinstall deps. Check `agent/auth.json` exists.                        |
-| Icons look broken                        | Install a Nerd Font and set it as your terminal font.                                           |
-| `install.sh` / `.script/update.sh` fails | Run in Git Bash (Windows) or bash (Linux/macOS). The `~` path doesn't expand in cmd/PowerShell. |
-
-## Context Injection
-
-Vault context is injected once per session (not per turn) with a nudge: `ffgrep` for vault fallback. This trains the agent to check local files before falling back to grep.
-
----
-
-## External Integrations
-
-Pi connects to these external tools and services (not counting Pi packages):
-
-| Tool / Service             | Integration                                                                                                                                                                          | Status |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| [[Obsidian]]               | Obsidian Suite auto-detects vault, injects Index + project context once per session.                                                                                                 | Active |
-| [[9router]]                | Local LLM routing proxy at `localhost:20128`. Available as a provider alongside `opencode-go` (current `defaultProvider`); ninerouter extension also exposes it as native web tools. | Active |
-| [[VS Code]] / Zed / Neovim | `pi-x-ide` polls active file path and selection. Reconnects on session start, injects context per user message.                                                                      | Active |
-| [[MySQL]]                  | `db-viewer` extension provides `query_mysql` tool — read-only queries via connection URI.                                                                                            | Active |
-| [[SQLite]]                 | `db-viewer` extension provides `query_sqlite` tool — read-only queries against local `.db` files.                                                                                    | Active |
-| [[Git]]                    | `git-toolkit` extension wraps 12 Git operations. Shell: Git Bash at `C:\Program Files\Git\bin\bash.exe`.                                                                             | Active |
-| [[Chrome]] / Puppeteer     | `browser-tools` extension provides browser automation.                                                                                                                               | Active |
-| [[Node.js]]                | Runtime for all extensions (loaded via jiti). Version managed by nvm.                                                                                                                | Active |
-
----
-
-## What's Included
-
-### Extensions
-
-| Extension           | Description                                                                                                                                                                                                                        |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ask-user-question` | Interactive Q&A dialog (`ask_user_question` tool)                                                                                                                                                                                  |
-| `bash-guard`        | Validates bash commands before execution (`/bash-guard`)                                                                                                                                                                           |
-| `browser-tools`     | Browser automation — 7 `browser_*` tools (start, nav, eval, pick, content, screenshot, cookies)                                                                                                                                    |
-| `custom-header`     | Customizable startup header                                                                                                                                                                                                        |
-| `db-viewer`         | Secure read-only SQLite/MySQL viewer (`query_sqlite`, `query_mysql` with closest-dir `db-config.json` defaults; `db_status` + `/db-status` probe)                                                                                                                                                               |
-| `extmgr`            | Toggle-only local extension manager — list local extensions and enable/disable them (`/extensions`)                                                                                                                              |
-| `filechanges`       | Tracks diffs across edits (`/filechanges`, `/filechanges-accept`, `/filechanges-decline`)                                                                                                                                          |
-| `git-toolkit`       | 12 `git_*` tools (status, diff, log, commit, branch…)                                                                                                                                                                              |
-| `herdr-agent-state` | Agent-state sync for the herdr integration (managed file — do not edit)                                                                                                                                                            |
-| `load-env`          | Loads `agent/.env` at startup                                                                                                                                                                                                      |
-| `ninerouter`        | Minimal native 9router web tools (`ninerouter_web_search`, `ninerouter_web_fetch`); config in `agent/9router-config.json`                                                                                                          |
-| `obsidian-suite`    | Vault auto-detection, context injection, `/obsidian-status` + `/obsidian-path` commands                                                                                                                                            |
-| `open-code-review`  | AI-powered review of git changes (`ocr_review`, `ocr_scan`, `ocr_health`)                                                                                                                                                          |
-| `pi-cbm`            | Codebase memory index — 15 native tools (`search_graph`, `search_code`, `read_symbol`, `resolve_symbol`, `get_code_snippet(s)`, `trace_path`, `get_architecture`, `query_graph`…). Auto-indexes current git repo on session start. |
-| `pi-speeed`         | Session performance monitoring (`/pi-speeed`)                                                                                                                                                                                      |
-| `pi-tool-display`   | Local config stub; implementation comes from the npm package of the same name                                                                                                                                                      |
-| `plan-artifact`     | Browser UI for `.plans/` markdown with commenting and syntax highlighting                                                                                                                                                          |
-| `smart-web-access`   | Unified web access — `web_search`, `web_fetch`, `batch_web_fetch` (browser TLS impersonation + Defuddle extraction); replaces the npm `pi-smart-fetch` / `pi-smart-web-search` pair |
-| `subagents`         | Subagent orchestration for delegating tasks (`subagent` tool, `/reload-agents`, `/subagents:settings`)                                                                                                                             |
-| `thinking-fold`     | Collapsible thinking blocks with per-model behavior (`/thinking-fold-settings`)                                                                                                                                                    |
-| `update-setup`      | Runs `.script/update.sh` inside pi with live output widget (`/update-setup`)                                                                                                                                                       |
-
-### External Packages
-
-| Package               | Description                                                                                                         |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `@ff-labs/pi-fff`     | Fuzzy file finder (`fffind`) and content grep (`ffgrep`)                                                            |
-| `pi-x-ide`            | VS Code / IDE integration                                                                                           |
-| `pi-zentui`           | Extended TUI components                                                                                             |
-| `pi-blackhole`        | Session compaction & observation engine — manages context window via truncation, reflection, and automatic archival |
-| `pi-speeed`           | Performance monitoring for pi agent sessions (npm companion to the local extension)                                 |
-| `pi-tool-display`     | TUI rendering — collapsed tool output, diff visualization, thinking labels.                                         |
-
-### Skills
-
-| Skill                           | Description                                                                                                                |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `grill-me`                      | Stress-test plans through relentless questioning                                                                           |
-| `improve`                       | Read-only codebase audit with prioritized implementation plans                                                             |
-| `improve-codebase-architecture` | Scan for deepening opportunities — surface architectural friction with visual HTML report                                  |
-| `open-code-review`              | AI-powered review of git changes via the `ocr` CLI                                                                         |
-| `orchestrator`                  | Session orchestration: subagent routing, context hygiene                                                                   |
-| `posting`                       | File-based API client (Postman/Insomnia alternative) — pi maintains `*.posting.yaml` collections, the human drives the TUI |
-
-### Prompts
-
-| Prompt                    | Description                                                                                             |
-| ------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `bro`                     | Rephrase the last message in casual Indonesian, junior-SWE style                                        |
-| `commit`                  | Generate git commit title + description                                                                 |
-| `initiate-base-knowledge` | Bootstrap context with workspace rules and architecture                                                 |
-| `review-changes`          | Review all changes via `ocr_review`, then inspect flagged hunks — correctness, edge cases, side effects |
-| `set-scope`               | Set working scope to given paths and understand them deeply before proceeding                           |
-| `simplify-changes`        | Simplify a completed workpackage without changing its behavior                                          |
 
 ---
 
