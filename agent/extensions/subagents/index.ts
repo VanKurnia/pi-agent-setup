@@ -427,7 +427,7 @@ export default function registerSubagent(pi: ExtensionAPI) {
             "Single fact lookup on the web? Call web_search directly. Need 2+ searches, source comparison, or synthesis? Delegate to scout.",
             "For multiple independent subagent tasks, use parallel mode with tasks[] array",
             "For multi-phase workflows (scout → implement → verify), use hybrid mode with hybrid[] array — phases execute sequentially, each phase feeds the next via {previous}.",
-            "Subagents receive an auto-attached read-only parent snapshot (VCC) as reference — include only task-specific context NOT already in the snapshot (goal, constraints, decision paths, expected output format)",
+            "Include only what the snapshot lacks: goal, constraints, decision paths, expected output format.",
             "Scout/worker children can drill deeper than the snapshot with recall source=parent (parent history + OM, read-only, explicit opt-in per call)",
             "Provide a short title (max 5 words) per task for the progress widget; omit it and the UI falls back to the first 5 words of task",
         ],

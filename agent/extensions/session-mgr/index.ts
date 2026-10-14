@@ -21,7 +21,7 @@ export default function sessionMgr(pi: ExtensionAPI): void {
         label: "Rename session",
         annotations: { idempotentHint: true },
         description: "Set the display name of the current session (shown in the session selector).",
-        promptSnippet: "Rename the current session with rename_session",
+        promptSnippet: "Set a user-visible name for this session",
         parameters: Type.Object({
             name: Type.String({ description: "New display name for the current session." }),
         }),

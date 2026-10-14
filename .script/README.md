@@ -13,6 +13,7 @@ Run them from the repo root. All scripts require `bash` + `npm` on `PATH`
 | [`bench-om.mjs`](#bench-ommjs) | Benchmark Blackhole Observational Memory token compression & prompt cache stability |
 | [`test/`](#test) | Temp behavior tests loading real TS modules via jiti (no model calls) |
 | [`preview-system-prompt.mjs`](#preview-system-promptmjs) | Render pi's system prompt from the installed build (`--list`, `--section`, `--out`) |
+| [`list-tools.mjs`](#list-toolsmjs) | List every tool pi loads, with the descriptions declared to the model (`--active`, `--json`, `--full`, `--stats`) |
 
 ---
 
@@ -200,6 +201,7 @@ node .script/test/subagent/dispatch.test.mjs
 | `subagent/snapshot.test.mjs` | Delegation snapshot: VCC build from parent messages, empty-session passthrough, attach marker + idempotency, `{previous}` neutralization under chain templating, 6000-char truncation, single/parallel/chain/hybrid fan-out without input mutation, unknown-phase passthrough |
 | `subagent/recall.test.mjs` | Child recall of parent memory: default stays in own session, `source=parent` keyword/#N/#N:text/touched/scope=all reads, unmapped-session graceful message, 4000-char cap, link register/resolve/unregister lifecycle, loader-isolation survival via `globalThis` |
 | `subagent/dispatch.test.mjs` | Dispatcher wiring without models (SDK `createAgentSession` stubbed): snapshot attach + link visibility during the run + cleanup after dispose, empty-parent passthrough, parallel fan-out, retry-then-cleanup, unknown-agent failure |
+| `tools/tool-surface.test.mjs` | Tool-surface gate over the eight string-owning extensions: exact per-file registration coverage, a non-empty single-line `promptSnippet` ≤120 chars with no optional-parameter marks, and no guideline restating its own snippet/description or duplicating another |
 | `subagent/helpers.mjs` | Shared harness (jiti setup, `.js`-shape imports, message builders, case runner) — not a test itself |
 
 ---
@@ -230,4 +232,46 @@ node .script/preview-system-prompt.mjs --cwd C:/path/to/project --list
 | `--out <file>` | Write prompt to file instead of stdout |
 | `--show-sources` | Print resolved sources to stderr |
 | `--stats` | Print char counts per section to stderr |
+
+---
+
+## `list-tools.mjs`
+
+Lists every tool pi loads for this setup with the descriptions the model sees.
+Unlike `preview-system-prompt.mjs`, which renders static prompt sections and can
+only note extension tools as "resolve at runtime", this runs the real thing:
+`DefaultResourceLoader` (settings, extensions, skills) plus
+`createAgentSession()` on an in-memory session, then the session's own
+`getAllTools()` / `getActiveToolNames()`. Tools are grouped by whether they are
+declared to the model, and each line names the file that provides it.
+
+The CLI's built-in extensions (`codemode`, `tool_search`, `mcp`) are loaded the
+way the CLI loads them, so the inventory matches a real session.
+
+```bash
+node .script/list-tools.mjs                       # everything, grouped
+node .script/list-tools.mjs --active --stats      # the declared set + size totals
+node .script/list-tools.mjs --grep "web" --full   # one area, whole descriptions
+node .script/list-tools.mjs --json > tools.json   # machine-readable inventory
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--cwd <dir>` | Working directory for project-local discovery (default: repo root) |
+| `--agent-dir <dir>` | Agent dir (default: `<repo>/agent`) |
+| `--pi-dir <dir>` | Override pi package dir |
+| `--active` | List only the tools declared to the model |
+| `--full` | Whole descriptions plus exposure/namespace/annotations/guidelines |
+| `--grep <pattern>` | Only tools whose name or description matches (regex, literal fallback) |
+| `--max <n>` | Truncate descriptions to n chars (default: 160) |
+| `--json` | Full inventory as JSON (includes parameter schemas) |
+| `--stats` | Counts and name+description char totals to stderr |
+| `--no-builtin` | Skip the CLI's built-in extensions (codemode, tool_search, mcp) |
+| `--online` | Allow startup network operations (default: `PI_OFFLINE=1`) |
+
+Notes: the session is in-memory (no session file is written) and is disposed on
+exit, but extensions do load for real — expect a few seconds and the usual
+extension startup notices on stderr. Tools pi registers but does not declare
+(`bash`, `grep`, `find`, `ls` under this repo's `defaultTools`, plus
+`tool_search`) appear in the second group rather than being hidden.
 

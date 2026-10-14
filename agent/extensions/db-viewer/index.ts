@@ -138,11 +138,10 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
             readOnlyHint: true,
             idempotentHint: true,
         },
-        promptSnippet: "Query SQLite databases",
+        promptSnippet: "Query a SQLite database file (SELECT only)",
         promptGuidelines: [
             "Use query_sqlite when you need to inspect SQLite schema, counts, or table records.",
             "Do not try to write, insert, update, delete or drop tables. Only SELECT is supported.",
-            "Omit dbPath to use the closest-dir default from db-config.json; pass an explicit value to override.",
         ],
         parameters: Type.Object({
             dbPath: Type.Optional(
@@ -233,11 +232,10 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
             readOnlyHint: true,
             idempotentHint: true,
         },
-        promptSnippet: "Query MySQL databases",
+        promptSnippet: "Query a MySQL database (SELECT, SHOW, DESCRIBE only)",
         promptGuidelines: [
             "Use query_mysql to view table data, schema, or descriptions on MySQL databases.",
             "Only read-only queries (SELECT, SHOW, DESCRIBE) are executed. Writing operations are blocked.",
-            "Omit connectionString to use the closest-dir default from db-config.json; pass an explicit value to override.",
         ],
         parameters: Type.Object({
             connectionString: Type.Optional(
@@ -345,10 +343,9 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
             readOnlyHint: true,
             idempotentHint: true,
         },
-        promptSnippet: "Check DB connectivity",
+        promptSnippet: "Check whether the default SQLite/MySQL connections are reachable",
         promptGuidelines: [
             "Use db_status when you need to check whether the closest-dir default databases are reachable, before running queries.",
-            "Omit dbPath/connectionString to use the closest-dir default from db-config.json; pass an explicit value to override.",
         ],
         parameters: Type.Object({
             driver: Type.Optional(
@@ -410,7 +407,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
             destructiveHint: true,
             idempotentHint: false,
         },
-        promptSnippet: "Save DB connection",
+        promptSnippet: "Save a DB connection for this directory",
         promptGuidelines: [
             "Use db_save only when the user asks to remember a database or when a verified working connection has no covering entry in db_status.",
             "db_save always probes first; unreachable credentials are rejected, never stored.",

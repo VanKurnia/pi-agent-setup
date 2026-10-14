@@ -337,11 +337,8 @@ export default function openCodeReview(pi: ExtensionAPI): void {
         description:
             "Run Open Code Review on workspace changes, a single commit, or a ref range. " +
             "Returns structured line-level findings as JSON. Use preview=true to inspect scope without LLM usage.",
-        promptSnippet: "Review code changes with Open Code Review",
+        promptSnippet: "Review a diff, commit, or branch range with Open Code Review",
         promptGuidelines: [
-            "Use ocr_review to get AI-powered code review on changes before committing",
-            "Supports reviewing current workspace (staged+unstaged+untracked), a single commit, or a branch range",
-            "Set preview=true to see which files would be reviewed without consuming LLM tokens",
             "Provide background context via the `background` parameter to focus the review on specific concerns",
             "After review: classify comments by priority — High (bugs, security, clear mistakes), Medium (reasonable concerns), Low (false positives, nits — discard silently)",
             "Only apply fixes when the user explicitly requested it (e.g. 'review and fix')",
@@ -366,8 +363,6 @@ export default function openCodeReview(pi: ExtensionAPI): void {
         promptSnippet: "Scan files with Open Code Review (full-file review, no diff needed)",
         promptGuidelines: [
             "Use ocr_scan for full-file review when there's no meaningful diff to review",
-            "Useful for auditing unfamiliar codebases or reviewing specific files",
-            "Set preview=true to see which files would be scanned without consuming LLM tokens",
             "After scan: classify comments by priority — High (bugs, security), Medium (reasonable concerns), Low (discard silently)",
         ],
         parameters: scanParams,
@@ -386,10 +381,7 @@ export default function openCodeReview(pi: ExtensionAPI): void {
             "Check the installed Open Code Review version and verify its configured LLM connection. " +
             "Use this to diagnose OCR setup issues before running reviews.",
         promptSnippet: "Check Open Code Review status and LLM connectivity",
-        promptGuidelines: [
-            "Use ocr_health to verify OCR is installed and the LLM is configured before running reviews",
-            "Run this first if ocr_review or ocr_scan fail",
-        ],
+        promptGuidelines: ["Run this first if ocr_review or ocr_scan fail"],
         parameters: healthParams,
         async execute(_toolCallId, params, signal, onUpdate, ctx) {
             const { ensureOcr, runOcr } = await loadEngine();

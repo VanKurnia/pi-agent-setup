@@ -322,13 +322,12 @@ export default function (pi: ExtensionAPI): void {
         description:
             "Search session history and earlier lines omitted, file write/edit content by text/regex. " +
             "Expand entries (#N); read one entry's text (#N:text) or a tool-call payload (#N:file, #N:<path>) with paging (:offset:limit, :full); aggregate touched files (mode:touched). " +
-            "Each drill-down window reports [chars X-Y of N] so the next window can be requested; :full returns the whole payload. " +
-            "Subagent children can pass source:'parent' to drill into the delegating parent session instead of their own.",
+            "Each drill-down window reports [chars X-Y of N] so the next window can be requested; :full returns the whole payload.",
         promptSnippet:
-            "Search session history + file write/edit content by text/regex. #N expand, #N:text / #N:file / #N:<path> drill-down with :offset:limit or :full, mode:file/touched. source:parent reads the delegating parent session (subagent children only).",
+            "Search your own earlier session history and file write/edit payloads by text or regex",
         promptGuidelines: [
-            "Use recall — literal text/regex search across session history and file write/edit content. #N expands an entry; #N:path with optional :offset:limit or :full drills down into file content; #N:text pages a message body; 12-char hex ids recover observation/reflection sources. mode:file for file-content-only, mode:touched for aggregated files-by-path. scope:'all' to search the full session. If no results, try fewer terms or a regex pattern.",
-            "Use recall — when a drill-down path matches multiple files, options are listed. Narrow with a more specific path substring. mode:file searches tool-call payloads (write/edit arguments) and message text.",
+            "Use recall — literal text/regex search across session history and file write/edit payloads. If nothing matches, retry with fewer terms or a different pattern.",
+            "Use recall — when a drill-down path matches several files, the options are listed; narrow it with a more specific path substring.",
             "Use recall — source:'parent' reads the delegating parent session's history + OM instead of your own. Only works inside a subagent child run; default stays 'current' so parent reads are always explicit, never implicit.",
         ],
         parameters: Type.Object({

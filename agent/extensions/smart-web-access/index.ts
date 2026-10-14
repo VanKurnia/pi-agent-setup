@@ -491,8 +491,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
             idempotentHint: true,
         },
         description: toolDescription,
-        promptSnippet:
-            "web_fetch(url, browser?, os?, headers?, maxChars?, timeoutMs?, format?, removeImages?, includeReplies?, proxy?, verbose?): fetch browser-fingerprinted readable web content with full agent metadata and a compact pi preview",
+        promptSnippet: "Fetch a URL and extract readable content (does not run JavaScript)",
         parameters: Type.Object({
             ...createBaseFetchToolParameterProperties(fetchDefaults),
             verbose: Type.Optional(

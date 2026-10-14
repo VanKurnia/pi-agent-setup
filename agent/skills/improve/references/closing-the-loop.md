@@ -2,7 +2,7 @@
 
 The advisor's job doesn't end at the plan. This file covers the three follow-through flows: dispatching an executor and reviewing its work (`execute`), keeping the plan backlog alive (`reconcile`), and publishing plans where work gets picked up (`--issues`).
 
-The founding rule survives unchanged: **the advisor never edits source code.** In `execute`, a `worker` subagent edits code; the advisor dispatches, reviews, and renders a verdict — like a tech lead who reviews, not authors, the code changes.
+The founding rule survives unchanged while the skill is active: **the advisor never edits source code.** In `execute`, a `worker` subagent edits code; the advisor dispatches, reviews, and renders a verdict — like a tech lead who reviews, not authors, the code changes. Once the skill's work is done and the conversation moves to unrelated work, the restriction lifts — a loaded skill file is never a permanent session constraint.
 
 ---
 
@@ -62,7 +62,7 @@ Review like a tech lead reviewing a PR against the spec — never fix anything y
 | **REVISE** | Fixable gaps | Dispatch a fresh `worker` subagent with the executor's report plus specific, actionable feedback ("criterion 3 fails: X; the error handling in `api.ts:90` swallows the error — use the Result pattern per the plan"). There is no follow-up messaging to a finished subagent — every revision round is a new dispatch with full plan text inlined. **Max 2 revision rounds**, then BLOCK. |
 | **BLOCK** | STOP condition hit, scope violated unrecoverably, or revisions exhausted | Mark BLOCKED in the index with the reason. Refine or rewrite the plan with what was learned. Tell the user what happened and what changed in the plan. |
 
-Edits land directly in your working tree (there is no sandbox) — run verification commands there. Verifying is reviewing, not implementing; the rule that matters is that *your own hands* never edit source files outside `.plans/`.
+Edits land directly in your working tree (there is no sandbox) — run verification commands there. Verifying is reviewing, not implementing; the rule that matters for the duration of this review is that *your own hands* never edit source files outside `.plans/`.
 
 ---
 

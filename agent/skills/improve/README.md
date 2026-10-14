@@ -29,7 +29,7 @@ The skill invokes via `/skill:improve ...` in pi. Plans it writes are plain mark
 /skill:improve branch                 audit only what the current branch changes
 /skill:improve next                   feature suggestions — where to take the project
 /skill:improve plan <description>     skip the audit, empirically verify evidence, spec one thing
-/skill:improve review-plan <file>     critique and tighten an existing plan (direct review for rigor & anti-bloat)
+/skill:improve review-plan <file>     tighten an existing plan via scout review (rigor & anti-bloat)
 /skill:improve execute <plan>         dispatch a cheaper executor, review its work
 /skill:improve reconcile              refresh the backlog: verify, unblock, retire
 /skill:improve ... --issues           also publish plans as GitHub issues
@@ -101,6 +101,8 @@ Plans aren't fire-and-forget:
 - **`--issues`** publishes plans as GitHub issues — same self-contained body, so any agent or human can pick them up where work already lives.
 
 ## Hard rules
+
+These bind the skill only while it is active — once its work is done and the conversation moves on, they lift.
 
 - Never modifies source code itself. The only writes go to `.plans/`; executors perform code edits in the shared working tree, and applying changes is always yours.
 - Never runs commands that mutate your working tree — read, search, and read-only analysis only.
