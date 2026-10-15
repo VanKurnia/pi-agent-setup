@@ -14,10 +14,10 @@ produced it — findings, upstream comparison, and the `subagents` blast radius 
 
 | File            | Role                                                                                                           |
 | --------------- | -------------------------------------------------------------------------------------------------------------- |
-| `index.ts`      | Trigger on `agent_settled`, the `session_before_compact` hook, the `/blackhole` command, and the `recall` tool |
+| `index.ts`      | Trigger on `agent_settled`, the `session_before_compact` hook, the `/blackhole-*` commands, the settings editor, and the `recall` tool |
 | `compaction.ts` | Summary composition (`compileVccSummary`), touched-file and commit extraction, token accounting                |
 | `om.ts`         | Pending store, observer/reflector/dropper workers, worker renderers, cleanup                                   |
-| `config.ts`     | Config load and the auto-compaction threshold                                                                  |
+| `config.ts`     | Config load, the merge write behind `/blackhole-model`, and the auto-compaction threshold                |
 
 Data flow: a settled agent run may exceed the threshold → `ctx.compact()` → the host asks
 `session_before_compact` → the hook composes OM + carried context + a transcript excerpt + files and
@@ -56,8 +56,21 @@ large pool cannot inflate every worker call.
 
 ## Commands
 
-- `/blackhole cleanup` — removes pending files whose session is gone (main, backup, and temp files).
-- `/blackhole memory` — prints the observation/reflection counts for the current session.
+- `/blackhole-prune` — removes pending files whose session is gone (main, backup, and temp files).
+- `/blackhole-memory` — prints the observation/reflection counts for the current session.
+- `/blackhole-model` — interactive editor for every key in `pi-blackhole-config.json`: the three model
+  slots (searchable picker over the installed models), enum settings as pickers, and numbers as prompts
+  (empty input unsets the key, restoring its default).
+
+The editor merges into the existing file, so hand-written keys (including `_comment` notes) survive. A
+model pick rewrites only its own slot's `provider`/`id` and drops the `_comment` that described the model
+it replaced. `thinking` is carried along untouched but is not offered: no blackhole code reads it.
+
+A model entry must name both a `provider` and an `id` to be usable; one missing either leaves the worker
+it configures off, as does an unset slot — `config.observerModel || config.model` has to resolve a model
+for the worker to run. The provider is never guessed, so the config file is the only place it comes from.
+
+Config is read from disk per worker turn and per compaction check, so an edit applies without `/reload`.
 
 ## Interfaces
 
@@ -121,6 +134,7 @@ node .script/test/blackhole/pending-state.test.mjs  # atomic write, backup, reco
 node .script/test/blackhole/worker-notice.test.mjs  # notices stay out of LLM context
 node .script/test/blackhole/worker-guard.test.mjs   # cooldown + timeout
 node .script/test/blackhole/recall-search.test.mjs  # regex + file payload search
+node .script/test/blackhole/settings.test.mjs       # /blackhole-model config writes
 node .script/test/subagent/snapshot.test.mjs        # cross-extension snapshot seam
 node .script/test/subagent/recall.test.mjs          # recall contract pins
 ```

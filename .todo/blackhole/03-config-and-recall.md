@@ -163,7 +163,7 @@ authoritative (the answer is `config.ts`).
 
 - `agent/pi-blackhole/` holds **309** `*-pending.json` ledgers against **283** session files;
   only 90 ledgers contain observations. Orphaned ledgers are only removed by the manual
-  `/blackhole cleanup` command (`index.ts:198-210` → `cleanupOrphanedPendingFiles`, `om.ts:495`).
+  `/blackhole-prune` command (`index.ts` → `cleanupOrphanedPendingFiles`, `om.ts`).
 - `pi-blackhole-cooldown.json` is dead weight (see M1); `824adf0e-…-pending.stale.json` is a
   leftover from an older write path.
 - Cleanup correctness itself is verified sound (`README.md`, "What is not broken").

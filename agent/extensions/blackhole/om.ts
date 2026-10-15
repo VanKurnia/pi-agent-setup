@@ -18,7 +18,12 @@ import {
     type ExtensionContext,
     type MessageRenderer,
 } from "@earendil-works/pi-coding-agent";
-import { getBlackholeDataDir, loadBlackholeConfig, type BlackholeConfig } from "./config.js";
+import {
+    getBlackholeDataDir,
+    isModelTarget,
+    loadBlackholeConfig,
+    type BlackholeConfig,
+} from "./config.js";
 
 type Theme = Parameters<MessageRenderer>[2];
 
@@ -458,13 +463,12 @@ async function runReflectorWorker(
     if (tokensSinceReflect < reflectThreshold) return;
 
     const modelTarget = config.reflectorModel || config.model;
-    if (!modelTarget?.id || !ctx.modelRegistry) return;
+    if (!isModelTarget(modelTarget) || !ctx.modelRegistry) return;
 
     const unreflected = state.observations.slice(-8);
     const prompt = `Synthesize these observations into 1 concise, durable high-level reflection:\n${unreflected.map((o) => `- ${o.text}`).join("\n")}`;
 
-    const model =
-        ctx.modelRegistry.find(modelTarget.provider || "9router", modelTarget.id) || ctx.model;
+    const model = ctx.modelRegistry.find(modelTarget.provider, modelTarget.id) || ctx.model;
     if (!model) return;
 
     const stream = ctx.modelRegistry.streamSimple(model, {
@@ -575,7 +579,7 @@ export async function runBackgroundConsolidation(
             ctx.modelRegistry
         ) {
             const modelTarget = config.observerModel || config.model;
-            if (modelTarget?.id) {
+            if (isModelTarget(modelTarget)) {
                 let startIndex = -1;
                 if (state.lastObservedEntryId) {
                     startIndex = entries.findIndex((e) => e.id === state.lastObservedEntryId);
@@ -597,8 +601,7 @@ export async function runBackgroundConsolidation(
                     });
                     const prompt = `You are a background observer compressing recent conversation into durable insights.\nCURRENT REFLECTIONS:\n${preamble.reflections.map((r) => `- ${r.text}`).join("\n") || "(None)"}\n\nCURRENT OBSERVATIONS:\n${preamble.observations.map((o) => `- ${o.text}`).join("\n") || "(None)"}\n\nNEW CONVERSATION CHUNK:\n${chunk.text}\n\nExtract 1-3 concise, factual bullet points of durable insights or user preferences from this chunk. Do not duplicate facts already in reflections or observations.`;
                     const model =
-                        ctx.modelRegistry.find(modelTarget.provider || "9router", modelTarget.id) ||
-                        ctx.model;
+                        ctx.modelRegistry.find(modelTarget.provider, modelTarget.id) || ctx.model;
 
                     if (model) {
                         const stream = ctx.modelRegistry.streamSimple(model, {
@@ -656,8 +659,6 @@ export async function runBackgroundConsolidation(
 }
 
 export function registerConsolidationHooks(pi: ExtensionAPI): void {
-    const config = loadBlackholeConfig();
-
     const renderWorkerMessage: MessageRenderer = (message, options, theme): Component => {
         const details = (message.details as { summary?: string; details?: string }) || {};
         let summaryLine = details.summary;
@@ -706,7 +707,9 @@ export function registerConsolidationHooks(pi: ExtensionAPI): void {
     pi.registerEntryRenderer("blackhole:compaction", renderWorkerEntry);
 
     pi.on("turn_end", async (_event, ctx) => {
-        void runBackgroundConsolidation(ctx, config, pi);
+        // Read per turn, not once at registration: an edit through
+        // /blackhole-model has to take effect without a reload.
+        void runBackgroundConsolidation(ctx, loadBlackholeConfig(), pi);
     });
 }
 

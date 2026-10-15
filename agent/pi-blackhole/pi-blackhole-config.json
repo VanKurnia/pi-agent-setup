@@ -6,8 +6,7 @@
   "dropperPressureThreshold": 0.7,
   "memory": true,
   "model": {
-    "_comment": "Base model (last fallback before session model): 9router session-compaction per @agent/models.json.",
-    "id": "session-compaction",
+    "id": "Dev",
     "provider": "9router",
     "thinking": "low"
   },

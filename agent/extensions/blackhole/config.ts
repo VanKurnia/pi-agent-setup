@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 
@@ -7,6 +7,17 @@ export interface ConfiguredModel {
     provider?: string;
     id?: string;
     thinking?: ModelThinkingLevel;
+}
+
+/**
+ * A model entry is usable only when it names both a provider and an id; missing
+ * either leaves the worker it configures off. The menu reports and the workers
+ * resolve through this one rule, so what the menu shows is what runs.
+ */
+export function isModelTarget(
+    model: ConfiguredModel | undefined,
+): model is ConfiguredModel & { provider: string; id: string } {
+    return Boolean(model?.provider && model.id);
 }
 
 export interface BlackholeConfig {
@@ -62,6 +73,35 @@ export function loadBlackholeConfig(): BlackholeConfig {
         return { ...DEFAULT_CONFIG, ...raw };
     } catch {
         return { ...DEFAULT_CONFIG };
+    }
+}
+
+/**
+ * Set one key in the on-disk config, leaving the rest of the file alone so
+ * hand-written notes and keys this extension does not define survive. An
+ * `undefined` value removes the key, restoring that setting's default.
+ *
+ * Returns false without writing when the existing file is unreadable, so a
+ * corrupt config is never replaced by the caller's partial view.
+ */
+export function setBlackholeConfigValue(key: keyof BlackholeConfig, value: unknown): boolean {
+    const configPath = getBlackholeConfigPath();
+    let raw: Record<string, unknown> = {};
+    if (existsSync(configPath)) {
+        try {
+            raw = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+        } catch {
+            return false;
+        }
+    }
+    try {
+        if (value === undefined) delete raw[key];
+        else raw[key] = value;
+        mkdirSync(dirname(configPath), { recursive: true });
+        writeFileSync(configPath, JSON.stringify(raw, null, 2), "utf8");
+        return true;
+    } catch {
+        return false;
     }
 }
 
