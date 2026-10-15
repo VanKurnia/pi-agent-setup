@@ -6,12 +6,12 @@ import { isQuerySafe } from "../shared/query-safe.js";
 import {
     formatRowsToMarkdown,
     getDbStatus,
-    getMysqlCreateConnection,
     maskConnection,
     probeConnection,
     readDbConfig,
     resolveClosestConnection,
     resolveConnectionValue,
+    type MysqlFactory,
     writeDbConfig,
 } from "../shared/db.js";
 import { normalizeDir } from "../shared/text-format.js";
@@ -20,6 +20,21 @@ import { createToolResultComponent } from "../shared/markdown.js";
 function resolveMaxRows(raw: number | undefined): number {
     if (raw === undefined || !Number.isFinite(raw)) return 200;
     return Math.min(1000, Math.max(1, Math.floor(raw)));
+}
+
+/**
+ * Resolve mysql2/promise's createConnection across ESM/CJS interop shapes.
+ * Lives in this extension because bare imports resolve from the importing
+ * file, and mysql2 is installed only in this package's node_modules.
+ */
+async function getMysqlCreateConnection(): Promise<MysqlFactory> {
+    const mysql = (await import("mysql2/promise")) as unknown as {
+        default?: { createConnection?: MysqlFactory };
+        createConnection?: MysqlFactory;
+    };
+    const create = mysql.default?.createConnection ?? mysql.createConnection;
+    if (!create) throw new Error("mysql2/promise does not export createConnection");
+    return create;
 }
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
@@ -379,7 +394,11 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
             }),
         }),
         async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-            const status = await getDbStatus(ctx?.cwd ?? process.cwd(), params.driver);
+            const status = await getDbStatus(
+                ctx?.cwd ?? process.cwd(),
+                params.driver,
+                getMysqlCreateConnection,
+            );
             const structuredContent = toJson({
                 cwd: status.cwd,
                 matches: status.matches,
@@ -521,7 +540,10 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
             }
             // 4. Mandatory probe gate: reuse probeConnection with the unsaved values.
             // No bypass flag — a failed probe rejects the save.
-            const probe = await probeConnection({ name, driver, directory, connection });
+            const probe = await probeConnection(
+                { name, driver, directory, connection },
+                getMysqlCreateConnection,
+            );
             if (!probe.ok) {
                 return fail(
                     `Probe failed for '${name}': ${probe.error ?? "unreachable"}. Not saved.`,
@@ -585,7 +607,11 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
                 ctx.ui.notify("Usage: /db-status [sqlite|mysql]", "error");
                 return;
             }
-            const status = await getDbStatus(ctx.cwd ?? process.cwd(), driver);
+            const status = await getDbStatus(
+                ctx.cwd ?? process.cwd(),
+                driver,
+                getMysqlCreateConnection,
+            );
             ctx.ui.notify(status.text, "info");
         },
     });

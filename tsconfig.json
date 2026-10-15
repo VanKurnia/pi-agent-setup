@@ -15,17 +15,6 @@
     "forceConsistentCasingInFileNames": true,
     "lib": ["ESNext", "DOM"],
     "types": ["node"],
-    // Extension-local runtime deps live in sibling node_modules trees that
-    // bundler resolution never walks up to (they are not ancestors of the
-    // importing files under agent/extensions/shared/). Map them explicitly so
-    // the checker sees the same modules the pi loader resolves at runtime.
-    // No runtime effect: this only guides tsc.
-    "paths": {
-      "mysql2/*": ["./agent/extensions/db-viewer/node_modules/mysql2/*"],
-      "linkedom": ["./agent/extensions/smart-web-access/node_modules/linkedom"],
-      "defuddle/*": ["./agent/extensions/smart-web-access/node_modules/defuddle/*"],
-      "wreq-js": ["./agent/extensions/smart-web-access/node_modules/wreq-js"]
-    },
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },

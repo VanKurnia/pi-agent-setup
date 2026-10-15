@@ -204,28 +204,23 @@ export interface MysqlConnection {
     end: () => Promise<void>;
 }
 
-type MysqlFactory = (uri: string) => Promise<MysqlConnection>;
-
 /**
- * Resolve mysql2/promise's createConnection across ESM/CJS interop shapes.
- * Shared by the query tool and the probe so the shape dance lives in one place.
+ * mysql2/promise's `createConnection`, provided by the extension that declares
+ * mysql2 (db-viewer): extension imports resolve from the importing file, and
+ * `shared/` lies outside every extension's node_modules tree. Probe helpers
+ * take it as a lazy `loadMysql` callback so mysql2 is imported on demand.
  */
-export async function getMysqlCreateConnection(): Promise<MysqlFactory> {
-    const mysql = (await import("mysql2/promise")) as unknown as {
-        default?: { createConnection?: MysqlFactory };
-        createConnection?: MysqlFactory;
-    };
-    const create = mysql.default?.createConnection ?? mysql.createConnection;
-    if (!create) throw new Error("mysql2/promise does not export createConnection");
-    return create;
-}
+export type MysqlFactory = (uri: string) => Promise<MysqlConnection>;
 
 /**
  * Single source of truth for connectivity checks (used by the `db_status`
  * tool and the `/db-status` command): `SELECT 1 AS ping` only, never writes.
  * Always resolves within ~5s; `error` is sanitized (no URI/password).
  */
-export async function probeConnection(entry: DbConnection): Promise<DbProbeResult> {
+export async function probeConnection(
+    entry: DbConnection,
+    loadMysql: () => Promise<MysqlFactory>,
+): Promise<DbProbeResult> {
     const start = Date.now();
     try {
         await withTimeout(
@@ -239,7 +234,7 @@ export async function probeConnection(entry: DbConnection): Promise<DbProbeResul
                         db.close();
                     }
                 } else {
-                    const create = await getMysqlCreateConnection();
+                    const create = await loadMysql();
                     const conn = await create(entry.connection);
                     try {
                         await conn.execute("SELECT 1 AS ping");
@@ -280,7 +275,11 @@ export interface DbStatus {
  * data returned structurally — so tool `structuredContent` and command
  * `notify` output can never drift apart. Never includes full URIs.
  */
-export async function getDbStatus(cwd: string, driver?: "sqlite" | "mysql"): Promise<DbStatus> {
+export async function getDbStatus(
+    cwd: string,
+    driver: "sqlite" | "mysql" | undefined,
+    loadMysql: () => Promise<MysqlFactory>,
+): Promise<DbStatus> {
     const drivers = driver ? [driver] : (["mysql", "sqlite"] as const);
     const config = readDbConfig();
     const connections = (config?.connections || []).map((c) => c.name);
@@ -292,7 +291,7 @@ export async function getDbStatus(cwd: string, driver?: "sqlite" | "mysql"): Pro
             skipped.push(d);
             continue;
         }
-        const probe = await probeConnection(match);
+        const probe = await probeConnection(match, loadMysql);
         matches.push({
             driver: match.driver,
             name: match.name,
