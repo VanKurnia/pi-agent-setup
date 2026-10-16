@@ -1,5 +1,5 @@
 /**
- * ext-mgr — toggle-only extension manager.
+ * ext-mgr — extension manager with named presets.
  *
  * Consolidates discovery, plugin settings management, and interactive pickers
  * into a single module loaded on-demand when `/extensions` is executed.
@@ -15,7 +15,7 @@ import {
     type Theme,
 } from "@earendil-works/pi-coding-agent";
 import type { SelectItem } from "@earendil-works/pi-tui";
-import { showPicker } from "../shared/picker.js";
+import { promptForName, showPicker } from "../shared/picker.js";
 
 // =============================================================================
 // Constants & Types
@@ -470,17 +470,8 @@ async function discoverInRoot(
 }
 
 async function discoverExtensions(cwd: string): Promise<ExtensionEntry[]> {
-    const roots: RootConfig[] = [
-        {
-            root: join(homedir(), ".pi", "agent", "extensions"),
-            scope: "global",
-            label: "~/.pi/agent/extensions",
-        },
-        { root: join(cwd, ".pi", "extensions"), scope: "project", label: ".pi/extensions" },
-    ];
-
     const all: ExtensionEntry[] = [];
-    for (const root of roots) {
+    for (const root of extensionRoots(cwd)) {
         all.push(...(await discoverInRoot(root.root, root.scope, root.label)));
     }
 
@@ -569,20 +560,162 @@ async function writePackages(settingsPath: string, packages: PackageSetting[]): 
     }
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     parsed.packages = packages;
-    const body = JSON.stringify(parsed, null, 2);
-    const content = raw.endsWith("\n") ? `${body}\n` : body;
+    await atomicWriteJson(settingsPath, parsed, ".settings");
+}
 
-    const tmpPath = join(
-        dirname(settingsPath),
-        `.settings-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`,
+function extensionRoots(cwd: string): RootConfig[] {
+    return [
+        {
+            root: join(homedir(), ".pi", "agent", "extensions"),
+            scope: "global",
+            label: "~/.pi/agent/extensions",
+        },
+        { root: join(cwd, ".pi", "extensions"), scope: "project", label: ".pi/extensions" },
+    ];
+}
+
+async function atomicWriteJson(filePath: string, data: unknown, tmpPrefix: string): Promise<void> {
+    const body = JSON.stringify(data, null, 2);
+    const tmp = join(
+        dirname(filePath),
+        `${tmpPrefix}-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`,
     );
     try {
-        await writeFile(tmpPath, content, "utf8");
-        await rename(tmpPath, settingsPath);
+        await writeFile(tmp, `${body}\n`, "utf8");
+        await rename(tmp, filePath);
     } catch (error) {
-        await unlink(tmpPath).catch(() => undefined);
+        await unlink(tmp).catch(() => undefined);
         throw error;
     }
+}
+
+// =============================================================================
+// Presets
+// =============================================================================
+
+const PRESET_NAME_RE = /^[a-z0-9-]{1,32}$/;
+
+export function isValidPresetName(name: string): boolean {
+    return PRESET_NAME_RE.test(name);
+}
+
+function isPresetSnapshot(value: unknown): value is PresetSnapshot {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const snap = value as { extensions?: unknown; plugins?: unknown };
+    if (!snap.extensions || typeof snap.extensions !== "object" || Array.isArray(snap.extensions)) {
+        return false;
+    }
+    for (const state of Object.values(snap.extensions as Record<string, unknown>)) {
+        if (state !== "enabled" && state !== "disabled") return false;
+    }
+    return Array.isArray(snap.plugins);
+}
+
+interface PresetSnapshot {
+    savedAt: string;
+    cwd: string;
+    extensions: Record<string, State>;
+    plugins: PackageSetting[];
+}
+
+interface PresetFile {
+    version: 1;
+    presets: Record<string, PresetSnapshot>;
+}
+
+export function presetStorePath(): string {
+    return join(getAgentDir(), "ext-presets.json");
+}
+
+export async function readPresetFile(): Promise<PresetFile> {
+    try {
+        const parsed = JSON.parse(await readFile(presetStorePath(), "utf8")) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            const file = parsed as { version?: unknown; presets?: unknown };
+            if (file.version !== 1) return { version: 1, presets: {} };
+            const rec = file.presets;
+            if (rec && typeof rec === "object" && !Array.isArray(rec)) {
+                const clean: PresetFile["presets"] = {};
+                for (const [name, snap] of Object.entries(rec as Record<string, unknown>)) {
+                    if (isValidPresetName(name) && isPresetSnapshot(snap)) clean[name] = snap;
+                }
+                return { version: 1, presets: clean };
+            }
+        }
+    } catch {
+        // missing/corrupt reads as empty; never throw here
+    }
+    return { version: 1, presets: {} };
+}
+
+export async function writePresetFile(data: PresetFile): Promise<void> {
+    await atomicWriteJson(presetStorePath(), { version: 1, presets: data.presets }, ".ext-presets");
+}
+
+export function presetKeyFor(scope: Scope, root: string, activePath: string): string {
+    return `${scope}/${normalizeRelativePath(relative(root, activePath))}`;
+}
+
+export function buildPresetSnapshot(
+    entries: readonly ExtensionEntry[],
+    cwd: string,
+    packages: readonly PackageSetting[],
+): PresetSnapshot {
+    const extensions: Record<string, State> = {};
+    for (const root of extensionRoots(cwd)) {
+        for (const entry of entries) {
+            if (entry.scope !== root.scope) continue;
+            extensions[presetKeyFor(entry.scope, root.root, entry.activePath)] = entry.state;
+        }
+    }
+    return { savedAt: new Date().toISOString(), cwd, extensions, plugins: [...packages] };
+}
+
+export interface PresetApplyPlan {
+    toEnable: ExtensionEntry[];
+    toDisable: ExtensionEntry[];
+    skippedExt: string[];
+    skippedPlugins: string[];
+    pluginsChanged: boolean;
+}
+
+export function planPresetApply(
+    snapshot: PresetSnapshot,
+    cwd: string,
+    entries: readonly ExtensionEntry[],
+    packages: readonly PackageSetting[],
+): PresetApplyPlan {
+    const byKey = new Map<string, ExtensionEntry>();
+    for (const root of extensionRoots(cwd)) {
+        for (const entry of entries) {
+            if (entry.scope !== root.scope) continue;
+            byKey.set(presetKeyFor(entry.scope, root.root, entry.activePath), entry);
+        }
+    }
+    const toEnable: ExtensionEntry[] = [];
+    const toDisable: ExtensionEntry[] = [];
+    const skippedExt: string[] = [];
+    for (const [key, state] of Object.entries(snapshot.extensions)) {
+        if (key.startsWith("project/") && snapshot.cwd !== cwd) {
+            skippedExt.push(key);
+            continue;
+        }
+        const entry = byKey.get(key);
+        if (!entry) {
+            skippedExt.push(key);
+            continue;
+        }
+        if (entry.state !== state) {
+            (state === "enabled" ? toEnable : toDisable).push(entry);
+        }
+    }
+    const liveSources = new Set(packages.map((p) => packageSource(p)));
+    const skippedPlugins: string[] = [];
+    for (const plugin of snapshot.plugins) {
+        if (!liveSources.has(packageSource(plugin))) skippedPlugins.push(packageSource(plugin));
+    }
+    const pluginsChanged = JSON.stringify(snapshot.plugins) !== JSON.stringify([...packages]);
+    return { toEnable, toDisable, skippedExt, skippedPlugins, pluginsChanged };
 }
 
 // =============================================================================
@@ -759,10 +892,147 @@ async function showPluginPicker(ctx: ExtensionCommandContext): Promise<boolean> 
     );
 }
 
+async function applyPreset(ctx: ExtensionCommandContext, name: string): Promise<boolean> {
+    const entries = await discoverExtensions(ctx.cwd);
+    const path = settingsPath();
+    const packages = await readPackages(path);
+    const stored = await readPresetFile();
+    const snapshot = stored.presets[name];
+    if (!snapshot) {
+        ctx.ui.notify(`Preset "${name}" not found`, "error");
+        return false;
+    }
+    const plan = planPresetApply(snapshot, ctx.cwd, entries, packages);
+    const changed: string[] = [];
+    let applied = 0;
+    const total = plan.toDisable.length + plan.toEnable.length;
+    const jobs: Array<{ entry: ExtensionEntry; target: State }> = [
+        ...plan.toDisable.map((entry) => ({ entry, target: "disabled" as const })),
+        ...plan.toEnable.map((entry) => ({ entry, target: "enabled" as const })),
+    ];
+    for (const { entry, target } of jobs) {
+        const result = await setExtensionState(entry, target);
+        if (!result.ok) {
+            const verb = target === "enabled" ? "enable" : "disable";
+            ctx.ui.notify(
+                `Failed to ${verb} ${shortName(entry)}: ${result.error}. ${applied} of ${total} applied — re-run to retry.`,
+                "error",
+            );
+            return false;
+        }
+        entry.state = target;
+        changed.push(`${shortName(entry)} → ${target}`);
+        applied++;
+    }
+    if (plan.pluginsChanged) {
+        try {
+            await writePackages(path, snapshot.plugins);
+        } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            ctx.ui.notify(`Failed to write ${path}: ${detail}`, "error");
+            return false;
+        }
+        changed.push("plugins");
+    }
+    const skipped = [...plan.skippedExt, ...plan.skippedPlugins];
+    ctx.ui.notify(
+        `Restored "${name}": ${applied} extensions toggled, plugins ${plan.pluginsChanged ? "updated" : "unchanged"}${skipped.length > 0 ? ` — skipped ${skipped.length}: ${skipped.join(", ")}` : "."}`,
+        "info",
+    );
+    if (!ctx.hasUI) {
+        ctx.ui.notify(changed.length > 0 ? manualHint(changed) : "No changes to apply.", "info");
+        return false;
+    }
+    return offerReload(ctx, changed);
+}
+
+async function showPresetPicker(ctx: ExtensionCommandContext): Promise<boolean> {
+    const stored = await readPresetFile();
+    const picked = await showPicker(
+        ctx,
+        "Presets",
+        "enter loads • type to search • esc exits",
+        (theme) => [
+            ...Object.entries(stored.presets).map(([presetName, snap]) => {
+                return {
+                    value: presetName,
+                    label: `${theme.bold(presetName)} ${theme.fg("dim", new Date(snap.savedAt).toLocaleDateString())}`,
+                    description: `${Object.keys(snap.extensions).length} extensions · ${snap.plugins.length} plugins`,
+                };
+            }),
+            {
+                value: "__save__",
+                label: "Save current state as…",
+                description: "snapshot toggles into a named preset",
+            },
+        ],
+    );
+    if (picked === null) return false;
+    if (picked === "__save__") {
+        const answer = await promptForName(ctx, "Preset name");
+        if (answer == null) return false;
+        if (!isValidPresetName(answer)) {
+            ctx.ui.notify("Use 1-32 chars: a-z 0-9 -", "error");
+            return false;
+        }
+        const current = await readPresetFile();
+        if (current.presets[answer]) {
+            const overwrite = await ctx.ui.confirm(
+                "Overwrite preset?",
+                `"${answer}" exists — overwrite with current state?`,
+            );
+            if (!overwrite) return false;
+        }
+        const entries = await discoverExtensions(ctx.cwd);
+        const packages = await readPackages(settingsPath());
+        const snapshot = buildPresetSnapshot(entries, ctx.cwd, packages);
+        current.presets[answer] = snapshot;
+        await writePresetFile(current);
+        ctx.ui.notify(
+            `Preset "${answer}" saved: ` +
+                `${Object.keys(snapshot.extensions).length} extensions · ${snapshot.plugins.length} plugins.`,
+            "info",
+        );
+        return false;
+    }
+    const action = await showPicker(ctx, `Preset "${picked}"`, "enter select • esc back", () => [
+        { value: "load", label: "Load", description: `restore "${picked}" now` },
+        {
+            value: "overwrite",
+            label: "Overwrite with current",
+            description: "replace snapshot",
+        },
+        { value: "delete", label: "Delete", description: "remove preset (confirm)" },
+    ]);
+    if (action === null) return false;
+    if (action === "load") return applyPreset(ctx, picked);
+    if (action === "delete") {
+        const ok = await ctx.ui.confirm("Delete preset?", `Remove "${picked}" permanently?`);
+        if (!ok) return false;
+        const current = await readPresetFile();
+        delete current.presets[picked];
+        await writePresetFile(current);
+        ctx.ui.notify(`Preset "${picked}" deleted.`, "info");
+        return false;
+    }
+    const entries = await discoverExtensions(ctx.cwd);
+    const packages = await readPackages(settingsPath());
+    const current = await readPresetFile();
+    if (!current.presets[picked]) {
+        ctx.ui.notify(`Preset "${picked}" not found`, "error");
+        return false;
+    }
+    current.presets[picked] = buildPresetSnapshot(entries, ctx.cwd, packages);
+    await writePresetFile(current);
+    ctx.ui.notify(`Preset "${picked}" overwritten with current state.`, "info");
+    return false;
+}
+
 async function showManager(ctx: ExtensionCommandContext): Promise<void> {
     for (;;) {
         const localCount = (await discoverExtensions(ctx.cwd)).length;
         const pluginCount = (await readPackages(settingsPath())).length;
+        const presetCount = Object.keys((await readPresetFile()).presets).length;
 
         const picked = await showPicker(ctx, "Extensions manager", MENU_HINT, (theme) => [
             {
@@ -775,11 +1045,20 @@ async function showManager(ctx: ExtensionCommandContext): Promise<void> {
                 label: `${theme.bold("Plugins")} ${theme.fg("dim", `${pluginCount} configured`)}`,
                 description: "packages in agent/settings.json — on/off via extensions: []",
             },
+            {
+                value: "presets",
+                label: `${theme.bold("Presets")} ${theme.fg("dim", `${presetCount} saved`)}`,
+                description: "named snapshots — save current state or restore one",
+            },
         ]);
 
         if (picked === null) return;
         const reloaded =
-            picked === "extensions" ? await showExtensionPicker(ctx) : await showPluginPicker(ctx);
+            picked === "extensions"
+                ? await showExtensionPicker(ctx)
+                : picked === "presets"
+                  ? await showPresetPicker(ctx)
+                  : await showPluginPicker(ctx);
         if (reloaded) return;
     }
 }
@@ -801,26 +1080,113 @@ export async function handleExtensionsCommand(
     args: string,
     ctx: ExtensionCommandContext,
 ): Promise<void> {
-    const sub = args.trim().toLowerCase();
+    const [verbRaw, ...rest] = args.trim().split(/\s+/);
+    const verb = (verbRaw ?? "").toLowerCase();
+    const restArg = rest.join(" ").trim();
+    const isPresetVerb = verb === "preset" || verb === "presets";
 
-    if (!ctx.hasUI || sub === "list") {
+    if (isPresetVerb) {
+        if (restArg === "") {
+            if (!ctx.hasUI) {
+                const stored = await readPresetFile();
+                const names = Object.keys(stored.presets);
+                ctx.ui.notify(
+                    names.length > 0
+                        ? `${names.length} presets: ${names.join(", ")}`
+                        : "No presets saved.",
+                    "info",
+                );
+                return;
+            }
+            await showPresetPicker(ctx);
+            return;
+        }
+        const [subVerbRaw, ...nameRest] = restArg.split(/\s+/);
+        const subVerb = (subVerbRaw ?? "").toLowerCase();
+        const name = nameRest.join(" ").trim();
+        if (subVerb === "list") {
+            const stored = await readPresetFile();
+            const names = Object.keys(stored.presets);
+            ctx.ui.notify(
+                names.length > 0
+                    ? `${names.length} presets: ${names.join(", ")}`
+                    : "No presets saved.",
+                "info",
+            );
+            return;
+        }
+        if (subVerb === "save") {
+            if (!name) {
+                ctx.ui.notify(
+                    "Usage: /extensions preset save <name> (1-32 chars: a-z 0-9 -)",
+                    "warning",
+                );
+                return;
+            }
+            if (!isValidPresetName(name)) {
+                ctx.ui.notify("Use 1-32 chars: a-z 0-9 -", "error");
+                return;
+            }
+            const stored = await readPresetFile();
+            if (stored.presets[name]) {
+                ctx.ui.notify(
+                    `"${name}" exists — delete it first or re-save from the UI.`,
+                    "warning",
+                );
+                return;
+            }
+            const entries = await discoverExtensions(ctx.cwd);
+            const packages = await readPackages(settingsPath());
+            stored.presets[name] = buildPresetSnapshot(entries, ctx.cwd, packages);
+            await writePresetFile(stored);
+            ctx.ui.notify(`Preset "${name}" saved.`, "info");
+            return;
+        }
+        if (subVerb === "load") {
+            if (!name) {
+                ctx.ui.notify("Usage: /extensions preset load <name>", "warning");
+                return;
+            }
+            await applyPreset(ctx, name);
+            return;
+        }
+        if (subVerb === "delete") {
+            if (ctx.hasUI) {
+                const current = await readPresetFile();
+                if (!current.presets[name]) {
+                    ctx.ui.notify(`Preset "${name}" not found`, "error");
+                    return;
+                }
+                const ok = await ctx.ui.confirm("Delete preset?", `Remove "${name}" permanently?`);
+                if (!ok) return;
+                delete current.presets[name];
+                await writePresetFile(current);
+                ctx.ui.notify(`Preset "${name}" deleted.`, "info");
+                return;
+            }
+            ctx.ui.notify("Deleting presets requires UI — run /extensions presets.", "warning");
+            return;
+        }
+    }
+
+    if (!ctx.hasUI || verb === "list") {
         ctx.ui.notify(await formatListing(ctx), "info");
         return;
     }
-    if (sub === "") {
+    if (verb === "") {
         await showManager(ctx);
         return;
     }
-    if (sub === "extensions") {
+    if (verb === "extensions") {
         await showExtensionPicker(ctx);
         return;
     }
-    if (sub === "plugins") {
+    if (verb === "plugins") {
         await showPluginPicker(ctx);
         return;
     }
     ctx.ui.notify(
-        `Unknown subcommand "${sub}". Use /extensions, /extensions list, /extensions extensions or /extensions plugins.`,
+        `Unknown subcommand "${verb}". Use /extensions, /extensions list, /extensions extensions, /extensions plugins or /extensions presets.`,
         "warning",
     );
 }

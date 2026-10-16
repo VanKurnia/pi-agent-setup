@@ -241,8 +241,8 @@ export function formatToolCall(
     }
 
     switch (toolName) {
-        case "bash":
-            return themeFg("muted", "$ ") + themeFg("toolOutput", previewText);
+        case "powershell":
+            return themeFg("muted", "PS> ") + themeFg("toolOutput", previewText);
         case "read":
             return themeFg("muted", "read ") + themeFg("accent", previewText);
         case "write":
@@ -268,7 +268,7 @@ export function formatToolCall(
  */
 function extractPreviewText(toolName: string, args: Record<string, unknown>): string {
     switch (toolName) {
-        case "bash":
+        case "powershell":
             return String(args.command || args.cmd || "...");
         case "read": {
             const filePath = String(args.file_path || args.path || "...");

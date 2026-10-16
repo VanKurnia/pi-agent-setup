@@ -1,5 +1,8 @@
 /** Strict allowlist: only permit SQL statements whose first keyword is read-only. */
 export function isQuerySafe(sql: string): { safe: boolean; reason?: string } {
+    if (typeof sql !== "string") {
+        return { safe: false, reason: "Query must be a string" };
+    }
     const trimmed = sql.trim();
     if (!trimmed) {
         return { safe: false, reason: "Query is empty" };

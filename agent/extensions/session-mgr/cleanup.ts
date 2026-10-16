@@ -105,6 +105,43 @@ export function saveCleanupSettings(settings: Required<CleanupSettings>): void {
 }
 
 // =============================================================================
+// Settings: Share destination (pi v1.3.0 `sessionShareDestination`)
+// =============================================================================
+
+const SHARE_DESTINATIONS = ["auto", "gist", "radius"] as const;
+
+export type ShareDestination = (typeof SHARE_DESTINATIONS)[number];
+
+function hostSettingsPath(): string {
+    return join(getAgentDir(), "settings.json");
+}
+
+export function loadShareDestination(): ShareDestination {
+    try {
+        const parsed = JSON.parse(readFileSync(hostSettingsPath(), "utf8")) as {
+            sessionShareDestination?: unknown;
+        };
+        const v = parsed.sessionShareDestination;
+        if (v === "auto" || v === "gist" || v === "radius") return v;
+    } catch {
+        // missing/corrupt/unknown reads as default; never throw here
+    }
+    return "auto";
+}
+
+export function saveShareDestination(value: ShareDestination): void {
+    const path = hostSettingsPath();
+    let parsed: Record<string, unknown> = {};
+    try {
+        parsed = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    } catch {
+        // missing/corrupt host file: single key added to an empty object
+    }
+    parsed.sessionShareDestination = value;
+    writeFileSync(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+}
+
+// =============================================================================
 // Trash Handling
 // =============================================================================
 
@@ -468,12 +505,49 @@ async function cleanNow(
     }
 }
 
+async function editShareDestination(
+    ctx: ExtensionCommandContext,
+    current: ShareDestination,
+): Promise<void> {
+    const picked = await showPicker(
+        ctx,
+        "Share destination:",
+        "where /share uploads (auto = Radius when authed, else gist)",
+        () => [
+            {
+                value: "auto",
+                label: "auto",
+                description: "Radius when authenticated, else GitHub gist",
+            },
+            { value: "gist", label: "gist", description: "always a GitHub gist" },
+            {
+                value: "radius",
+                label: "radius",
+                description: "requires Radius auth, never falls back",
+            },
+        ],
+    );
+    if (!picked || picked === current) return;
+    if (picked !== "auto" && picked !== "gist" && picked !== "radius") return;
+    try {
+        saveShareDestination(picked);
+    } catch (error) {
+        ctx.ui.notify(
+            `Failed to save share destination: ${error instanceof Error ? error.message : String(error)}`,
+            "error",
+        );
+        return;
+    }
+    ctx.ui.notify(`Share destination set to ${picked}.`, "info");
+}
+
 export async function handleSessionMgr(
     agentDir: string,
     ctx: ExtensionCommandContext,
 ): Promise<void> {
     for (;;) {
         const thresholdDays = loadCleanupSettings().autoCleanThresholdDays;
+        const shareDest = loadShareDestination();
         const candidateCount = eligibleSessions(agentDir, ctx, thresholdDays).length;
 
         const picked = await showPicker(
@@ -487,6 +561,11 @@ export async function handleSessionMgr(
                     description: `current: ${thresholdDays}d (0 = off)`,
                 },
                 {
+                    value: "share-dest",
+                    label: "Share destination…",
+                    description: `current: ${shareDest} (where /share uploads)`,
+                },
+                {
                     value: "clean-now",
                     label: "Clean now",
                     description: `browse ${candidateCount} sessions ${thresholdLabel(thresholdDays)}`,
@@ -495,6 +574,10 @@ export async function handleSessionMgr(
         );
         if (picked === "threshold") {
             await editThreshold(ctx, thresholdDays);
+            continue;
+        }
+        if (picked === "share-dest") {
+            await editShareDestination(ctx, shareDest);
             continue;
         }
         if (picked === "clean-now") {

@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "presets": {
+    "minimal": {
+      "savedAt": "2026-10-16T07:22:40.497Z",
+      "cwd": "C:\\Users\\Ivan\\.pi",
+      "extensions": {
+        "global/ask-user-question.ts": "enabled",
+        "global/bash-guard/index.ts": "disabled",
+        "global/blackhole/index.ts": "enabled",
+        "global/browser-tools/index.ts": "disabled",
+        "global/custom-header.ts": "enabled",
+        "global/db-viewer/index.ts": "enabled",
+        "global/ext-mgr/index.ts": "enabled",
+        "global/filechanges/index.ts": "enabled",
+        "global/herdr-agent-state.ts": "enabled",
+        "global/load-env.ts": "enabled",
+        "global/ninerouter.ts": "enabled",
+        "global/obsidian-suite.ts": "disabled",
+        "global/open-code-review/index.ts": "enabled",
+        "global/pi-cbm/src/index.ts": "disabled",
+        "global/pi-speeed/index.ts": "enabled",
+        "global/pi-tool-display/index.ts": "enabled",
+        "global/plan-artifact/index.ts": "disabled",
+        "global/session-mgr/index.ts": "enabled",
+        "global/smart-web-access/index.ts": "enabled",
+        "global/subagents/index.ts": "enabled",
+        "global/update-setup.ts": "disabled"
+      },
+      "plugins": [
+        "npm:@ff-labs/pi-fff",
+        {
+          "source": "npm:pi-x-ide",
+          "extensions": []
+        },
+        "npm:pi-zentui"
+      ]
+    },
+    "full": {
+      "savedAt": "2026-10-16T07:23:10.281Z",
+      "cwd": "C:\\Users\\Ivan\\.pi",
+      "extensions": {
+        "global/ask-user-question.ts": "enabled",
+        "global/bash-guard/index.ts": "enabled",
+        "global/blackhole/index.ts": "enabled",
+        "global/browser-tools/index.ts": "enabled",
+        "global/custom-header.ts": "enabled",
+        "global/db-viewer/index.ts": "enabled",
+        "global/ext-mgr/index.ts": "enabled",
+        "global/filechanges/index.ts": "enabled",
+        "global/herdr-agent-state.ts": "enabled",
+        "global/load-env.ts": "enabled",
+        "global/ninerouter.ts": "enabled",
+        "global/obsidian-suite.ts": "enabled",
+        "global/open-code-review/index.ts": "enabled",
+        "global/pi-cbm/src/index.ts": "enabled",
+        "global/pi-speeed/index.ts": "enabled",
+        "global/pi-tool-display/index.ts": "enabled",
+        "global/plan-artifact/index.ts": "enabled",
+        "global/session-mgr/index.ts": "enabled",
+        "global/smart-web-access/index.ts": "enabled",
+        "global/subagents/index.ts": "enabled",
+        "global/update-setup.ts": "enabled"
+      },
+      "plugins": [
+        "npm:@ff-labs/pi-fff",
+        "npm:pi-x-ide",
+        "npm:pi-zentui"
+      ]
+    }
+  }
+}

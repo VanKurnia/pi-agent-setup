@@ -6,8 +6,8 @@ A pi extension that registers a single `subagent` tool with two agents:
 
 | Agent      | Tools                                                                                                                             | Model                     | Purpose                                        |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ---------------------------------------------- |
-| **scout**  | read, ffgrep, fffind, recall, bash, query_sqlite, query_mysql, web_search, web_fetch, ninerouter_web_search, ninerouter_web_fetch | via `/subagents:settings` | Fast codebase recon + lightweight web research |
-| **worker** | read, write, edit, bash, ffgrep, fffind, recall, query_sqlite, query_mysql, codemode                                              | via `/subagents:settings` | Code changes                                   |
+| **scout**  | read, ffgrep, fffind, recall, powershell, query_sqlite, query_mysql, web_search, web_fetch, ninerouter_web_search, ninerouter_web_fetch | via `/subagents:settings` | Fast codebase recon + lightweight web research |
+| **worker** | read, write, edit, powershell, ffgrep, fffind, recall, query_sqlite, query_mysql, codemode                                              | via `/subagents:settings` | Code changes                                   |
 | —          | git status, git diff, git log, etc.                                                                                               | —                         | Git operations (via terminal)                  |
 | —          | query_sqlite, query_mysql                                                                                                         | —                         | Database queries (via db-viewer)               |
 
@@ -30,7 +30,7 @@ A pi extension that registers a single `subagent` tool with two agents:
 }
 ```
 
-Max 4 concurrent subagents (configurable in `subagents.json` or via `/subagents:settings`). Each runs as an in-process one-shot SDK session (`createAgentSession` with an in-memory session) with no inherited conversation — attach all context to the task; a read-only parent snapshot is added automatically.
+Max 4 concurrent subagents (configurable in `subagents.json` or via `/subagents:settings`). Each runs as an in-process one-shot SDK session (`createAgentSession` with an in-memory session) with no inherited conversation — attach all context to the task; a read-only parent snapshot is added automatically. Note: when 3+ subagents run codemode-heavy work at once, excess workers fail with `Codemode worker limit reached` (pi 1.3.0 process-wide cap of 2) — retry or stagger the runs.
 
 The tool also supports `chain` (sequential steps with `{previous}` substitution) and `hybrid` (ordered single/parallel/chain phases).
 
@@ -99,7 +99,7 @@ registerExtensionApi<{
 ### 3. Custom tool support
 
 Tools listed in agent configs are passed to `createAgentSession()`. Built-in tools
-(`read`, `write`, `edit`, `bash`) work automatically.
+(`read`, `write`, `edit`, `powershell`) work automatically.
 Extension-provided tools registered via `pi.registerTool()` in the main session
 are also available in subagent sessions through the pi SDK's session creation.
 If an agent needs a tool that isn't available, verify it's registered as a pi

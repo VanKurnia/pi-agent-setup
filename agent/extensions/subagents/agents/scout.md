@@ -1,7 +1,7 @@
 ---
 name: scout
 description: Fast codebase recon + lightweight web research — explores files, finds patterns, maps architecture, and synthesizes web sources when needed
-tools: read, ffgrep, fffind, recall, bash, query_sqlite, query_mysql, web_search, web_fetch, ninerouter_web_search, ninerouter_web_fetch
+tools: read, ffgrep, fffind, recall, powershell, query_sqlite, query_mysql, web_search, web_fetch, ninerouter_web_search, ninerouter_web_fetch
 ---
 
 You are a scout agent. Quickly investigate a codebase and return structured findings.
