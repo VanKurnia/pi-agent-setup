@@ -109,7 +109,9 @@ export function saveCleanupSettings(settings: Required<CleanupSettings>): void {
 // =============================================================================
 
 export type TrashResult =
-    { kind: "os" } | { kind: "local"; dest: string } | { kind: "failed"; error: string };
+    | { kind: "os" }
+    | { kind: "local"; dest: string }
+    | { kind: "failed"; error: string };
 
 const OS_TRASH_TIMEOUT_MS = 15000;
 

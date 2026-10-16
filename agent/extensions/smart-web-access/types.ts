@@ -26,7 +26,13 @@ export type OutputFormat = "markdown" | "html" | "text" | "json" | "raw";
 export type FingerprintOs = "windows" | "macos" | "linux" | "android" | "ios";
 export type IncludeRepliesOption = boolean | "extractors";
 export type BatchFetchItemStatus =
-    "queued" | "connecting" | "waiting" | "loading" | "processing" | "done" | "error";
+    | "queued"
+    | "connecting"
+    | "waiting"
+    | "loading"
+    | "processing"
+    | "done"
+    | "error";
 
 export interface FetchOptions {
     url: string;
@@ -84,7 +90,12 @@ export type FetchErrorCode =
     | "too_many_redirects";
 
 export type FetchErrorPhase =
-    "validation" | "connecting" | "waiting" | "loading" | "processing" | "unknown";
+    | "validation"
+    | "connecting"
+    | "waiting"
+    | "loading"
+    | "processing"
+    | "unknown";
 
 export interface FetchError {
     error: string;

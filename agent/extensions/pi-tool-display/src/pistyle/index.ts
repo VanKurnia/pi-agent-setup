@@ -799,7 +799,8 @@ function formatDiffStatsPair(theme: BoxTheme, additions: number, removals: numbe
  *  published (pending call / error result). */
 function diffHeaderStatsSuffix(theme: BoxTheme, context: BoxedToolContext): string {
     const stats = context.state[DIFF_HEADER_STATS_KEY] as
-        { additions?: unknown; removals?: unknown } | undefined;
+        | { additions?: unknown; removals?: unknown }
+        | undefined;
     if (!stats || typeof stats !== "object") return "";
     const additions = Number(stats.additions);
     const removals = Number(stats.removals);
@@ -6172,9 +6173,7 @@ function renderQuickEditResult(
         return renderBoxedToolResult(
             theme,
             () => [`${theme.fg("dim", "↳")} ${theme.fg("muted", fallback)}`],
-            {
-                ...(footer ? { footerLines: [footer] } : {}),
-            },
+            footer ? { footerLines: [footer] } : {},
         );
     }
     const expanded = options.expanded;

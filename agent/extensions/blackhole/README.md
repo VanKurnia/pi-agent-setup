@@ -12,12 +12,12 @@ produced it — findings, upstream comparison, and the `subagents` blast radius 
 
 ## Architecture
 
-| File            | Role                                                                                                           |
-| --------------- | -------------------------------------------------------------------------------------------------------------- |
+| File            | Role                                                                                                                                   |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `index.ts`      | Trigger on `agent_settled`, the `session_before_compact` hook, the `/blackhole-*` commands, the settings editor, and the `recall` tool |
-| `compaction.ts` | Summary composition (`compileVccSummary`), touched-file and commit extraction, token accounting                |
-| `om.ts`         | Pending store, observer/reflector/dropper workers, worker renderers, cleanup                                   |
-| `config.ts`     | Config load, the merge write behind `/blackhole-model`, and the auto-compaction threshold                |
+| `compaction.ts` | Summary composition (`compileVccSummary`), touched-file and commit extraction, token accounting                                        |
+| `om.ts`         | Pending store, observer/reflector/dropper workers, worker renderers, cleanup                                                           |
+| `config.ts`     | Config load, the merge write behind `/blackhole-model`, and the auto-compaction threshold                                              |
 
 Data flow: a settled agent run may exceed the threshold → `ctx.compact()` → the host asks
 `session_before_compact` → the hook composes OM + carried context + a transcript excerpt + files and

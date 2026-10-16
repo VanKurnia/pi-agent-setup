@@ -109,7 +109,9 @@ type QueueEntry = QueueRequest & {
 };
 
 type ClaimResult =
-    { kind: "acquired"; slot: OwnedLock; repo: OwnedLock } | { kind: "wait" } | { kind: "skip" };
+    | { kind: "acquired"; slot: OwnedLock; repo: OwnedLock }
+    | { kind: "wait" }
+    | { kind: "skip" };
 
 const ACTIVE_COORDINATORS = new Set<IndexCoordinator>();
 const PROCESS_MARKERS = new Map<string, ProcessMarker>();

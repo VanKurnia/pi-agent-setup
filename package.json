@@ -1,39 +1,39 @@
 {
-  "name": "pi-agent-setup",
-  "private": true,
-  "engines": {
-    "node": ">=22.19.0"
-  },
-  "scripts": {
-    "dev-scope": "node .script/dev-scope.mjs",
-    "typecheck": "node .script/dev-scope.mjs --quiet && tsc --noEmit",
-    "lint": "node .script/dev-scope.mjs --quiet && eslint agent/extensions/",
-    "lint:fix": "node .script/dev-scope.mjs --quiet && eslint agent/extensions/ --fix",
-    "format": "prettier --write agent/extensions/",
-    "format:check": "prettier --check agent/extensions/",
-    "test": "node .script/test/run-all.mjs",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
-    "prepare": "husky && node .script/dev-scope.mjs --quiet"
-  },
-  "devDependencies": {
-    "@earendil-works/pi-agent-core": "^1.2.0",
-    "@earendil-works/pi-ai": "^1.2.0",
-    "@earendil-works/pi-coding-agent": "^1.2.0",
-    "@earendil-works/pi-tui": "^1.2.0",
-    "@eslint/js": "^9.0.0",
-    "@types/node": "^22.0.0",
-    "eslint": "^9.0.0",
-    "globals": "^14.0.0",
-    "husky": "^9.0.0",
-    "lint-staged": "^15.0.0",
-    "prettier": "^3.0.0",
-    "typescript": "^5.7.0",
-    "typescript-eslint": "^8.0.0"
-  },
-  "lint-staged": {
-    "*.ts": [
-      "eslint --fix",
-      "prettier --write"
-    ]
-  }
+    "name": "pi-agent-setup",
+    "private": true,
+    "engines": {
+        "node": ">=22.19.0"
+    },
+    "scripts": {
+        "dev-scope": "node .script/dev-scope.mjs",
+        "typecheck": "node .script/dev-scope.mjs --quiet && tsc --noEmit",
+        "lint": "node .script/dev-scope.mjs --quiet && vp lint agent/extensions/",
+        "lint:fix": "node .script/dev-scope.mjs --quiet && vp lint agent/extensions/ --fix",
+        "format": "vp fmt agent/extensions/",
+        "format:check": "vp fmt --check agent/extensions/",
+        "test": "node .script/test/run-all.mjs",
+        "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
+        "prepare": "husky && node .script/dev-scope.mjs --quiet"
+    },
+    "devDependencies": {
+        "@earendil-works/pi-agent-core": "^1.2.0",
+        "@earendil-works/pi-ai": "^1.2.0",
+        "@earendil-works/pi-coding-agent": "^1.2.0",
+        "@earendil-works/pi-tui": "^1.2.0",
+        "@types/node": "^22.0.0",
+        "globals": "^14.0.0",
+        "husky": "^9.0.0",
+        "lint-staged": "^15.0.0",
+        "typescript": "^5.7.0",
+        "vite-plus": "1.2.0"
+    },
+    "lint-staged": {
+        "*.ts": [
+            "vp lint --fix",
+            "vp fmt"
+        ]
+    },
+    "overrides": {
+        "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"
+    }
 }

@@ -714,7 +714,8 @@ export default function (pi: ExtensionAPI): void {
                             args?: Record<string, unknown>;
                         };
                         return (block?.arguments || block?.args) as
-                            Record<string, unknown> | undefined;
+                            | Record<string, unknown>
+                            | undefined;
                     };
                     const tc = msg.content.find((b) => {
                         const args = callArgs(b);

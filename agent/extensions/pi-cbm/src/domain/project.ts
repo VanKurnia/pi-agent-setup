@@ -44,7 +44,8 @@ export type AutoIndexSettings = {
 };
 
 type AutoIndexTarget =
-    { ok: true; path: string; source: "git-root" | "cwd" } | { ok: false; reason: string };
+    | { ok: true; path: string; source: "git-root" | "cwd" }
+    | { ok: false; reason: string };
 
 export class ProjectService {
     constructor(

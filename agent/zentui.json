@@ -157,15 +157,15 @@
             "ignoreSubmodules": false
           },
           "extensionStatuses": {
-            "defaultPlacement": "off",
+            "defaultPlacement": "right",
             "placements": {
-              "filechanges": "off",
-              "codebase-memory": "off",
-              "ext-mgr": "off"
+              "filechanges": "right",
+              "codebase-memory": "right",
+              "ext-mgr": "right"
             },
             "colorModes": {
               "filechanges": "original",
-              "codebase-memory": "original",
+              "codebase-memory": "zentui",
               "ext-mgr": "zentui"
             }
           }
@@ -179,12 +179,12 @@
     },
     "workingLine": {
       "enabled": false,
-      "turnSummary": true,
+      "turnSummary": false,
       "spinner": "braille",
       "spinnerIntervalMs": 100,
       "animateSpinnerColor": false,
-      "textIntervalMs": 60,
-      "textAnimation": "disabled",
+      "textIntervalMs": 40,
+      "textAnimation": "kitt",
       "colorSource": "terminal",
       "messages": {
         "custom": true,
@@ -211,12 +211,23 @@
         "tool": false,
         "elapsed": false,
         "thought": false,
-        "tokens": false
-      }
+        "tokens": false,
+        "tokenRate": true
+      },
+      "turnSummaryFormat": "Turn took $turn_duration$join_sep(thought for $thought_duration)$join_sep(↑$input_tokens ↓$output_tokens)$join_sep$token_rate",
+      "placement": "border"
     },
     "thinkingSteps": {
       "enabled": false,
       "mode": "tree"
+    },
+    "extensionStatuses": {
+      "visibility": {
+        "ext-mgr": "hide",
+        "filechanges": "hide",
+        "codebase-memory": "hide"
+      },
+      "defaultVisibility": "hide"
     }
   }
 }
