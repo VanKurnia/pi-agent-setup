@@ -19,6 +19,7 @@ import {
     type MessageRenderer,
 } from "@earendil-works/pi-coding-agent";
 import {
+    getBlackholeConfigPath,
     getBlackholeDataDir,
     isModelTarget,
     loadBlackholeConfig,
@@ -715,12 +716,31 @@ export function registerConsolidationHooks(pi: ExtensionAPI): void {
 
 // ── Cleanup Utility ─────────────────────────────────────────────────────────
 
-export function cleanupOrphanedPendingFiles(): { removed: number; preserved: number } {
+// Store files key on the session id their name leads with: the shapes this
+// extension writes (`<id>-pending.json`, `-pending.stale.json`,
+// `-pending.json.tmp`) and any other `<id>-<suffix>.json`, whose suffix is then
+// obsolete or foreign — the leading id still identifies the session.
+function sessionIdFromStoreFilename(file: string): string {
+    const base = file.endsWith(".tmp") ? file.slice(0, -".tmp".length) : file;
+    const stem = base.slice(0, -".json".length);
+    for (const suffix of ["-pending.stale", "-pending"]) {
+        if (stem.endsWith(suffix)) return stem.slice(0, -suffix.length);
+    }
+    const dash = stem.lastIndexOf("-");
+    return dash > 0 ? stem.slice(0, dash) : stem;
+}
+
+export function cleanupOrphanedPendingFiles(keepSessionId?: string): {
+    removed: number;
+    preserved: number;
+} {
     const dataDir = getBlackholeDataDir();
     if (!existsSync(dataDir)) return { removed: 0, preserved: 0 };
 
     const sessionsDir = resolve(dataDir, "..", "sessions");
     const activeSessionIds = new Set<string>();
+    // The starting session may not have its file on disk yet.
+    if (keepSessionId) activeSessionIds.add(keepSessionId);
 
     if (existsSync(sessionsDir)) {
         const stack: string[] = [sessionsDir];
@@ -750,29 +770,21 @@ export function cleanupOrphanedPendingFiles(): { removed: number; preserved: num
         }
     }
 
-    const pendingFiles = readdirSync(dataDir).filter(
-        (f) =>
-            f.endsWith("-pending.json") ||
-            f.endsWith("-pending.stale.json") ||
-            f.endsWith("-pending.json.tmp"),
-    );
+    const configPath = getBlackholeConfigPath();
     let removed = 0;
     let preserved = 0;
 
-    for (const file of pendingFiles) {
-        const sessionId = file.replace(
-            /(-pending\.stale\.json|-pending\.json\.tmp|-pending\.json)$/,
-            "",
-        );
+    for (const file of readdirSync(dataDir)) {
+        if (!file.endsWith(".json") && !file.endsWith(".json.tmp")) continue;
         const fullPath = join(dataDir, file);
-        if (!activeSessionIds.has(sessionId)) {
-            try {
-                unlinkSync(fullPath);
-                removed++;
-            } catch {
-                preserved++;
-            }
-        } else {
+        if (fullPath === configPath || activeSessionIds.has(sessionIdFromStoreFilename(file))) {
+            preserved++;
+            continue;
+        }
+        try {
+            unlinkSync(fullPath);
+            removed++;
+        } catch {
             preserved++;
         }
     }

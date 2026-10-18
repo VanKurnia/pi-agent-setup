@@ -56,7 +56,7 @@ large pool cannot inflate every worker call.
 
 ## Commands
 
-- `/blackhole-prune` — removes pending files whose session is gone (main, backup, and temp files).
+- `/blackhole-prune` — removes every store file whose session is gone: the pending/backup/temp shapes and any other `<id>-<suffix>.json` keyed on a dead session id. The config and live sessions' stores are kept.
 - `/blackhole-memory` — prints the observation/reflection counts for the current session.
 - `/blackhole-model` — interactive editor for every key in `pi-blackhole-config.json`: the three model
   slots (searchable picker over the installed models), enum settings as pickers, and numbers as prompts

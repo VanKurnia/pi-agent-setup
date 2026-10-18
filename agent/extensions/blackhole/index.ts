@@ -4,7 +4,10 @@ import type {
     ExtensionContext,
     SessionBeforeCompactEvent,
     SessionBeforeCompactResult,
+    SessionEntry,
 } from "@earendil-works/pi-coding-agent";
+import { buildSessionProjection } from "@earendil-works/pi-coding-agent";
+import { closeSync, openSync, readFileSync, readSync } from "node:fs";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { getExtensionApi, getParentLinkGlobal } from "../shared/cross-extension-api.js";
@@ -44,6 +47,72 @@ function safeRegex(query: string): RegExp {
     } catch {
         return new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
     }
+}
+
+/** Read and parse only the first line of a JSONL session file. Undefined on any
+ * failure (missing file, short read, unparseable line). Session headers are one
+ * short line, well under the chunk; a longer first line reads as unparseable. */
+function readJsonFirstLine(filePath: string): Record<string, unknown> | undefined {
+    let fd: number | undefined;
+    try {
+        fd = openSync(filePath, "r");
+        const chunk = Buffer.alloc(8192);
+        const bytes = readSync(fd, chunk, 0, chunk.length, 0);
+        const line = chunk.toString("utf8", 0, bytes).split("\n")[0] ?? "";
+        if (line.trim() === "") return undefined;
+        const parsed: unknown = JSON.parse(line);
+        if (typeof parsed !== "object" || parsed === null) return undefined;
+        return parsed as Record<string, unknown>;
+    } catch {
+        return undefined;
+    } finally {
+        if (fd !== undefined) {
+            try {
+                closeSync(fd);
+            } catch {
+                // Descriptor already gone; nothing to clean up.
+            }
+        }
+    }
+}
+
+/** Parent-file projection for out-of-process recall: per-line tolerant parse (a
+ * concurrently-growing parent may end mid-line — skip blanks and bad lines,
+ * never a whole-file parse), header lines dropped, full linear history via an
+ * undefined leaf. Undefined unless the projection yields at least one message. */
+function readFileSessionMessages(
+    filePath: string,
+): Array<{ role?: string; content?: unknown }> | undefined {
+    let content: string;
+    try {
+        content = readFileSync(filePath, "utf8");
+    } catch {
+        return undefined;
+    }
+    const entries: SessionEntry[] = [];
+    for (const line of content.split("\n")) {
+        if (line.trim() === "") continue;
+        try {
+            const parsed: unknown = JSON.parse(line);
+            if (
+                typeof parsed === "object" &&
+                parsed !== null &&
+                (parsed as { type?: unknown }).type !== "session" &&
+                typeof (parsed as SessionEntry).id === "string"
+            ) {
+                entries.push(parsed as SessionEntry);
+            }
+        } catch {
+            continue;
+        }
+    }
+    if (entries.length === 0) return undefined;
+    const byId = new Map(entries.map((entry) => [entry.id, entry]));
+    const projection = buildSessionProjection(entries, undefined, byId).messages as Array<{
+        role?: string;
+        content?: unknown;
+    }>;
+    return projection.length > 0 ? projection : undefined;
 }
 
 interface DrillWindow {
@@ -342,6 +411,16 @@ export default function (pi: ExtensionAPI): void {
         abortInFlightCompaction();
     });
 
+    // Store files of sessions that no longer exist are unreachable, so reap them
+    // on every start instead of waiting for a manual /blackhole-prune.
+    pi.on("session_start", (_event, ctx) => {
+        const keepSessionId = ctx.sessionManager?.getSessionId?.();
+        const { removed } = cleanupOrphanedPendingFiles(keepSessionId || undefined);
+        if (removed > 0) {
+            ctx.ui.notify(`blackhole: reaped ${removed} orphaned store files.`, "info");
+        }
+    });
+
     pi.on("agent_settled", async (event, ctx) => {
         if ((event as { aborted?: boolean }).aborted) {
             abortInFlightCompaction();
@@ -515,11 +594,11 @@ export default function (pi: ExtensionAPI): void {
 
     // ── 3. Commands ──
     pi.registerCommand("blackhole-prune", {
-        description: "Prune stale blackhole pending files",
+        description: "Prune orphaned blackhole store files",
         handler: async (_args, ctx) => {
             const report = cleanupOrphanedPendingFiles();
             ctx.ui.notify(
-                `Cleaned up ${report.removed} stale pending files (${report.preserved} active preserved).`,
+                `Cleaned up ${report.removed} orphaned store files (${report.preserved} active preserved).`,
                 "info",
             );
         },
@@ -615,6 +694,9 @@ export default function (pi: ExtensionAPI): void {
             let targetManager: any = ctx.sessionManager;
             let omSessionId = childSessionId;
             let readCwd: string = ctx.cwd;
+            // Assigned by the file-based parent fallback when the link is absent,
+            // otherwise by the shared pipeline below.
+            let messages: Array<{ role?: string; content?: unknown }> | undefined;
             if (params.source === "parent") {
                 const api = getExtensionApi<SubagentsApi>("subagents");
                 // Registry first; globalThis fallback covers loader module
@@ -624,37 +706,70 @@ export default function (pi: ExtensionAPI): void {
                     api?.resolveParentLink(childSessionId) ??
                     getParentLinkGlobal<SubagentParentLink>(childSessionId);
                 if (!link?.parentSessionManager) {
-                    return {
-                        content: [
-                            {
-                                type: "text",
-                                text: api
-                                    ? `No parent session linked to this session (child: ${childSessionId || "unknown"}). source:"parent" only works inside a subagent child run dispatched from a parent session.`
-                                    : 'Subagents extension API not available in this session and no parent link found; source:"parent" needs a dispatcher-registered parent link.',
-                            },
-                        ],
-                        details: undefined,
-                    };
+                    // Out-of-process child (herdr pi-bolt): no live manager is
+                    // reachable, but the child's own session header records the
+                    // parent file. Resolve everything the pipeline below needs
+                    // (messages, omSessionId, readCwd) from disk — both paths come
+                    // from pi-written headers, never user input, and every failure
+                    // falls through to the existing error return.
+                    const ownFile: unknown = ctx.sessionManager?.getSessionFile?.();
+                    if (typeof ownFile === "string" && ownFile.length > 0) {
+                        const parentFile = readJsonFirstLine(ownFile)?.parentSession;
+                        if (typeof parentFile === "string" && parentFile.length > 0) {
+                            const parentHeader = readJsonFirstLine(parentFile);
+                            if (
+                                parentHeader?.type === "session" &&
+                                typeof parentHeader.id === "string"
+                            ) {
+                                const parentMessages = readFileSessionMessages(parentFile);
+                                if (parentMessages) {
+                                    messages = parentMessages;
+                                    omSessionId = parentHeader.id;
+                                    readCwd =
+                                        typeof parentHeader.cwd === "string" &&
+                                        parentHeader.cwd.length > 0
+                                            ? parentHeader.cwd
+                                            : ctx.cwd;
+                                }
+                            }
+                        }
+                    }
+                    if (messages === undefined) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: api
+                                        ? `No parent session linked to this session (child: ${childSessionId || "unknown"}). source:"parent" only works inside a subagent child run dispatched from a parent session.`
+                                        : 'Subagents extension API not available in this session and no parent link found; source:"parent" needs a dispatcher-registered parent link.',
+                                },
+                            ],
+                            details: undefined,
+                        };
+                    }
+                } else {
+                    targetManager = link.parentSessionManager;
+                    omSessionId = link.parentSessionId;
+                    readCwd = link.parentCwd || ctx.cwd;
                 }
-                targetManager = link.parentSessionManager;
-                omSessionId = link.parentSessionId;
-                readCwd = link.parentCwd || ctx.cwd;
             }
-            const messages = (
-                params.scope === "all"
-                    ? (
-                          (targetManager?.getEntries?.() || []) as Array<{
-                              type?: string;
-                              message?: unknown;
-                          }>
-                      )
-                          .filter((e) => e.type === "message" && "message" in e)
-                          .map((e) => (e as { message: unknown }).message)
-                    : targetManager?.buildSessionProjection?.()?.messages || []
-            ) as Array<{
-                role?: string;
-                content?: unknown;
-            }>;
+            if (messages === undefined) {
+                messages = (
+                    params.scope === "all"
+                        ? (
+                              (targetManager?.getEntries?.() || []) as Array<{
+                                  type?: string;
+                                  message?: unknown;
+                              }>
+                          )
+                              .filter((e) => e.type === "message" && "message" in e)
+                              .map((e) => (e as { message: unknown }).message)
+                        : targetManager?.buildSessionProjection?.()?.messages || []
+                ) as Array<{
+                    role?: string;
+                    content?: unknown;
+                }>;
+            }
             const query = (params.query || "").trim();
 
             // 1. Hex Memory ID lookup (12-char hex)
