@@ -96,6 +96,12 @@ export function paneNameFor(agentName: string, cwd: string): string {
     return `subagent - ${agentName} - ${projectKey(cwd)}`;
 }
 
+// Tabs reuse the pane label scheme so existing looks/logs keep working;
+// matching stays label-first via the generic matchPane helper.
+export function tabNameFor(agentName: string, cwd: string): string {
+    return paneNameFor(agentName, cwd);
+}
+
 export function agentSessionId(agentName: string, cwd: string): string {
     return `herdr-${agentName}-${projectKey(cwd)}`;
 }

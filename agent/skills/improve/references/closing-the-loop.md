@@ -15,7 +15,7 @@ The founding rule survives unchanged while the skill is active: **the advisor ne
 
 ### Dispatch
 
-Spawn as many `worker` subagents as the plan demands, following [orchestrator guidelines](../../orchestrator/SKILL.md). Use your judgment on how to split the work — the model decides the right number and parallelism. Dispatch `tasks[]` in parallel for independent workstreams, or `chain` with `{previous}` when steps depend on prior output (chain stops on first step failure, so order cheapest/lowest-risk first).
+Dispatch one `worker` subagent at a time with `{ agent: 'worker', task: '<full plan text or slice>' }`, in dependency order. If the tool answers `still working`, wait before retrying.
 
 The subagent prompt must contain:
 

@@ -165,6 +165,7 @@ export function sendText(paneId: string, text: string): Promise<void> {
 
 export interface PaneSummary {
     paneId: string;
+    tabId?: string;
     label?: string;
     title?: string;
     agent?: string;
@@ -179,6 +180,7 @@ export function listPanes(): Promise<PaneSummary[]> {
         }
         return panes.map((pane: any) => ({
             paneId: String(pane?.pane_id),
+            tabId: typeof pane?.tab_id === "string" ? pane.tab_id : undefined,
             label: typeof pane?.label === "string" ? pane.label : undefined,
             title:
                 typeof pane?.terminal_title_stripped === "string"
@@ -200,4 +202,48 @@ export function sendEnter(paneId: string): Promise<void> {
 
 export function closePane(paneId: string): Promise<void> {
     return callHerdr("pane.close", { pane_id: paneId }).then(() => undefined);
+}
+
+export interface TabInfo {
+    tabId: string;
+    label?: string;
+}
+
+export async function createTab(
+    cwd: string,
+    label: string,
+    workspaceId?: string,
+): Promise<{ tabId: string; rootPaneId: string }> {
+    const params: Record<string, unknown> = { cwd, label, focus: false };
+    // Without workspace_id herdr drops the tab into the focused workspace,
+    // which may not be the parent's. The pane-split fallback never had this
+    // problem: it targeted the caller's own pane.
+    if (workspaceId) params.workspace_id = workspaceId;
+    const result: any = await callHerdr("tab.create", params);
+    const tabId = result?.tab?.tab_id;
+    const rootPaneId = result?.root_pane?.pane_id;
+    if (typeof tabId !== "string" || !tabId || typeof rootPaneId !== "string" || !rootPaneId) {
+        throw new Error(
+            `herdr tab create returned no tab/root_pane ids: ${JSON.stringify(result)}`,
+        );
+    }
+    return { tabId, rootPaneId };
+}
+
+export function listTabs(workspaceId?: string): Promise<TabInfo[]> {
+    const params: Record<string, unknown> = workspaceId ? { workspace_id: workspaceId } : {};
+    return callHerdr("tab.list", params).then((result: any) => {
+        const tabs = result?.tabs;
+        if (!Array.isArray(tabs)) {
+            throw new Error(`herdr tab list returned no result.tabs: ${JSON.stringify(result)}`);
+        }
+        return tabs.map((tab: any) => ({
+            tabId: String(tab?.tab_id),
+            label: typeof tab?.label === "string" ? tab.label : undefined,
+        }));
+    });
+}
+
+export function closeTab(tabId: string): Promise<void> {
+    return callHerdr("tab.close", { tab_id: tabId }).then(() => undefined);
 }

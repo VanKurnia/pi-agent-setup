@@ -82,9 +82,7 @@ for the target project.
 - You already know exactly what file and what you're looking for
 - The answer is a single grep hit
 
-**Use parallel mode** (`tasks[]`) when dispatching multiple independent subagents — e.g. two workers on independent files — or a worker plus parent web_search for a single lookup.
-
-**Use chain mode** (`chain[]`) when steps depend on each other — e.g. a worker implements the change guided by verified findings, then a later step verifies the result. The `{previous}` placeholder interpolates the prior step's full output into the next task string.
+Dispatch subagents one at a time with `{ agent, task }`. Each call runs a separate pi-bolt process in its own herdr pane and returns only the final reply. If the tool answers `still working; wait` or `already starting; retry shortly`, wait for the named agent to finish before dispatching it again — never fan out concurrent calls to the same agent. A read-only parent snapshot is auto-attached; children can drill deeper with `recall` `source:'parent'`.
 
 ### When NOT to Use Subagents
 

@@ -13,7 +13,7 @@ selector borders.
 | pi-style cards    | always      | vendored pi-style boxed cards for **every** tool; the only presentation |
 
 Two tools bypass the dispatcher and get fork-owned cards routed from `pistyle-bridge.ts`: `subagent`
-(`subagent-card.ts`) and db-viewer's query tools (`db-query-card.ts`). A tool that needs its own
+(`fork-cards.ts` isSubagentTool/readCall) and db-viewer's query tools (`db-query-card.ts`). A tool that needs its own
 presentation gets a card route there — one line per direction — rather than a passthrough list.
 
 Toggle in-session: `/tool-display` → _pi-style boxed tool cards_, or edit

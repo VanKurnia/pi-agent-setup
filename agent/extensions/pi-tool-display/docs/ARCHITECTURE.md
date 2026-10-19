@@ -73,8 +73,9 @@ by the patch, and the fallback card printed only the call args plus the literal 
 `(running...)` — the whole progress payload in `details.results` was dropped, so a running subagent
 told the user nothing about what it was doing.
 
-- Call card: `➔ Subagent · parallel · scout, worker` header, then one line per requested agent/task
-  (title, then the task's first 5 lines; expanded shows all).
+- Call card: `➔ Subagent · single · <agent>` header, then the task text
+  (title, then the task's first 5 lines; expanded shows all). `details` carries
+  `{mode:'single', pane, session, reused}`.
 - Result card: one row per agent — status glyph, name, title, `N tools · N tok · elapsed` — then that
   agent's recent tool calls (6 collapsed; expanded lifts the per-agent cap and the output cap up to
   the expanded render budget), the live `▸ current tool`
@@ -82,7 +83,7 @@ told the user nothing about what it was doing.
   under a rule, and the footer shows `elapsed · ok/total agents · tokens`. The running footer is the
   fork's standard `󰐊 Running · <elapsed>` — until the first partial result paints, the call card reads
   `… Waiting for output…`, because pi-style's first-partial pass is intentionally empty.
-- Status classification is shared with the subagents widget (`subagents/src/widget.ts`): only
+- Status classification is shared with the legacy subagents widget (`subagents/src/widget.ts`, legacy): only
   `running`/`pending` come from the reported status, and a terminal row is judged by its exit code.
 - Budget: collapsed lines are capped by a card-local `COLLAPSED_RUN_LINES` (24), **not**
   `previewLines` (8) — with the shared preview budget a two-agent run truncated before the output

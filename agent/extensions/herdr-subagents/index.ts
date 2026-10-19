@@ -9,8 +9,10 @@ import * as path from "node:path";
 import { Type } from "typebox";
 import {
     closePane,
+    createTab,
     getPane,
     listPanes,
+    listTabs,
     renamePane,
     runInPane,
     sendEnter,
@@ -34,6 +36,7 @@ import {
     matchPane,
     paneNameFor,
     releaseLock,
+    tabNameFor,
 } from "./session.js";
 import {
     discoverAgents,
@@ -165,8 +168,15 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                     const toolsFlag =
                         agent.tools.length > 0 ? ` --tools ${agent.tools.join(",")}` : "";
                     if (linked !== undefined) {
-                        const panes = await listPanes();
-                        const match = matchPane(panes, paneName);
+                        const tabName = tabNameFor(agent.name, cwd);
+                        // The child belongs in the parent's workspace, not
+                        // whichever workspace is currently focused.
+                        const workspaceId = process.env.HERDR_WORKSPACE_ID || undefined;
+                        const tabMatch = matchPane(await listTabs(workspaceId), tabName);
+                        const match =
+                            tabMatch === undefined
+                                ? undefined
+                                : (await listPanes()).find((pane) => pane.tabId === tabMatch.tabId);
                         if (match !== undefined) {
                             const matchState = await getPane(match.paneId);
                             if (isReadyForTask(matchState)) {
@@ -212,8 +222,12 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                             }
                         }
                         if (paneId === undefined) {
-                            paneId = await splitPane(cwd);
-                            await renamePane(paneId, paneName);
+                            try {
+                                paneId = (await createTab(cwd, tabName, workspaceId)).rootPaneId;
+                            } catch {
+                                paneId = await splitPane(cwd);
+                                await renamePane(paneId, paneName);
+                            }
                         }
                         if (!reused) {
                             const stamp = new Date().toISOString();

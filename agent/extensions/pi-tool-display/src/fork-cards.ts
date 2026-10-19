@@ -784,6 +784,9 @@ interface SubagentRow {
 }
 interface SubagentDetails {
     results?: SubagentRow[];
+    mode?: unknown;
+    pane?: unknown;
+    reused?: unknown;
 }
 /** True for the `subagent` tool this card owns. */
 export function isSubagentTool(toolName: unknown): toolName is string {
@@ -821,47 +824,22 @@ function taskPreviewLines(task: string, max: number): string[] {
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
 }
-/** One entry of the call card: a requested run, or a phase header in hybrid mode. */
-type CallItem =
-    | { kind: "request"; agent: string; label?: string; task?: string }
-    | { kind: "group"; label: string };
+/** One entry of the call card: a requested run. */
+interface CallItem {
+    agent: string;
+    label?: string;
+    task?: string;
+}
 function toRequest(raw: unknown): CallItem {
     const item = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
     return {
-        kind: "request",
         agent: asString(item.agent) ?? "?",
         label: asString(item.title),
         task: asString(item.task),
     };
 }
-function agentNames(items: CallItem[]): string[] {
-    return items.flatMap((item) => (item.kind === "request" ? [item.agent] : []));
-}
 /** Flatten the call arguments into the runs being requested, plus a header summary. */
 function readCall(args: Record<string, unknown>): { summary: string; items: CallItem[] } {
-    const hybrid = Array.isArray(args.hybrid) ? args.hybrid : undefined;
-    if (hybrid?.length) {
-        const items: CallItem[] = [];
-        for (const phase of hybrid) {
-            if (phase?.mode === "single") {
-                items.push(toRequest(phase));
-            } else if (Array.isArray(phase?.tasks)) {
-                items.push({ kind: "group", label: `${phase.mode} · ${phase.tasks.length}` });
-                for (const task of phase.tasks) items.push(toRequest(task));
-            }
-        }
-        return { summary: `hybrid · ${hybrid.length} phases`, items };
-    }
-    const chain = Array.isArray(args.chain) ? args.chain : undefined;
-    if (chain?.length) {
-        const items = chain.map(toRequest);
-        return { summary: `chain · ${agentNames(items).join(" → ")}`, items };
-    }
-    const tasks = Array.isArray(args.tasks) ? args.tasks : undefined;
-    if (tasks?.length) {
-        const items = tasks.map(toRequest);
-        return { summary: `parallel · ${agentNames(items).join(", ")}`, items };
-    }
     return { summary: `single · ${asString(args.agent) ?? "?"}`, items: [toRequest(args)] };
 }
 /** Body lines for the call card: one block per requested agent/task. */
@@ -869,10 +847,6 @@ function requestDetailLines(items: CallItem[], expanded: boolean, theme: BoxThem
     const maxLines = expanded ? Number.MAX_SAFE_INTEGER : COLLAPSED_TASK_LINES;
     const lines: string[] = [];
     for (const item of items) {
-        if (item.kind === "group") {
-            lines.push(theme.fg("dim", item.label));
-            continue;
-        }
         lines.push(
             `${theme.fg("accent", item.agent)}${item.label ? theme.fg("dim", ` · ${item.label}`) : ""}`,
         );
@@ -1023,6 +997,19 @@ export function renderSubagentResult(
     const rows = readSubagentRows(result);
     const output = getTextOutput(result);
     if (!rows) {
+        const details =
+            result.details && typeof result.details === "object"
+                ? (result.details as SubagentDetails)
+                : undefined;
+        if (details?.mode === "single") {
+            const pane = asString(details.pane) ?? "single";
+            const line = details.reused === true ? `${pane} · reused` : pane;
+            return renderBoxedToolResult(theme, () => [theme.fg("dim", line)], {
+                dividerLabel: "Run",
+                isError: context.isError,
+                isPartial: options.isPartial,
+            });
+        }
         // No structured payload: fall back to the plain output so the card never
         // renders empty.
         const text = output.trim() || "No output received yet";

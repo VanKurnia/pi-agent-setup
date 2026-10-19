@@ -47,7 +47,7 @@ If CBM tools are not in your session:
 
 ---
 
-Use the Agent tool with **`subagent` scout** to walk the codebase. Don't follow rigid heuristics — explore organically and note where you experience friction:
+Use the `subagent` tool with `{ agent: 'scout', task: … }` to walk the codebase. Don't follow rigid heuristics — explore organically and note where you experience friction:
 
 - Where does understanding one concept require bouncing between many small modules?
 - Where are modules **shallow** — interface nearly as complex as the implementation?
@@ -131,5 +131,5 @@ If the user requests changes (via the browser UI or in-session), revise the cand
         ]
     )
     ```
-  - If `explore_alternatives` is chosen, run the `/codebase-design` skill and use its design-it-twice parallel sub-agent pattern.
+  - If `explore_alternatives` is chosen, run the `/codebase-design` skill and use its design-it-twice pattern, run sequentially (one `scout` call per alternative).
   - If `other` is chosen, capture the user's text input and act accordingly.

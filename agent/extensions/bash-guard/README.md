@@ -6,7 +6,8 @@ the session is interactive (main session) or non-interactive (spawned subagent).
 ## Modes
 
 Behaviour is determined at registration time via the `PI_SUBAGENT_DEPTH` environment variable,
-which pi-subagents injects into every spawned process.
+which the legacy in-process backend injected into every spawned process
+(herdr children run out-of-process under `HERDR_ENV` and never set it).
 
 ### Main session (`PI_SUBAGENT_DEPTH` = 0 or unset) — interactive prompt
 

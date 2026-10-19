@@ -24,7 +24,7 @@
         "global/plan-artifact/index.ts": "disabled",
         "global/session-mgr/index.ts": "enabled",
         "global/smart-web-access/index.ts": "enabled",
-        "global/subagents/index.ts": "enabled",
+        "global/herdr-subagents/index.ts": "enabled",
         "global/update-setup.ts": "disabled"
       },
       "plugins": [
@@ -59,12 +59,47 @@
         "global/plan-artifact/index.ts": "enabled",
         "global/session-mgr/index.ts": "enabled",
         "global/smart-web-access/index.ts": "enabled",
-        "global/subagents/index.ts": "enabled",
+        "global/herdr-subagents/index.ts": "enabled",
         "global/update-setup.ts": "enabled"
       },
       "plugins": [
         "npm:@ff-labs/pi-fff",
         "npm:pi-x-ide",
+        "npm:pi-zentui"
+      ]
+    },
+    "herdr-subagent-test": {
+      "savedAt": "2026-10-19T01:09:06.416Z",
+      "cwd": "C:\\laragon\\www\\hrisv2",
+      "extensions": {
+        "global/ask-user-question.ts": "enabled",
+        "global/bash-guard/index.ts": "disabled",
+        "global/blackhole/index.ts": "enabled",
+        "global/browser-tools/index.ts": "disabled",
+        "global/custom-header.ts": "enabled",
+        "global/db-viewer/index.ts": "enabled",
+        "global/ext-mgr/index.ts": "enabled",
+        "global/filechanges/index.ts": "enabled",
+        "global/herdr-agent-state.ts": "enabled",
+        "global/load-env.ts": "enabled",
+        "global/ninerouter.ts": "enabled",
+        "global/obsidian-suite.ts": "disabled",
+        "global/open-code-review/index.ts": "enabled",
+        "global/pi-cbm/src/index.ts": "disabled",
+        "global/pi-speeed/index.ts": "enabled",
+        "global/pi-tool-display/index.ts": "enabled",
+        "global/plan-artifact/index.ts": "disabled",
+        "global/session-mgr/index.ts": "enabled",
+        "global/smart-web-access/index.ts": "enabled",
+        "global/herdr-subagents/index.ts": "disabled",
+        "global/update-setup.ts": "disabled"
+      },
+      "plugins": [
+        "npm:@ff-labs/pi-fff",
+        {
+          "source": "npm:pi-x-ide",
+          "extensions": []
+        },
         "npm:pi-zentui"
       ]
     }

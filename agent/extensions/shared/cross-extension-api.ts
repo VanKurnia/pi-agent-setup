@@ -38,7 +38,7 @@ export function getExtensionApi<T>(name: string): T | undefined {
 // Backed by globalThis, the only state both the dispatching session and the
 // child session provably share: neither the module registry above nor plain
 // module-level Maps survive the loader's per-extension module isolation, and
-// a child session may not load the provider extension at all.
+// a child session may not load the provider extension at all. (legacy; herdr-subagents does not register parent links — it records the parent in the session header)
 const PARENT_LINK_KEY = "__pi_subagent_parent_links";
 
 function parentLinkStore(): Map<string, unknown> {

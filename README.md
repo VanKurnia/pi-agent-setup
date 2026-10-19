@@ -159,12 +159,12 @@ enough. Memory moves forward; it does not evaporate.
 
 ### 2. Two subagents — minimal, foreground, context-aware
 
-[`subagents`](agent/extensions/subagents/) registers exactly two agents:
+[`herdr-subagents`](agent/extensions/herdr-subagents/) registers exactly two agents:
 
 - **`scout`** — read-only recon: codebase mapping, fact-checking, lightweight web research.
 - **`worker`** — the main agent's working toolset, for actual changes.
 
-Both run as foreground one-shot in-process sessions: no detached background agents, no polling for
+Each agent runs as a separate pi-bolt process in its own herdr pane; only the final reply is returned, no polling for
 results. Each is handed a **read-only VCC snapshot of the parent** at delegation time — files
 touched, recent commits, live observations — and can drill into the parent's own history with
 `recall source:'parent'` when that is not enough. Delegation without the usual context loss: the
@@ -185,7 +185,7 @@ dynamically rather than fixing two, and neither paper measures this repository's
 
 The working loop follows [shadcn/improve](https://github.com/shadcn/improve) — audit with your
 strongest model, write plans, execute with a cheaper one — wired into the tools that already exist
-here: recon fans out to parallel `scout`s, plans land in `.plans/` (browsable through
+here: recon dispatches sequential `scout` calls, one at a time, plans land in `.plans/` (browsable through
 `plan-artifact`), probes live in `.plans/probes/`, and execution is dispatched to `worker`
 subagents. The plan is the handoff artifact: the planner/executor split
 [Plan-and-Act](https://arxiv.org/abs/2503.09572) formalizes for long-horizon tasks.
@@ -262,11 +262,10 @@ Pi auto-detects Git Bash. Only set a custom path for non-standard installations:
 
 ### Subagent Models
 
-Configure per-agent models via `/subagents:settings` inside pi. Settings are stored in `agent/subagents.json`:
+Configure per-agent models via `/herdr-subagent:settings` inside pi. Settings are stored in `agent/subagents.json`:
 
 ```json
 {
-    "maxConcurrent": 4,
     "agentModels": {
         "scout": "opencode-go/mimo-v2.6-flash",
         "worker": "opencode-go/muse-spark-1.3-contributor"
@@ -278,7 +277,7 @@ Configure per-agent models via `/subagents:settings` inside pi. Settings are sto
 }
 ```
 
-Per-agent models plus thinking levels, edited via `/subagents:settings` — settings are the single source of truth.
+Per-agent models plus thinking levels, edited via `/herdr-subagent:settings` — settings are the single source of truth.
 
 ### Custom Models
 

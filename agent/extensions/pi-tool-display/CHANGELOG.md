@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **2026-10-19 — docs describe the herdr single-task contract.** `ARCHITECTURE.md`, `docs/README.md`, and `FORK.md` now describe the `subagent` card as `single · <agent>` with `details` `{mode: 'single', pane, session, reused}` instead of the legacy multi-agent payload. Docs only; no code changed.
+
 - **Boot module graph flattened, 46 files -> 8.** Pi loads extensions through jiti, which measures
   ~19 ms per module regardless of size; splitting 500 KB across 46 modules cost more than the code.
   Measured with `PI_TIMING=1 pi --mode rpc`, median over 8+ boots:

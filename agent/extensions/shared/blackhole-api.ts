@@ -1,7 +1,7 @@
 /**
  * Cross-extension contract for blackhole's snapshot provider.
  *
- * Consumers: `agent/extensions/subagents/src/run.ts` (parent delegation snapshot).
+ * Consumers: `agent/extensions/herdr-subagents/session.ts` (+ legacy `agent/extensions/subagents/src/run.ts`) (parent delegation snapshot).
  * Provider:  `agent/extensions/blackhole/index.ts` (registered in the factory).
  *
  * Backed by globalThis on purpose: pi's extension loader builds one jiti instance

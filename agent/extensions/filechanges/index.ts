@@ -333,7 +333,7 @@ function formatAddedRemovedPlain(added: number, removed: number): string {
 
 function styleAddedRemovedForList(theme: any, text: string): string {
     // File rows use "+x/-y" as description; other rows use normal sentences.
-    const m = text.match(/^\+(\d+)\/\-(\d+)$/);
+    const m = text.match(/^\+(\d+)\/-(\d+)$/);
     if (!m) return theme.fg("muted", text);
     const added = Number(m[1]);
     const removed = Number(m[2]);
@@ -411,7 +411,7 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.setWidget("filechanges", buildWidgetLines(tracker, ctx.ui.theme));
     }
 
-    // ── Cross-extension API for subagent file tracking ──────────────
+    // ── Cross-extension API for subagent file tracking ── (legacy in-process path; herdr children run out-of-process and never call it)
 
     registerExtensionApi<FilechangesApi>("filechanges", {
         trackFile: async (

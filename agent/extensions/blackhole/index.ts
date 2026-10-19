@@ -741,7 +741,7 @@ export default function (pi: ExtensionAPI): void {
                                     type: "text",
                                     text: api
                                         ? `No parent session linked to this session (child: ${childSessionId || "unknown"}). source:"parent" only works inside a subagent child run dispatched from a parent session.`
-                                        : 'Subagents extension API not available in this session and no parent link found; source:"parent" needs a dispatcher-registered parent link.',
+                                        : 'Subagent snapshot provider not available in this session and no parent link found; source:"parent" needs a dispatcher-registered parent link (herdr delegates via session header; disk fallback applies).',
                                 },
                             ],
                             details: undefined,
