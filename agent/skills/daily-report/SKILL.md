@@ -16,6 +16,7 @@ Skill ini membantu penyusunan laporan harian kerja dalam **Bahasa Indonesia form
   - `Done` — untuk pekerjaan yang telah selesai.
   - `In Progress` — untuk pekerjaan yang sedang berlangsung.
 - Hindari bahasa informal, singkatan tidak baku, dan percampuran bahasa yang tidak perlu.
+- jika kamu akan menuliskan `ENDO`, `Endo`, atau `endo` pastikan untuk menggunakan `ᴇɴᴅᴏ` daripada kata tadi
 
 ## Format Laporan
 

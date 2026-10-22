@@ -35,6 +35,7 @@ import {
     lockFileFor,
     matchPane,
     paneNameFor,
+    parentKey,
     releaseLock,
     tabNameFor,
 } from "./session.js";
@@ -138,7 +139,6 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                 agent,
                 loadSubagentsSettings(getAgentDir()),
             );
-            const paneName = paneNameFor(agent.name, cwd);
             const rawParentFile: unknown = ctx.sessionManager?.getSessionFile?.();
             const linked =
                 typeof rawParentFile === "string" && rawParentFile.length > 0
@@ -148,8 +148,12 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                           sessionsRoot: path.dirname(path.dirname(rawParentFile)),
                       }
                     : undefined;
+            const parent = linked !== undefined ? parentKey(linked.parentFile) : undefined;
+            const paneName = paneNameFor(agent.name, cwd, parent);
             const lockPath =
-                linked !== undefined ? lockFileFor(os.tmpdir(), agent.name, cwd) : undefined;
+                linked !== undefined
+                    ? lockFileFor(os.tmpdir(), agent.name, cwd, parent)
+                    : undefined;
             if (linked !== undefined) reapLegacySessionFiles(linked.groupDir, agent.name);
             let paneId: string | undefined;
             let sessionFile: string | undefined;
@@ -168,7 +172,7 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                     const toolsFlag =
                         agent.tools.length > 0 ? ` --tools ${agent.tools.join(",")}` : "";
                     if (linked !== undefined) {
-                        const tabName = tabNameFor(agent.name, cwd);
+                        const tabName = tabNameFor(agent.name, cwd, parent);
                         // The child belongs in the parent's workspace, not
                         // whichever workspace is currently focused.
                         const workspaceId = process.env.HERDR_WORKSPACE_ID || undefined;
@@ -231,10 +235,16 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                         }
                         if (!reused) {
                             const stamp = new Date().toISOString();
-                            let file = findAgentSessionFile(linked.groupDir, agent.name, cwd);
+                            let file = findAgentSessionFile(
+                                linked.groupDir,
+                                agent.name,
+                                cwd,
+                                undefined,
+                                parent,
+                            );
                             let fresh = false;
                             if (file === undefined) {
-                                const id = agentSessionId(agent.name, cwd);
+                                const id = agentSessionId(agent.name, cwd, parent);
                                 const candidate = path.join(
                                     linked.groupDir,
                                     childSessionFilename(id, stamp),
@@ -254,6 +264,8 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                                         linked.groupDir,
                                         agent.name,
                                         cwd,
+                                        undefined,
+                                        parent,
                                     );
                                     if (winner === undefined) throw err;
                                     file = winner;
@@ -266,7 +278,13 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                                 `pi-bolt --session-dir "${linked.sessionsRoot}" --session "${file}"${nameFlag}${toolsFlag}${modelFlag}${thinkingFlag}`,
                             );
                         } else {
-                            sessionFile = findAgentSessionFile(linked.groupDir, agent.name, cwd);
+                            sessionFile = findAgentSessionFile(
+                                linked.groupDir,
+                                agent.name,
+                                cwd,
+                                undefined,
+                                parent,
+                            );
                         }
                     } else {
                         sessionDir = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-subagent-"));
@@ -356,7 +374,7 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                         `herdr subagent timed out waiting for pane ${pane} to start working.`,
                     );
                 }
-                const finished = await pollState(signal, 1500, 300000, async () => {
+                const finished = await pollState(signal, 1500, 1800000, async () => {
                     state = await getPane(pane);
                     return state.agentStatus === "done" || state.agentStatus === "idle";
                 });

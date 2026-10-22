@@ -92,18 +92,27 @@ export function projectKey(cwd: string): string {
     return h.toString(16).padStart(8, "0");
 }
 
-export function paneNameFor(agentName: string, cwd: string): string {
-    return `subagent - ${agentName} - ${projectKey(cwd)}`;
+// Parent identity for recycling keys: the parent's own session file path,
+// hashed with the same djb2 so all lookup keys share one hash function.
+// Stable for the parent's lifetime; distinct per live parent session.
+export function parentKey(parentFile: string): string {
+    return projectKey(parentFile);
+}
+
+export function paneNameFor(agentName: string, cwd: string, parent?: string): string {
+    const base = `subagent - ${agentName} - ${projectKey(cwd)}`;
+    return parent === undefined ? base : `${base} - ${parent}`;
 }
 
 // Tabs reuse the pane label scheme so existing looks/logs keep working;
 // matching stays label-first via the generic matchPane helper.
-export function tabNameFor(agentName: string, cwd: string): string {
-    return paneNameFor(agentName, cwd);
+export function tabNameFor(agentName: string, cwd: string, parent?: string): string {
+    return paneNameFor(agentName, cwd, parent);
 }
 
-export function agentSessionId(agentName: string, cwd: string): string {
-    return `herdr-${agentName}-${projectKey(cwd)}`;
+export function agentSessionId(agentName: string, cwd: string, parent?: string): string {
+    const base = `herdr-${agentName}-${projectKey(cwd)}`;
+    return parent === undefined ? base : `${base}-${parent}`;
 }
 
 // Pane lookup for the check chain: an exact label match wins; the shell
@@ -134,9 +143,10 @@ export function findAgentSessionFile(
         readdirSync(dir: string): string[];
         statSync(path: string): { mtimeMs: number };
     } = defaultFs,
+    parent?: string,
 ): string | undefined {
     if (!isSafeAgentName(agentName)) return undefined;
-    const suffix = `_${agentSessionId(agentName, cwd)}.jsonl`;
+    const suffix = `_${agentSessionId(agentName, cwd, parent)}.jsonl`;
     let names: string[];
     try {
         names = fs.readdirSync(groupDir);
@@ -200,9 +210,14 @@ export function childSessionFilename(sessionId: string, timestampIso: string): s
     return `${timestampIso.replace(/[:.]/g, "-")}_${sessionId}.jsonl`;
 }
 
-export function lockFileFor(tmpdir: string, agentName: string, cwd: string): string {
+export function lockFileFor(
+    tmpdir: string,
+    agentName: string,
+    cwd: string,
+    parent?: string,
+): string {
     const safeCwd = cwd.replace(/[^A-Za-z0-9._-]+/g, "-");
-    return `${tmpdir}/herdr-subagent-${agentName}-${safeCwd}.lock`;
+    return `${tmpdir}/herdr-subagent-${agentName}-${safeCwd}${parent ? `-${parent}` : ""}.lock`;
 }
 
 // Exclusive-create lock for the check-decide-launch sequence (one pane per

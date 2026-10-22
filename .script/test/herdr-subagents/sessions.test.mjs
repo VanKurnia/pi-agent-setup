@@ -131,10 +131,7 @@ await runCases(
                 const idA = session.agentSessionId("scout", cwdA);
                 const idB = session.agentSessionId("scout", cwdB);
                 const onlyA = stubFs({ [`2026-01-01T00-00-00-000Z_${idA}.jsonl`]: 10 });
-                assert.equal(
-                    session.findAgentSessionFile("/dir", "scout", cwdB, onlyA),
-                    undefined,
-                );
+                assert.equal(session.findAgentSessionFile("/dir", "scout", cwdB, onlyA), undefined);
                 const both = stubFs({
                     [`2026-01-01T00-00-00-000Z_${idA}.jsonl`]: 10,
                     [`2026-02-01T00-00-00-000Z_${idB}.jsonl`]: 20,
@@ -200,14 +197,24 @@ await runCases(
             "buildChildHeader: parent link present or omitted",
             () => {
                 const linked = JSON.parse(
-                    session.buildChildHeader("herdr-scout", "C:\\p", "C:\\p\\s.jsonl", "2026-10-17T00:00:00.000Z"),
+                    session.buildChildHeader(
+                        "herdr-scout",
+                        "C:\\p",
+                        "C:\\p\\s.jsonl",
+                        "2026-10-17T00:00:00.000Z",
+                    ),
                 );
                 assert.equal(linked.type, "session");
                 assert.equal(linked.version, 3);
                 assert.equal(linked.id, "herdr-scout");
                 assert.equal(linked.parentSession, "C:\\p\\s.jsonl");
                 const bare = JSON.parse(
-                    session.buildChildHeader("herdr-scout", "C:\\p", undefined, "2026-10-17T00:00:00.000Z"),
+                    session.buildChildHeader(
+                        "herdr-scout",
+                        "C:\\p",
+                        undefined,
+                        "2026-10-17T00:00:00.000Z",
+                    ),
                 );
                 assert.ok(!("parentSession" in bare));
                 assert.equal(
@@ -286,7 +293,10 @@ await runCases(
                 const snap = await session.createDelegationSnapshot(stubCtx(parentMessages));
                 const once = session.attachDelegationSnapshot("do it", snap);
                 assert.equal(session.attachDelegationSnapshot(once, snap), once);
-                assert.equal(session.attachDelegationSnapshot("has Reference context", snap), "has Reference context");
+                assert.equal(
+                    session.attachDelegationSnapshot("has Reference context", snap),
+                    "has Reference context",
+                );
                 assert.equal(session.attachDelegationSnapshot("", snap), "");
                 assert.equal(session.attachDelegationSnapshot("do it", ""), "do it");
             },
@@ -297,7 +307,10 @@ await runCases(
                 const prev = sharedApi.getBlackholeSnapshotApi();
                 sharedApi.setBlackholeSnapshotApi(undefined);
                 try {
-                    assert.equal(await session.createDelegationSnapshot(stubCtx(parentMessages)), "");
+                    assert.equal(
+                        await session.createDelegationSnapshot(stubCtx(parentMessages)),
+                        "",
+                    );
                 } finally {
                     sharedApi.setBlackholeSnapshotApi(prev);
                 }
@@ -323,7 +336,10 @@ await runCases(
                     buildOmCompactionSummary: () => "",
                 });
                 try {
-                    assert.equal(await session.createDelegationSnapshot(stubCtx(parentMessages)), "");
+                    assert.equal(
+                        await session.createDelegationSnapshot(stubCtx(parentMessages)),
+                        "",
+                    );
                 } finally {
                     sharedApi.setBlackholeSnapshotApi(prev);
                 }
@@ -340,8 +356,116 @@ await runCases(
                     { paneId: "b", label: "subagent - scout" },
                 ];
                 assert.equal(session.matchPane(both, "subagent - scout")?.paneId, "b");
+                assert.equal(session.matchPane(both, "subagent - missing"), undefined);
+            },
+        ],
+        [
+            "omitted parent keeps legacy output byte-identical",
+            () => {
+                const cwd = "C:\\proj-a";
+                const key = session.projectKey(cwd);
                 assert.equal(
-                    session.matchPane(both, "subagent - missing"),
+                    session.paneNameFor("scout", cwd, undefined),
+                    `subagent - scout - ${key}`,
+                );
+                assert.equal(
+                    session.tabNameFor("scout", cwd, undefined),
+                    `subagent - scout - ${key}`,
+                );
+                assert.equal(session.agentSessionId("scout", cwd, undefined), `herdr-scout-${key}`);
+                assert.equal(
+                    session.lockFileFor("/tmp", "scout", cwd, undefined),
+                    session.lockFileFor("/tmp", "scout", cwd),
+                );
+                const id = session.agentSessionId("scout", cwd);
+                const files = stubFs({ [`2026-01-01T00-00-00-000Z_${id}.jsonl`]: 10 });
+                assert.equal(
+                    session.findAgentSessionFile("/dir", "scout", cwd, files, undefined),
+                    session.findAgentSessionFile("/dir", "scout", cwd, files),
+                );
+            },
+        ],
+        [
+            "same parent reuses identical keys",
+            () => {
+                const cwd = "C:\\proj-a";
+                const p = session.parentKey("C:\\sessions\\aaa.jsonl");
+                assert.equal(p, session.parentKey("C:\\sessions\\aaa.jsonl"));
+                assert.match(p, /^[0-9a-f]{8}$/);
+                assert.equal(
+                    session.paneNameFor("scout", cwd, p),
+                    session.paneNameFor("scout", cwd, p),
+                );
+                assert.equal(
+                    session.tabNameFor("scout", cwd, p),
+                    session.tabNameFor("scout", cwd, p),
+                );
+                const id = session.agentSessionId("scout", cwd, p);
+                assert.match(id, new RegExp(`^herdr-scout-[0-9a-f]{8}-${p}$`));
+                assert.equal(
+                    session.lockFileFor("/tmp", "scout", cwd, p),
+                    session.lockFileFor("/tmp", "scout", cwd, p),
+                );
+                const files = stubFs({ [`2026-01-01T00-00-00-000Z_${id}.jsonl`]: 10 });
+                assert.equal(
+                    session.findAgentSessionFile("/dir", "scout", cwd, files, p),
+                    `/dir/2026-01-01T00-00-00-000Z_${id}.jsonl`,
+                );
+            },
+        ],
+        [
+            "different parents isolate all four surfaces",
+            () => {
+                const cwd = "C:\\proj-a";
+                const pa = session.parentKey("C:\\sessions\\aaa.jsonl");
+                const pb = session.parentKey("C:\\sessions\\bbb.jsonl");
+                assert.notEqual(pa, pb);
+                assert.notEqual(
+                    session.paneNameFor("scout", cwd, pa),
+                    session.paneNameFor("scout", cwd, pb),
+                );
+                assert.notEqual(
+                    session.tabNameFor("scout", cwd, pa),
+                    session.tabNameFor("scout", cwd, pb),
+                );
+                const idA = session.agentSessionId("scout", cwd, pa);
+                const idB = session.agentSessionId("scout", cwd, pb);
+                assert.notEqual(idA, idB);
+                assert.notEqual(
+                    session.lockFileFor("/tmp", "scout", cwd, pa),
+                    session.lockFileFor("/tmp", "scout", cwd, pb),
+                );
+                const both = stubFs({
+                    [`2026-01-01T00-00-00-000Z_${idA}.jsonl`]: 10,
+                    [`2026-02-01T00-00-00-000Z_${idB}.jsonl`]: 20,
+                });
+                assert.equal(
+                    session.findAgentSessionFile("/dir", "scout", cwd, both, pa),
+                    `/dir/2026-01-01T00-00-00-000Z_${idA}.jsonl`,
+                );
+                assert.equal(
+                    session.findAgentSessionFile("/dir", "scout", cwd, both, pb),
+                    `/dir/2026-02-01T00-00-00-000Z_${idB}.jsonl`,
+                );
+            },
+        ],
+        [
+            "findAgentSessionFile never crosses parents in a shared groupDir",
+            () => {
+                const cwd = "C:\\proj-a";
+                const pa = session.parentKey("C:\\sessions\\aaa.jsonl");
+                const pb = session.parentKey("C:\\sessions\\bbb.jsonl");
+                const idA = session.agentSessionId("scout", cwd, pa);
+                const onlyA = stubFs({ [`2026-01-01T00-00-00-000Z_${idA}.jsonl`]: 10 });
+                assert.equal(
+                    session.findAgentSessionFile("/dir", "scout", cwd, onlyA, pb),
+                    undefined,
+                );
+                assert.equal(session.findAgentSessionFile("/dir", "scout", cwd, onlyA), undefined);
+                const idPlain = session.agentSessionId("scout", cwd);
+                const onlyPlain = stubFs({ [`2026-01-01T00-00-00-000Z_${idPlain}.jsonl`]: 10 });
+                assert.equal(
+                    session.findAgentSessionFile("/dir", "scout", cwd, onlyPlain, pa),
                     undefined,
                 );
             },
