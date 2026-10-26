@@ -6,6 +6,7 @@ disable-model-invocation: true
 metadata:
     author: shadcn
     version: "1.0.0"
+    argument-hint: "[quick | deep | security | perf | tests | branch | next | plan <description> | review-plan <file> | execute <plan> | reconcile] [--issues]"
 ---
 
 # Improve

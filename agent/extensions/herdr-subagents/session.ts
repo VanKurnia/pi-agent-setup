@@ -17,12 +17,14 @@ interface ContentBlock {
 }
 
 // Stale-lock horizon: a lock older than this is treated as abandoned
-// (crashed holder) and may be taken over. Arbitrary heuristic.
-const LOCK_STALE_MS = 10 * 60 * 1000;
+// (crashed holder) and may be taken over. 60 s keeps margin over the max
+// real hold (30 s settle + launch) while a SIGKILL-resumed parent waits
+// seconds, not minutes.
+const LOCK_STALE_MS = 60 * 1000;
 
 const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
 
-export function extractLastAssistantText(jsonl: string): string | undefined {
+function parseSessionEntries(jsonl: string): SessionEntry[] {
     const entries: SessionEntry[] = [];
     for (const line of jsonl.split("\n")) {
         if (line.trim() === "") continue;
@@ -39,6 +41,12 @@ export function extractLastAssistantText(jsonl: string): string | undefined {
             continue;
         }
     }
+    return entries;
+}
+
+// Branch walk over already-parsed entries: newest entry's ancestor chain,
+// then the last assistant message's text blocks.
+function entriesToText(entries: SessionEntry[]): string | undefined {
     if (entries.length === 0) return undefined;
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
     const branch: SessionEntry[] = [];
@@ -65,23 +73,60 @@ export function extractLastAssistantText(jsonl: string): string | undefined {
     return texts.join("\n");
 }
 
-// Late-reply guard: returns the last assistant text only when the file's
-// newest entry is a complete assistant turn. Used on abort so a landed
-// reply is returned instead of "aborted" — and never a stale one (a
-// partially appended turn ends in a user message, yielding undefined).
-export function extractIfTurnComplete(jsonl: string): string | undefined {
+export function extractLastAssistantText(jsonl: string): string | undefined {
+    return entriesToText(parseSessionEntries(jsonl));
+}
+
+// Reply tail cache: session files only grow while reused, so a longer file
+// under the same name reuses the parsed prefix; a new or shrunk file means
+// rotation → full re-parse. One file retained (one per agent per parent).
+let replyCache: { file: string; length: number; entries: SessionEntry[] } | undefined;
+function cachedEntries(sessionFile: string, jsonl: string): SessionEntry[] {
+    if (
+        replyCache !== undefined &&
+        replyCache.file === sessionFile &&
+        jsonl.length >= replyCache.length
+    ) {
+        // Append-only: parse only the new tail (char slice is exact;
+        // identical content parses zero lines).
+        for (const entry of parseSessionEntries(jsonl.slice(replyCache.length)))
+            replyCache.entries.push(entry);
+        replyCache.length = jsonl.length;
+        return replyCache.entries;
+    }
+    const entries = parseSessionEntries(jsonl);
+    replyCache = { file: sessionFile, length: jsonl.length, entries };
+    return entries;
+}
+export function cachedAssistantText(sessionFile: string, jsonl: string): string | undefined {
+    return entriesToText(cachedEntries(sessionFile, jsonl));
+}
+export function cachedTurnComplete(sessionFile: string, jsonl: string): string | undefined {
+    return lastLineIsCompleteTurn(jsonl)
+        ? entriesToText(cachedEntries(sessionFile, jsonl))
+        : undefined;
+}
+
+// True when the file's newest entry is a complete assistant turn. Used on
+// abort so a landed reply is returned instead of "aborted" — and never a
+// stale one (a partially appended turn ends in a user message).
+function lastLineIsCompleteTurn(jsonl: string): boolean {
     const lines = jsonl.split("\n").filter((line) => line.trim() !== "");
-    if (lines.length === 0) return undefined;
+    if (lines.length === 0) return false;
     let last: unknown;
     try {
         last = JSON.parse(lines[lines.length - 1]);
     } catch {
-        return undefined;
+        return false;
     }
-    if (typeof last !== "object" || last === null) return undefined;
+    if (typeof last !== "object" || last === null) return false;
     const entry = last as { type?: unknown; message?: { role?: unknown } };
-    if (entry.type !== "message" || entry.message?.role !== "assistant") return undefined;
-    return extractLastAssistantText(jsonl);
+    return entry.type === "message" && entry.message?.role === "assistant";
+}
+
+// Late-reply guard: the last assistant text, but only for a complete turn.
+export function extractIfTurnComplete(jsonl: string): string | undefined {
+    return lastLineIsCompleteTurn(jsonl) ? extractLastAssistantText(jsonl) : undefined;
 }
 
 // 8-hex project key: stable per cwd, filesystem- and pane-label-safe.
@@ -144,6 +189,7 @@ export function findAgentSessionFile(
         statSync(path: string): { mtimeMs: number };
     } = defaultFs,
     parent?: string,
+    onNames?: (names: string[]) => void,
 ): string | undefined {
     if (!isSafeAgentName(agentName)) return undefined;
     const suffix = `_${agentSessionId(agentName, cwd, parent)}.jsonl`;
@@ -153,6 +199,7 @@ export function findAgentSessionFile(
     } catch {
         return undefined;
     }
+    onNames?.(names);
     let best: string | undefined;
     let bestMtime = -1;
     for (const name of names) {
@@ -170,21 +217,40 @@ export function findAgentSessionFile(
     return best;
 }
 
-// Session files written before ids were scoped per project
-// (`..._herdr-<agent>.jsonl`). The keyed lookup can never match them again, so
-// they are dead weight — and a session file left behind keeps the matching OM
-// store looking live to blackhole's prune.
+// Pre-upgrade session files predate per-project ids, so the keyed lookup
+// can never match them again. They are swept (not just ignored) because a
+// leftover file keeps its OM store looking live to blackhole's prune;
+// sweepLegacySessionFiles shares this predicate.
+function isLegacySessionFile(agentName: string, name: string): boolean {
+    return isSafeAgentName(agentName) && name.endsWith(`_herdr-${agentName}.jsonl`);
+}
+
 export function legacyAgentSessionFiles(
     groupDir: string,
     agentName: string,
     fs: { readdirSync(dir: string): string[] } = defaultFs,
 ): string[] {
-    if (!isSafeAgentName(agentName)) return [];
-    const suffix = `_herdr-${agentName}.jsonl`;
     try {
-        return fs.readdirSync(groupDir).filter((name) => name.endsWith(suffix));
+        return fs.readdirSync(groupDir).filter((name) => isLegacySessionFile(agentName, name));
     } catch {
         return [];
+    }
+}
+
+// Sweep pre-upgrade session files out of an already-read directory
+// listing: one readdir shared with the keyed lookup, not two scans.
+export function sweepLegacySessionFiles(
+    groupDir: string,
+    agentName: string,
+    names: string[],
+): void {
+    for (const name of names) {
+        if (!isLegacySessionFile(agentName, name)) continue;
+        try {
+            unlinkSync(`${groupDir}/${name}`);
+        } catch {
+            // Locked by a still-running pre-upgrade child, or already gone.
+        }
     }
 }
 

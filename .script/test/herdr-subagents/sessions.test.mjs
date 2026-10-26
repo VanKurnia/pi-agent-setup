@@ -44,6 +44,15 @@ const parentMessages = [
 ];
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-sessions-test-"));
+// Session-file JSONL builder mirroring the extract-case entry shape.
+const jmsg = (id, parent, role, text) =>
+    JSON.stringify({
+        type: "message",
+        id,
+        parentId: parent,
+        timestamp: "2026-10-17T00:00:00.000Z",
+        message: { role, content: [{ type: "text", text }], timestamp: 0 },
+    });
 const stubFs = (files) => ({
     readdirSync: () => Object.keys(files),
     statSync: (p) => {
@@ -468,6 +477,97 @@ await runCases(
                     session.findAgentSessionFile("/dir", "scout", cwd, onlyPlain, pa),
                     undefined,
                 );
+            },
+        ],
+        [
+            "cache: same file and content returns identical text",
+            () => {
+                const jsonl = [
+                    jmsg("u1", null, "user", "hi"),
+                    jmsg("a1", "u1", "assistant", "PONG"),
+                ].join("\n");
+                assert.equal(session.cachedAssistantText("cache-same.jsonl", jsonl), "PONG");
+                assert.equal(session.cachedAssistantText("cache-same.jsonl", jsonl), "PONG");
+                assert.equal(session.cachedTurnComplete("cache-same.jsonl", jsonl), "PONG");
+            },
+        ],
+        [
+            "cache: appended turn updates the reply",
+            () => {
+                const head = [
+                    jmsg("u1", null, "user", "hi"),
+                    jmsg("a1", "u1", "assistant", "PONG"),
+                ].join("\n");
+                assert.equal(session.cachedAssistantText("cache-grow.jsonl", head), "PONG");
+                const grown =
+                    head +
+                    "\n" +
+                    [
+                        jmsg("u2", "a1", "user", "again"),
+                        jmsg("a2", "u2", "assistant", "PONG2"),
+                    ].join("\n");
+                assert.equal(session.cachedAssistantText("cache-grow.jsonl", grown), "PONG2");
+                assert.equal(session.cachedTurnComplete("cache-grow.jsonl", grown), "PONG2");
+            },
+        ],
+        [
+            "cache: same content under a different filename stays independent",
+            () => {
+                const jsonl = [
+                    jmsg("u1", null, "user", "hi"),
+                    jmsg("a1", "u1", "assistant", "PONG"),
+                ].join("\n");
+                assert.equal(session.cachedAssistantText("cache-rot-a.jsonl", jsonl), "PONG");
+                assert.equal(session.cachedAssistantText("cache-rot-b.jsonl", jsonl), "PONG");
+                const grown =
+                    jsonl +
+                    "\n" +
+                    [
+                        jmsg("u2", "a1", "user", "again"),
+                        jmsg("a2", "u2", "assistant", "PONG2"),
+                    ].join("\n");
+                assert.equal(session.cachedAssistantText("cache-rot-b.jsonl", grown), "PONG2");
+                assert.equal(session.cachedAssistantText("cache-rot-a.jsonl", jsonl), "PONG");
+            },
+        ],
+        [
+            "cache: shorter content under the same name triggers a full re-parse",
+            () => {
+                const full = [
+                    jmsg("u1", null, "user", "hi"),
+                    jmsg("a1", "u1", "assistant", "PONG"),
+                    jmsg("u2", "a1", "user", "again"),
+                    jmsg("a2", "u2", "assistant", "PONG2"),
+                ].join("\n");
+                assert.equal(session.cachedAssistantText("cache-shrink.jsonl", full), "PONG2");
+                const short = [
+                    jmsg("u1", null, "user", "hi"),
+                    jmsg("a1", "u1", "assistant", "PONG"),
+                ].join("\n");
+                assert.equal(session.cachedAssistantText("cache-shrink.jsonl", short), "PONG");
+            },
+        ],
+        [
+            "sweepLegacySessionFiles: deletes only the agent-suffixed names",
+            () => {
+                const dir = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-sweep-test-"));
+                try {
+                    const keep = [
+                        "2026-01-01T00-00-00-000Z_herdr-scout-12345678.jsonl",
+                        "2026-01-02T00-00-00-000Z_unrelated.jsonl",
+                        "2026-01-03T00-00-00-000Z_herdr-worker.jsonl",
+                    ];
+                    const drop = ["2026-01-04T00-00-00-000Z_herdr-scout.jsonl"];
+                    for (const name of [...keep, ...drop]) {
+                        fs.writeFileSync(path.join(dir, name), "x");
+                    }
+                    session.sweepLegacySessionFiles(dir, "scout", [...keep, ...drop]);
+                    assert.deepEqual(fs.readdirSync(dir).sort(), [...keep].sort());
+                    session.sweepLegacySessionFiles(dir, "../evil", [...keep]);
+                    assert.deepEqual(fs.readdirSync(dir).sort(), [...keep].sort());
+                } finally {
+                    fs.rmSync(dir, { recursive: true, force: true });
+                }
             },
         ],
     ],

@@ -8,6 +8,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Type } from "typebox";
 import {
+    HerdrError,
     closePane,
     createTab,
     getPane,
@@ -15,9 +16,8 @@ import {
     listTabs,
     renamePane,
     runInPane,
-    sendEnter,
-    sendText,
     splitPane,
+    waitForAgentStatus,
     type PaneState,
 } from "./herdr.js";
 import {
@@ -25,18 +25,18 @@ import {
     agentSessionId,
     attachDelegationSnapshot,
     buildChildHeader,
+    cachedAssistantText,
+    cachedTurnComplete,
     childSessionFilename,
     createDelegationSnapshot,
-    extractIfTurnComplete,
-    extractLastAssistantText,
     findAgentSessionFile,
     isSafeAgentName,
-    legacyAgentSessionFiles,
     lockFileFor,
     matchPane,
     paneNameFor,
     parentKey,
     releaseLock,
+    sweepLegacySessionFiles,
     tabNameFor,
 } from "./session.js";
 import {
@@ -51,37 +51,6 @@ import {
     type ThinkingLevel,
 } from "./agents.js";
 import { showPicker } from "../shared/picker.js";
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Legacy session files can no longer be looked up (see session.ts); drop them so
-// the matching OM store stops looking live to blackhole's prune.
-function reapLegacySessionFiles(groupDir: string, agentName: string): void {
-    for (const name of legacyAgentSessionFiles(groupDir, agentName)) {
-        try {
-            fs.unlinkSync(path.join(groupDir, name));
-        } catch {
-            // Locked by a still-running pre-upgrade child, or already gone.
-        }
-    }
-}
-
-async function pollState(
-    signal: AbortSignal | undefined,
-    intervalMs: number,
-    timeoutMs: number,
-    check: () => Promise<boolean>,
-): Promise<boolean> {
-    const deadline = Date.now() + timeoutMs;
-    for (;;) {
-        if (signal?.aborted) return false;
-        if (await check()) return true;
-        if (Date.now() >= deadline) return false;
-        await sleep(intervalMs);
-    }
-}
 
 // A child host is ready to take a task when pi-bolt is present and resting.
 // done is pi-bolt's resting state after a finished turn; idle is its state
@@ -154,7 +123,6 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                 linked !== undefined
                     ? lockFileFor(os.tmpdir(), agent.name, cwd, parent)
                     : undefined;
-            if (linked !== undefined) reapLegacySessionFiles(linked.groupDir, agent.name);
             let paneId: string | undefined;
             let sessionFile: string | undefined;
             let sessionDir: string | undefined;
@@ -162,6 +130,98 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
             // Byte size of the session file just before our prompt is sent;
             // -1 (nothing sent yet) disables the late-reply path.
             let sizeBefore = -1;
+            // Pre-lock discovery for double-checked locking: findMatch reads
+            // the mapped pane summary (status + occupant, no re-fetch). The
+            // settle outcome feeds paneId/reused into the serialized launch
+            // below, so it runs here — before acquireLock — with a
+            // post-acquire re-match.
+            const tabName = tabNameFor(agent.name, cwd, parent);
+            // The child belongs in the parent's workspace, not
+            // whichever workspace is currently focused.
+            const workspaceId = process.env.HERDR_WORKSPACE_ID || undefined;
+            const findMatch = async () => {
+                if (linked === undefined) return undefined;
+                const tabMatch = matchPane(await listTabs(workspaceId), tabName);
+                if (tabMatch === undefined) return undefined;
+                const match = (await listPanes()).find((pane) => pane.tabId === tabMatch.tabId);
+                if (match === undefined) return undefined;
+                return { tabMatch, match };
+            };
+            const stillWorking = () =>
+                errorResult(`subagent ${agent.name} is still working; wait for it to finish.`);
+            const recyclePane = async (paneId: string) => {
+                try {
+                    await closePane(paneId);
+                } catch {
+                    // Pane already gone; relaunch below.
+                }
+            };
+            const lookupSessionFile = (onNames?: (names: string[]) => void) =>
+                linked === undefined
+                    ? undefined
+                    : findAgentSessionFile(
+                          linked.groupDir,
+                          agent.name,
+                          cwd,
+                          undefined,
+                          parent,
+                          onNames,
+                      );
+            // Maps a server wait onto the three outcomes every site needs:
+            // "aborted" (take the abort path), "timeout" (take the
+            // site's timeout path), or "ok". Anything else rethrows.
+            const awaitStatus = async (
+                target: string,
+                until: string[],
+                ms: number,
+            ): Promise<"ok" | "aborted" | "timeout"> => {
+                try {
+                    await waitForAgentStatus(target, until, ms, signal);
+                } catch (err) {
+                    if (signal?.aborted) return "aborted";
+                    if (err instanceof HerdrError && err.code === "aborted") return "aborted";
+                    if (err instanceof HerdrError && err.code === "timeout") return "timeout";
+                    throw err;
+                }
+                if (signal?.aborted) return "aborted";
+                return "ok";
+            };
+            let found = await findMatch();
+            if (found !== undefined) {
+                if (found.match.agentStatus === "working") {
+                    return stillWorking();
+                }
+                if (isReadyForTask(found.match)) {
+                    if (found.match.agentStatus === "done") {
+                        // done is transient post-turn: the pane may still be
+                        // flushing the finished turn. Reusing it now races the
+                        // extraction (previous reply), so wait for the host to
+                        // settle before deciding.
+                        const settleState = await awaitStatus(found.match.paneId, ["idle"], 30000);
+                        if (settleState === "aborted") return abortResult(found.match.paneId);
+                        const settled = settleState === "ok";
+                        if (!settled) {
+                            // Still done after 30s: recycle the host, keep
+                            // the session file; relaunch continues it below.
+                            await recyclePane(found.match.paneId);
+                        }
+                        found = await findMatch();
+                        if (found !== undefined && !isReadyForTask(found.match)) {
+                            // Changed state mid-settle: not trusted for reuse.
+                            await recyclePane(found.match.paneId);
+                            found = undefined;
+                        }
+                    }
+                } else {
+                    // Stale host (dead agent, crashed child): recycle it so no
+                    // orphaned tab leaks, then relaunch below.
+                    await recyclePane(found.match.paneId);
+                    found = undefined;
+                }
+            }
+            // The snapshot reads only frozen parent state, so build it
+            // outside the lock while discovery runs ahead.
+            const snapshot = await createDelegationSnapshot(ctx);
             try {
                 if (lockPath !== undefined && !acquireLock(lockPath)) {
                     return errorResult(
@@ -172,57 +232,18 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                     const toolsFlag =
                         agent.tools.length > 0 ? ` --tools ${agent.tools.join(",")}` : "";
                     if (linked !== undefined) {
-                        const tabName = tabNameFor(agent.name, cwd, parent);
-                        // The child belongs in the parent's workspace, not
-                        // whichever workspace is currently focused.
-                        const workspaceId = process.env.HERDR_WORKSPACE_ID || undefined;
-                        const tabMatch = matchPane(await listTabs(workspaceId), tabName);
-                        const match =
-                            tabMatch === undefined
-                                ? undefined
-                                : (await listPanes()).find((pane) => pane.tabId === tabMatch.tabId);
-                        if (match !== undefined) {
-                            const matchState = await getPane(match.paneId);
-                            if (isReadyForTask(matchState)) {
-                                if (matchState.agentStatus === "done") {
-                                    // done is transient post-turn: the pane may still be
-                                    // flushing the finished turn. Sending now races it
-                                    // (the polls pass instantly, extraction reads the
-                                    // previous reply), so wait for the host to settle.
-                                    const settled = await pollState(
-                                        signal,
-                                        2000,
-                                        30000,
-                                        async () =>
-                                            (await getPane(match.paneId)).agentStatus === "idle",
-                                    );
-                                    if (signal?.aborted) return abortResult(match.paneId);
-                                    if (settled) {
-                                        paneId = match.paneId;
-                                        reused = true;
-                                    } else {
-                                        // Still done after 30s: recycle the host, keep
-                                        // the session file; relaunch continues it below.
-                                        try {
-                                            await closePane(match.paneId);
-                                        } catch {
-                                            // Pane already gone; relaunch below.
-                                        }
-                                    }
-                                } else {
-                                    paneId = match.paneId;
-                                    reused = true;
-                                }
-                            } else if (matchState.agentStatus === "working") {
-                                return errorResult(
-                                    `subagent ${agent.name} is still working; wait for it to finish.`,
-                                );
+                        // Post-acquire triage: reuse a live host, refuse to
+                        // collide with a working one, recycle a stale one.
+                        const confirmed = await findMatch();
+                        if (confirmed !== undefined) {
+                            if (confirmed.match.agentStatus === "working") {
+                                return stillWorking();
+                            }
+                            if (isReadyForTask(confirmed.match)) {
+                                paneId = confirmed.match.paneId;
+                                reused = true;
                             } else {
-                                try {
-                                    await closePane(match.paneId);
-                                } catch {
-                                    // Pane already gone; relaunch below.
-                                }
+                                await recyclePane(confirmed.match.paneId);
                             }
                         }
                         if (paneId === undefined) {
@@ -235,12 +256,8 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                         }
                         if (!reused) {
                             const stamp = new Date().toISOString();
-                            let file = findAgentSessionFile(
-                                linked.groupDir,
-                                agent.name,
-                                cwd,
-                                undefined,
-                                parent,
+                            let file = lookupSessionFile((names) =>
+                                sweepLegacySessionFiles(linked.groupDir, agent.name, names),
                             );
                             let fresh = false;
                             if (file === undefined) {
@@ -260,13 +277,7 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                                 } catch (err) {
                                     if ((err as NodeJS.ErrnoException)?.code !== "EEXIST")
                                         throw err;
-                                    const winner = findAgentSessionFile(
-                                        linked.groupDir,
-                                        agent.name,
-                                        cwd,
-                                        undefined,
-                                        parent,
-                                    );
+                                    const winner = lookupSessionFile();
                                     if (winner === undefined) throw err;
                                     file = winner;
                                 }
@@ -278,13 +289,7 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                                 `pi-bolt --session-dir "${linked.sessionsRoot}" --session "${file}"${nameFlag}${toolsFlag}${modelFlag}${thinkingFlag}`,
                             );
                         } else {
-                            sessionFile = findAgentSessionFile(
-                                linked.groupDir,
-                                agent.name,
-                                cwd,
-                                undefined,
-                                parent,
-                            );
+                            sessionFile = lookupSessionFile();
                         }
                     } else {
                         sessionDir = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-subagent-"));
@@ -321,7 +326,7 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                     } catch {
                         return undefined;
                     }
-                    const text = extractIfTurnComplete(jsonl);
+                    const text = cachedTurnComplete(sessionFile, jsonl);
                     return text === undefined ? undefined : { text, session: sessionFile };
                 };
                 const aborted = async (paneId: string) => {
@@ -340,22 +345,34 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                     }
                     return abortResult(paneId, sessionFile);
                 };
-                let state: PaneState = { agentStatus: "" };
-                const ready = await pollState(signal, 2000, 60000, async () => {
-                    state = await getPane(pane);
-                    return isReadyForTask(state);
-                });
-                if (signal?.aborted) return aborted(pane);
-                if (!ready) {
+                const ready = await awaitStatus(pane, ["idle"], 60000);
+                if (ready === "aborted") return aborted(pane);
+                if (ready === "timeout") {
                     await closePane(pane);
                     return errorResult(
                         `herdr subagent timed out waiting for pi-bolt to become idle in pane ${pane}.`,
                     );
                 }
-                const snapshot = await createDelegationSnapshot(ctx);
+                // The wait guarantees status, not occupant: confirm pi-bolt
+                // itself is resting before submitting.
+                if (!isReadyForTask(await getPane(pane))) {
+                    await closePane(pane);
+                    return errorResult(
+                        `herdr subagent timed out waiting for pi-bolt to become idle in pane ${pane}.`,
+                    );
+                }
                 const task = attachDelegationSnapshot(params.task, snapshot);
-                await sendText(pane, `${agent.systemPrompt}\n\n---\n\nTask:\n${task}`);
-                await sendEnter(pane);
+                await runInPane(pane, `${agent.systemPrompt}\n\n---\n\nTask:\n${task}`);
+                if (signal?.aborted) return aborted(pane);
+                const started = await awaitStatus(pane, ["working", "done"], 40000);
+                if (started === "aborted") return aborted(pane);
+                if (started === "timeout") {
+                    await closePane(pane);
+                    return errorResult(
+                        `herdr subagent timed out waiting for pane ${pane} to start working.`,
+                    );
+                }
+                if (signal?.aborted) return aborted(pane);
                 if (sessionFile !== undefined) {
                     try {
                         sizeBefore = fs.statSync(sessionFile).size;
@@ -363,28 +380,15 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                         sizeBefore = 0;
                     }
                 }
-                const started = await pollState(signal, 1500, 40000, async () => {
-                    state = await getPane(pane);
-                    return state.agentStatus === "working" || state.agentStatus === "done";
-                });
-                if (signal?.aborted) return aborted(pane);
-                if (!started) {
-                    await closePane(pane);
-                    return errorResult(
-                        `herdr subagent timed out waiting for pane ${pane} to start working.`,
-                    );
-                }
-                const finished = await pollState(signal, 1500, 1800000, async () => {
-                    state = await getPane(pane);
-                    return state.agentStatus === "done" || state.agentStatus === "idle";
-                });
-                if (signal?.aborted) return aborted(pane);
-                if (!finished) {
+                const finished = await awaitStatus(pane, ["done", "idle"], 1800000);
+                if (finished === "aborted") return aborted(pane);
+                if (finished === "timeout") {
                     await closePane(pane);
                     return errorResult(
                         `herdr subagent timed out waiting for pane ${pane} to finish.`,
                     );
                 }
+                if (signal?.aborted) return aborted(pane);
                 if (sessionFile === undefined && !reused && sessionDir !== undefined) {
                     const jsonlFiles = fs
                         .readdirSync(sessionDir, { encoding: "utf8", recursive: true })
@@ -407,7 +411,7 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                     );
                 }
                 const jsonl = fs.readFileSync(sessionFile, "utf8");
-                const text = extractLastAssistantText(jsonl);
+                const text = cachedAssistantText(sessionFile, jsonl);
                 if (text === undefined) {
                     await closePane(pane);
                     return errorResult(

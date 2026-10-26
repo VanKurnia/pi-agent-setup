@@ -12,7 +12,21 @@ function requestId(): string {
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-function callHerdr(method: string, params: Record<string, unknown>): Promise<any> {
+export class HerdrError extends Error {
+    code: string;
+    constructor(message: string, code: string) {
+        super(message);
+        this.name = "HerdrError";
+        this.code = code;
+    }
+}
+
+function callHerdr(
+    method: string,
+    params: Record<string, unknown>,
+    timeoutMs = 8000,
+    signal?: AbortSignal,
+): Promise<any> {
     return new Promise((resolve, reject) => {
         let endpoint: string;
         try {
@@ -31,28 +45,36 @@ function callHerdr(method: string, params: Record<string, unknown>): Promise<any
         }
         let buffer = "";
         let settled = false;
-        const timer = setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            try {
-                sock.destroy();
-            } catch {
-                // Already gone; nothing to clean up.
-            }
-            reject(new Error(`herdr ${method} timed out waiting for a response.`));
-        }, 8000);
-        timer.unref?.();
-        const fail = (message: string): void => {
+        // Every exit runs the same teardown exactly once; the callback
+        // only chooses the outcome.
+        const settle = (outcome: () => void): void => {
             if (settled) return;
             settled = true;
             clearTimeout(timer);
+            signal?.removeEventListener("abort", onAbort);
             try {
                 sock.destroy();
             } catch {
                 // Already gone; nothing to clean up.
             }
-            reject(new Error(message));
+            outcome();
         };
+        const timer = setTimeout(() => {
+            settle(() =>
+                reject(
+                    new HerdrError(`herdr ${method} timed out waiting for a response.`, "timeout"),
+                ),
+            );
+        }, timeoutMs);
+        timer.unref?.();
+        const fail = (message: string): void => {
+            settle(() => reject(new Error(message)));
+        };
+        function onAbort(): void {
+            settle(() => reject(new HerdrError(`herdr ${method} aborted.`, "aborted")));
+        }
+        signal?.addEventListener("abort", onAbort);
+        if (signal?.aborted) onAbort();
         sock.on("error", (err: Error) =>
             fail(`herdr ${method} failed: ${err?.message ?? String(err)}`),
         );
@@ -75,26 +97,74 @@ function callHerdr(method: string, params: Record<string, unknown>): Promise<any
                     continue;
                 }
                 if (!message || typeof message !== "object" || message.id !== id) continue;
-                settled = true;
-                clearTimeout(timer);
-                try {
-                    sock.destroy();
-                } catch {
-                    // Already gone; nothing to clean up.
-                }
-                if (message.error && typeof message.error === "object") {
-                    reject(
-                        new Error(
-                            `herdr ${method} error ${String(message.error.code)}: ${String(message.error.message)}`,
-                        ),
-                    );
-                } else {
-                    resolve(message.result);
-                }
+                settle(() => {
+                    if (message.error && typeof message.error === "object") {
+                        reject(
+                            new HerdrError(
+                                `herdr ${method} error ${String(message.error.code)}: ${String(message.error.message)}`,
+                                String(message.error.code ?? "unknown"),
+                            ),
+                        );
+                    } else {
+                        resolve(message.result);
+                    }
+                });
                 return;
             }
         });
     });
+}
+
+// Never pass an empty until array: the server matches nothing and
+// returns immediately.
+export async function waitForAgentStatus(
+    target: string,
+    until: string[],
+    timeoutMs: number,
+    signal?: AbortSignal,
+): Promise<void> {
+    // A fresh pane has no agent occupant yet, so the server answers
+    // agent_not_found immediately instead of waiting. Retry until the
+    // child boots; only the cold-boot window pays the 2000 ms granularity,
+    // warm paths still resolve in ~1 ms.
+    function sleepAbortable(ms: number): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                signal?.removeEventListener("abort", onAbort);
+                resolve();
+            }, ms);
+            function onAbort(): void {
+                clearTimeout(timer);
+                reject(new HerdrError("herdr agent.wait aborted.", "aborted"));
+            }
+            signal?.addEventListener("abort", onAbort);
+            if (signal?.aborted) onAbort();
+        });
+    }
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+            throw new HerdrError("herdr agent.wait timed out waiting for a response.", "timeout");
+        }
+        if (signal?.aborted) {
+            throw new HerdrError("herdr agent.wait aborted.", "aborted");
+        }
+        try {
+            await callHerdr(
+                "agent.wait",
+                { target, until, timeout_ms: remaining },
+                remaining + 15000,
+                signal,
+            );
+            return;
+        } catch (err) {
+            if (!(err instanceof HerdrError && err.code === "agent_not_found")) throw err;
+            const retryIn = Math.min(2000, deadline - Date.now());
+            // No time left: fall through; the loop top throws the timeout.
+            if (retryIn > 0) await sleepAbortable(retryIn);
+        }
+    }
 }
 
 /**
@@ -159,10 +229,6 @@ export function getPane(paneId: string): Promise<PaneState> {
     });
 }
 
-export function sendText(paneId: string, text: string): Promise<void> {
-    return callHerdr("pane.send_text", { pane_id: paneId, text }).then(() => undefined);
-}
-
 export interface PaneSummary {
     paneId: string;
     tabId?: string;
@@ -194,10 +260,6 @@ export function listPanes(): Promise<PaneSummary[]> {
 
 export function renamePane(paneId: string, label: string): Promise<void> {
     return callHerdr("pane.rename", { pane_id: paneId, label }).then(() => undefined);
-}
-
-export function sendEnter(paneId: string): Promise<void> {
-    return callHerdr("pane.send_keys", { pane_id: paneId, keys: ["enter"] }).then(() => undefined);
 }
 
 export function closePane(paneId: string): Promise<void> {
@@ -244,6 +306,4 @@ export function listTabs(workspaceId?: string): Promise<TabInfo[]> {
     });
 }
 
-export function closeTab(tabId: string): Promise<void> {
-    return callHerdr("tab.close", { tab_id: tabId }).then(() => undefined);
-}
+// No closeTab wrapper: closing a tab's last pane removes the tab, so closePane suffices.
