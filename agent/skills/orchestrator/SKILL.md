@@ -1,128 +1,43 @@
 ---
 name: orchestrator
-description: Default session rules governing tool choice (subagent vs direct tools), context-window budgeting, implementation workflow, and output discipline. Load this as the session baseline — it tells you when to delegate to worker vs. work directly, how to explore without blowing your context, how to investigate before fixing, and how to verify before claiming done. Referenced by most other skills as the top-level orchestrator.
+description: Default session rules for code work — delegating to a subagent vs. acting directly, exploring without burning context, investigating before fixing, and verifying before claiming done. The session baseline; most other skills reference it.
 ---
 
 # Session Orchestration
 
-## When This Applies
+Applies to every turn of code work, not just some situations.
 
-This skill is the **default session governor** — it applies to every turn, not just specific situations. Load it whenever you:
+## Understand before you build
 
-- **Start a new task** — sets the baseline workflow: investigate → verify → implement → prove
-- **Decide between subagent vs. direct tool** — tells you when to delegate (worker) vs. when to just edit the file yourself
-- **Worry about context limits** — gives you the discipline to explore with targeted calls and verify at known file:line instead of reading whole files
-- **Fix a bug** — prescribes observe → hypothesize → verify → fix, not guess-and-pray
-- **Claim something is done** — requires a concrete verification command and its output
-- **Write output** — keeps it concise, no fluff, run a slop pass on anything over 2 sentences
-- **Get asked to /improve or /grill-me** — those skills reference this one as the top-level orchestrator
+Don't assume — verify. Never start implementing until you are certain what the change is. "I think this is how it works" is a signal to ask or investigate, never to start coding.
 
-In short: if you're executing a user request in a codebase, this skill applies.
+Fill the gap with `ask_user_question` (one question per call, never a batch) for intent and preference, and with the repo itself for facts. You are ready when you know exactly what the change does, which files it touches, and which APIs and patterns it uses.
 
-## Understand Before You Build
+## Context hygiene
 
-THE MOST IMPORTANT THING: YOU DON'T ASSUME, YOU VERIFY - YOU GROUND YOUR COMMUNICATION TO THE USER IN EVIDENCE-BASED FACTS  
-DON'T JUST RELY ON WHAT YOU KNOW. YOU FOLLOW YOUR KNOWLEDGE BUT ALWAYS CHECK YOUR WORK AND YOUR ASSUMPTIONS TO BACK IT UP WITH HARD, UP-TO-DATE DATA THAT YOU LOOKED UP YOURSELF
+Your context is finite, and every file you read stays in it for good.
 
-Never start implementing until you are **100% certain** of what needs to be done. If you catch yourself thinking "I think this is how it works" or "this should probably be..." — STOP. That's a signal to ask or investigate, not to start coding.
+- **Locate first.** `fffind` and `ffgrep` answer "where is it" in one call; `read` only what they point at. Go straight to `read` when you already know the path — it is faster than searching for it.
+- **Batch independent calls.** Lookups that don't depend on each other go in one `codemode` script (`Promise.allSettled`), returning a filtered summary and never more than 2KB of raw output. This is the only parallel path; subagent dispatch stays sequential.
+- **Delegate isolated work to a `subagent` worker.** The tool is synchronous — it blocks until the finished reply, one agent at a time, with no async or parallel dispatch. `still working` means wait for it, then retry.
+- **A subagent is the wrong tool** for a small edit you can make directly, or for anything needing user input: subagents cannot call `ask_user_question`, so every constraint, path and expected output has to be in the task text. A read-only parent snapshot is attached automatically — add only task-specific context; children can dig deeper with `recall` `source:'parent'`.
 
-**Fill knowledge gaps with:**
+## Implementation discipline
 
-- **`ask_user_question`** — ambiguous requirements, preference between approaches, any detail that would materially change the implementation. One question per call. Never guess what the user wants.
-- **`read`** — read skill docs or project files directly when you know the exact path — faster than ff-search/grep.
-- **`search_graph`** — First tool for code discovery. Use before grep.
-  Query modes: BM25 natural language, name regex, and semantic (vector) search.
-- **`search_code`** — Literal text/regex search with graph enrichment (deduplicates
-  by function boundary, ranks by structural importance). Use for config keys,
-  env vars, route strings, error messages, or when search_graph returns nothing.
-- **`read_symbol` / `resolve_symbol`** — Read source from a symbol name.
-  resolve_symbol first to find the qualified_name if ambiguous (returns candidates
-  without guessing). Then read_symbol to read the source.
-- **`get_code_snippet`** — Read source from an exact qualified_name. More efficient
-  than reading the whole file. Set `include_neighbors=true` for callers/callees.
-- **`trace_path`** — Use instead of grep for callers/callees/impact analysis.
-  Supports multi-hop tracing, data-flow mode, and cross-service traces.
-- **`get_architecture`** — Structural orientation at the start of a project:
-  hotspots, entry points, packages, layers, dependencies.
-- **`detect_changes`** — Blast radius analysis before commit or before starting
-  work. Shows changed files + transitive impact set (callers of changed symbols).
+**Keep it simple.** Only what was asked or is clearly necessary — no extra features, refactoring or "improvements" along the way. Three similar lines beat a premature abstraction. Prefer editing an existing file to creating one.
 
-**CBM override rule:** For structural code questions — where a symbol is
-defined, what calls it, what a file declares, blast radius of a change — use CBM
-tools before grep/read. For literal strings, configs, docs, manifests, and
-files whose path you already know, go straight to `ffgrep`/`read`; CBM does not
-index prose. Fall back immediately if two CBM calls return nothing useful.
+**Be direct.** Technical accuracy over validation. No "Great question!" or "You're absolutely right!" — if the approach has a problem, say so plainly.
 
-- **`subagent` worker** — isolated code changes. Tools: `read`, `write`, `edit`, shell tools, plus database queries. Subagents run autonomously without asking user questions.
+**Cut the slop.** Any prose longer than two sentences that isn't a tool result or an error gets a pass before delivery: kill adverbs, break formulaic rhythms, drop the throat-clearing, put the reader in the room.
 
-**Before any non-trivial implementation, you must know:**
+**Investigate before fixing.** Read the error and the full stack trace, form a hypothesis, verify it, then fix. Target the root cause, not the symptom. Random changes made in hope mean the problem is not understood yet.
 
-- Exactly what the change does (confirmed with user)
-- Exactly which files are involved (confirmed with search/read)
-- Exactly which APIs/patterns to use (confirmed with search/read)
+**Verify before claiming.** Run the command and show the output.
 
-If any of those are fuzzy, you're not ready to implement.
-
-## Context Hygiene
-
-Your context window is a finite, non-renewable resource. Every file you read directly stays in your context forever.
-
-**Default to CBM tools first.** Use `search_graph` or `get_architecture`
-for code discovery — they answer in one call. Fall back to grep/read for
-file structure, build config, non-code content, or when CBM has no index
-for the target project.
-
-**Explore directly with targeted calls.** If the task involves understanding how something works across multiple files, finding where something is defined/used, investigating a bug, or checking whether a change is safe — fan out parallel independent calls (graph queries, greps, reads) instead of reading files one by one. Your context stays clean because each call is scoped.
-
-**Use codemode to batch.** For >=2 independent calls run one codemode script with Promise.allSettled; filter large output and return concise text only. Never return raw >2KB. Single known read/grep stays direct. Scout/fast models avoid codemode.
-
-**Use direct reads/greps ONLY when:**
-
-- You need to verify 1-2 lines right before making an edit
-- You already know exactly what file and what you're looking for
-- The answer is a single grep hit
-
-Dispatch subagents one at a time with `{ agent, task }`. Each call runs a separate pi-bolt process in its own herdr pane and returns only the final reply. If the tool answers `still working; wait` or `already starting; retry shortly`, wait for the named agent to finish before dispatching it again — never fan out concurrent calls to the same agent. A read-only parent snapshot is auto-attached; children can drill deeper with `recall` `source:'parent'`.
-
-### When NOT to Use Subagents
-
-- **Tiny targeted edits** where you already know the exact file and line — just do it directly.
-- **Anything requiring user interaction** — subagents cannot call `ask_user_question` and cannot prompt the user. All necessary instructions, context, constraints, and decision paths must be supplied upfront in the task description.
-- **Subagents get a read-only parent snapshot (VCC) auto-attached** — include only task-specific context NOT in the snapshot. File paths, patterns, constraints, expected output format. Children can drill deeper with `recall` `source=parent`.
-
-## Implementation Discipline
-
-### Keep It Simple
-
-Only make changes that are directly requested or clearly necessary. Don't add features, refactoring, or "improvements" beyond what was asked. Three similar lines of code is better than a premature abstraction. Prefer editing existing files over creating new ones.
-
-### Be Direct
-
-Prioritize technical accuracy over validation. No "Great question!" or "You're absolutely right!" — if the user's approach has issues, say so respectfully. Honest feedback over false agreement.
-
-### Cut the Slop
-
-Any prose longer than 2 sentences that isn't a tool result or error gets a slop pass before delivery. Run the quick checks: kill adverbs, break formulaic rhythms, remove throat-clearing, cut em-dashes, put the reader in the room. Orchestrator keeps it concise; the slop pass keeps it human.
-
-### Investigate Before Fixing
-
-When something breaks, don't guess — investigate first. No fixes without understanding the root cause.
-
-1. **Observe** — read error messages, check full stack traces
-2. **Hypothesize** — form a theory based on evidence
-3. **Verify** — test the hypothesis before implementing a fix
-4. **Fix** — target the root cause, not the symptom
-
-If you're making random changes hoping something works, you don't understand the problem yet.
-
-### Verify Before Claiming Done
-
-Never claim success without proving it. Run the actual command, show the output.
-
-| Claim            | Requires                                      |
-| ---------------- | --------------------------------------------- |
-| "Tests pass"     | Run tests, show output                        |
-| "Build succeeds" | Run build, show exit 0                        |
-| "Bug fixed"      | Reproduce original issue, show it's gone      |
-| "Code is clean"  | Run `ocr_review` or `ocr_scan`, show findings |
-| "Script works"   | Run it, show expected output                  |
+| Claim | Requires |
+| --- | --- |
+| "Tests pass" | Run them, show the output |
+| "Build succeeds" | Run it, show exit 0 |
+| "Bug fixed" | Reproduce the original issue, show it gone |
+| "Code is clean" | `ocr_review` or `ocr_scan`, show findings |
+| "Script works" | Run it, show expected output |

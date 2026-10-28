@@ -7,13 +7,12 @@ Interview me relentlessly about every aspect of this plan until we reach a share
 
 **One question per turn.** Batching multiple questions hides dependencies — walk the tree one branch at a time.
 
-If a question can be answered by exploring the codebase, explore it instead —
-use CBM tools for fast, targeted answers:
-- `search_graph` / `read_symbol` — check symbol definitions under debate
-- `trace_path` — verify callers/callees claims about dependencies
-- `search_code` — verify usage patterns mentioned in discussion
-- `detect_changes` — check if a code area is actively changing (context for refactor decisions)
-- `get_architecture` — validate architecture claims with structural data
+If a question can be answered by exploring the codebase, explore it instead — locate first, read only what it points at:
+
+- `fffind` / `ffgrep` — where a symbol, config key or error string lives
+- `read` — the file and line the search landed on
+- `powershell` with `git log` / `git diff` — whether this area is actively changing
+- a `scout` subagent — only when the answer needs several files read and compared; dispatch is synchronous, one at a time
 
 ## Question delivery
 
@@ -29,8 +28,9 @@ Prefer the `ask_user_question` tool over plain text when the question has a disc
 ## Compatibility
 
 This skill works alongside the orchestrator skill. Orchestrator's context-hygiene and investigation rules apply:
-- CBM tools before scout before asking — try `search_graph`/`read_symbol`/`trace_path`
-  first to answer codebase questions; send a scout only when CBM doesn't have the answer
+- `fffind`/`ffgrep`/`read` before scout before asking — a search settles most claims
+  yourself; send one `scout` when the answer needs several files compared; ask only
+  what the code cannot answer
 - One question per ask_user_question call
 - Prefer ask_user_question over plain text for discrete multiple-choice questions
 

@@ -52,7 +52,7 @@
   "components": {
     "editor": {
       "enabled": true,
-      "style": "opencode",
+      "style": "opencode-copy-friendly",
       "colorSource": "theme",
       "borderColorMode": "adaptive",
       "modelLabel": "id",
@@ -79,7 +79,10 @@
             "error": 90
           },
           "showCacheHit": false,
-          "separator": "dash"
+          "separator": "dash",
+          "formats": {
+            "bottomLeft": "$session_name$join_sep($git_branch)"
+          }
         },
         "accent-rail": {
           "rail": "▎",

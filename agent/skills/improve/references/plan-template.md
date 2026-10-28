@@ -1,12 +1,8 @@
 # Handoff Plan Template
 
-Every plan is written for an executor model that has **zero context**: it has not seen the advisor session, the audit, the other plans, or any prior conversation. It may be a smaller/cheaper model. Assume it is competent at following explicit instructions and weak at filling gaps, recovering from ambiguity, or knowing when to stop.
+Every plan is written for an executor that has **zero context**: no advisor session, no audit, no other plan. Assume a competent model that follows explicit instructions and is weak at filling gaps, recovering from ambiguity, and knowing when to stop.
 
-Three properties make a plan executable by a weaker model:
-
-1. **Self-contained context** — everything needed is in the file: paths, code excerpts, conventions, commands.
-2. **Verification gates** — every step ends with a command and its expected result. The executor never has to *judge* whether it succeeded.
-3. **Hard boundaries and escape hatches** — explicit out-of-scope list, and "STOP and report" conditions instead of letting the model improvise when reality doesn't match the plan.
+Three properties carry that: **self-contained context** (paths, excerpts, conventions, commands inlined), **verification gates** (every step ends in a command and its expected result, so the executor never judges success), and **hard boundaries** (explicit out-of-scope list, plus STOP conditions instead of improvisation).
 
 File naming: `.plans/NNN-short-slug.md`, numbered in recommended execution order.
 
@@ -14,14 +10,14 @@ File naming: `.plans/NNN-short-slug.md`, numbered in recommended execution order
 
 ## Template
 
-```markdown
+````markdown
 # Plan NNN: <Imperative title — what will be true after this plan>
 
 > **Executor instructions**: Follow this plan step by step. Run every
 > verification command and confirm the expected result before moving to the
-> next step. If anything in the "STOP conditions" section occurs, stop and
-> report — do not improvise. When done, update the status row for this plan
-> in `.plans/README.md` — unless a reviewer dispatched you and told you they
+> next step. If anything in "STOP conditions" occurs, stop and report — do
+> not improvise. When done, update the status row for this plan in
+> `.plans/README.md` — unless a reviewer dispatched you and told you they
 > maintain the index.
 >
 > **Drift check (run first)**: `git diff --stat <planned-at SHA>..HEAD -- <in-scope paths>`
@@ -41,9 +37,8 @@ File naming: `.plans/NNN-short-slug.md`, numbered in recommended execution order
 
 ## Why this matters
 
-2–5 sentences. The problem, its concrete cost, and what improves when this
-lands. Written so the executor (and a human reviewer) understands the intent —
-intent is what lets a correct judgment call happen when a detail is off.
+2–5 sentences: the problem, its concrete cost, what improves when this lands.
+Intent is what lets a correct judgment call happen when a detail is off.
 
 ## Current state
 
@@ -51,16 +46,15 @@ The facts the executor needs, inlined — never "as discussed" or "see audit":
 
 - The relevant files, each with one line on its role:
   - `src/orders/api.ts` — order-list endpoint; contains the N+1 (lines 130–160)
-- Excerpts of the code as it exists today (short, with `file:line` markers),
-  enough that the executor can confirm it's looking at the right thing.
-- The repo conventions that apply here, with a pointer to one exemplar file:
-  "Error handling follows the Result pattern — see `src/lib/result.ts` and its
-  use in `src/users/api.ts:40-60`. Match it."
-- Any documented vocabulary or design constraints the plan must honor, inlined
-  from the intent/design docs found in recon: the relevant `CONTEXT.md` terms
-  the executor should use in names and comments, the `DESIGN.md` tokens/components
-  to reuse, or the ADR whose decision this work must stay consistent with. Quote
-  the specific lines — the executor has not read those docs.
+- Short excerpts of the code as it exists today, with `file:line` markers,
+  enough to confirm the executor is looking at the right thing.
+- The repo conventions that apply, with one exemplar file: "Error handling
+  follows the Result pattern — see `src/lib/result.ts` and its use in
+  `src/users/api.ts:40-60`. Match it."
+- The vocabulary and constraints from the intent/design docs found in recon,
+  quoted — the executor has not read those docs: the `CONTEXT.md` terms to use
+  in names and comments, the `DESIGN.md` tokens and components to reuse, the
+  ADR whose decision this work must stay consistent with.
 
 ## Commands you will need
 
@@ -75,12 +69,12 @@ The facts the executor needs, inlined — never "as discussed" or "see audit":
 
 ## Suggested executor toolkit
 
-(Optional — include only when relevant skills/tools plausibly exist in the
-executor's environment. Skip the section otherwise.)
+(Optional — only when relevant skills or tools plausibly exist in the
+executor's environment. Otherwise delete the section.)
 
-- Skills the executor should invoke if available, and for what:
-  "use `vercel-react-best-practices` when writing the memoization in step 3".
-- Reference docs worth reading before starting, by path or URL.
+- Skills to invoke if available, and for what: "use
+  `vercel-react-best-practices` when writing the memoization in step 3".
+- Reference docs worth reading first, by path or URL.
 
 ## Scope
 
@@ -97,24 +91,21 @@ executor's environment. Skip the section otherwise.)
 
 ### Step 1: <imperative title>
 
-What to do, precisely. Reference exact files/symbols. Include the target code
-shape when it's load-bearing (the pattern to produce, not necessarily every
-line).
+What to do, precisely. Reference exact files and symbols. Include the target
+code shape when it is load-bearing — the pattern to produce, not every line.
 
 **Verify**: `<command>` → <expected output>
 
 ### Step 2: ...
 
-(Each step small enough to verify independently. Order steps so the codebase
-is never broken between steps when possible — e.g. add new path, switch
-callers, then remove old path.)
+(Each step small enough to verify alone. Order them so the codebase is never
+broken between steps: add the new path, switch callers, then remove the old.)
 
 ## Test plan
 
-- New tests to write, in which file, covering which cases (list them:
-  happy path, the specific bug/regression this plan fixes, named edge cases).
-- Which existing test to use as the structural pattern:
-  "model after `src/users/api.test.ts`".
+- New tests: which file, which cases (happy path, the specific regression this
+  plan fixes, named edge cases).
+- The existing test to model them on: "model after `src/users/api.test.ts`".
 - Verification: `<test command>` → all pass, including N new tests.
 
 ## Done criteria
@@ -123,29 +114,29 @@ Machine-checkable. ALL must hold:
 
 - [ ] `pnpm typecheck` exits 0
 - [ ] `pnpm test` exits 0; new tests for <X> exist and pass
-- [ ] `pi.grep({ pattern: "<old pattern>", path: "src/" })` returns 0 matches
+- [ ] `ffgrep({ pattern: "<old pattern>", path: "src/" })` returns 0 matches
 - [ ] No files outside the in-scope list are modified (`git status`)
 - [ ] `.plans/README.md` status row updated
 
 ## STOP conditions
 
-Stop and report back (do not improvise) if:
+Stop and report (do not improvise) if:
 
-- The code at the locations in "Current state" doesn't match the excerpts
-  (the codebase has drifted since this plan was written).
+- The code at the locations in "Current state" does not match the excerpts —
+  the codebase has drifted since this plan was written.
 - A step's verification fails twice after a reasonable fix attempt.
 - The fix appears to require touching an out-of-scope file.
 - You discover the assumption "<key assumption>" is false.
 
 ## Maintenance notes
 
-For the human/agent who owns this code after the change lands:
+For whoever owns this code after the change lands:
 
-- What future changes will interact with this (e.g. "if pagination is added
-  to this endpoint, the batching in step 2 must be revisited").
+- What future changes interact with this (e.g. "if pagination is added to this
+  endpoint, the batching in step 2 must be revisited").
 - What a reviewer should scrutinize in the PR.
-- Any follow-up explicitly deferred out of this plan (and why).
-```
+- Follow-ups explicitly deferred out of this plan, and why.
+````
 
 ---
 
@@ -153,7 +144,7 @@ For the human/agent who owns this code after the change lands:
 
 Written once by the advisor after all plans, updated by executors:
 
-```markdown
+````markdown
 # Implementation Plans
 
 Generated by the improve skill on <date>. Execute in the order below unless
@@ -167,7 +158,7 @@ honor its STOP conditions, and update your row when done.
 | 001  | ...   | P1       | S      | —          | TODO   |
 | 002  | ...   | P1       | M      | 001        | TODO   |
 
-Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale — finding fixed independently or approach abandoned)
+Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
 ## Dependency notes
 
@@ -176,28 +167,15 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 ## Findings considered and rejected
 
 - <finding>: not worth doing because <one line>. (So nobody re-audits it.)
-```
+````
 
-## Quality bar — check before finishing each plan
+## Quality bar
 
-### Rigor & Executability
-- Could a model that has never seen this repo execute this with only the plan file and the repo? If any step requires knowledge from the advisor session, inline that knowledge.
-- Is every verification a command with an expected result, not a judgment ("make sure it works")?
-- Does every step name exact files and symbols, not "the relevant module"?
-- Are the STOP conditions specific to this plan's actual risks, not boilerplate?
-- Would a reviewer reading only "Why this matters" + "Done criteria" understand what they're approving?
-- No secret values anywhere in the file — locations and credential types only.
-- "Planned at" SHA is filled in and the in-scope paths in the drift check match the Scope section.
+Check each plan before finishing:
 
-### Simplification & Cleanliness Gate (simplify-changes principles)
-- Does the plan avoid speculative flexibility, extra configuration, and premature abstractions (YAGNI)?
-- Does the plan reuse existing workspace mechanisms and utilities (`agent/extensions/shared/`, built-ins) instead of duplicating logic?
-- Are internal invariants enforced via tighter types rather than redundant runtime defensive checks?
-- Does the plan explicitly forbid leaving personal tracking markers (`TODO`, `FIXME`, `plan #X`) in code?
-- If existing code or intentional abstractions are removed, is it protected by an explicit approval explanation (what, why, impact, simpler replacement)?
-
-### Empirical Verification & Zero Assumptions
-- Has every claim about bugs, behavior, or module contracts been empirically verified with concrete evidence gathered in this session (via `codemode`, temp script, or probe harness)?
-- Is the plan free of assumptions, unverified guesses, or speculative claims?
-
-
+- **Executable blind**: a model that has never seen this repo could run it from the plan file plus the repo. Anything requiring advisor-session knowledge is inlined.
+- **Verifiable**: every verification is a command with an expected result, never "make sure it works"; every step names exact files and symbols.
+- **Specific**: STOP conditions describe this plan's actual risks, not boilerplate. Reviewer reading only "Why this matters" + "Done criteria" understands what they approve.
+- **Clean**: no secret values (locations and types only); `Planned at` filled in and its in-scope paths match the Scope section; the executor is told to leave no `TODO`, `FIXME` or plan references in code.
+- **Simple**: no speculative flexibility, extra configuration or premature abstraction; existing workspace utilities and mechanisms are reused rather than duplicated; internal invariants are enforced by tighter types instead of redundant runtime checks; removing intentional code or a deliberate abstraction requires an explicit approval note (what, why, impact, simpler replacement).
+- **Grounded**: every claim about bugs, behavior or module contracts was verified this session; no guesses survive.

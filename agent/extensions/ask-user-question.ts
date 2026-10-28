@@ -1,9 +1,12 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionToolContext, Theme } from "@earendil-works/pi-coding-agent";
 import {
+    CombinedAutocompleteProvider,
     Editor,
+    type AutocompleteProvider,
     type EditorTheme,
     Key,
     Text,
+    type TUI,
     matchesKey,
     visibleWidth,
     wrapTextWithAnsi,
@@ -16,12 +19,17 @@ interface AskOption {
     description?: string;
 }
 
-interface DisplayOption extends AskOption {
-    id: string;
-    index?: number;
-    isOther?: boolean;
-    isSubmit?: boolean;
+interface OptionItem {
+    kind: "option";
+    /** 1-based position shown in the list and reported to the model. */
+    index: number;
+    label: string;
+    value: string;
+    description?: string;
 }
+
+type ChoiceItem = OptionItem | { kind: "other"; label: string };
+type MultiChoiceItem = ChoiceItem | { kind: "submit" };
 
 interface TextAnswer {
     type: "text";
@@ -111,7 +119,7 @@ function getOtherLabel(options: AskOption[]): string {
         : "Other";
 }
 
-function createEditorTheme(theme: any): EditorTheme {
+function createEditorTheme(theme: Theme): EditorTheme {
     return {
         borderColor: (s) => theme.fg("accent", s),
         selectList: {
@@ -231,362 +239,360 @@ export function buildResult(
     };
 }
 
+function createAnswerEditor(tui: TUI, theme: Theme, autocomplete: AutocompleteProvider): Editor {
+    const editor = new Editor(tui, createEditorTheme(theme));
+    editor.setAutocompleteProvider(autocomplete);
+    return editor;
+}
+
+function optionItems(options: AskOption[]): OptionItem[] {
+    return options.map((option, index) => ({ ...option, kind: "option", index: index + 1 }));
+}
+
+function dialogHeader(
+    theme: Theme,
+    question: string,
+    context: string | undefined,
+    width: number,
+): string[] {
+    const lines = [theme.fg("accent", "─".repeat(width))];
+    addWrappedWithPrefix(" ", theme.fg("text", question), lines, width);
+    if (context) {
+        lines.push("");
+        addWrappedWithPrefix(" ", theme.fg("muted", context), lines, width);
+    }
+    lines.push("");
+    return lines;
+}
+
+function dialogFooter(
+    lines: string[],
+    theme: Theme,
+    width: number,
+    hint: string,
+    warning?: string,
+): void {
+    lines.push("");
+    if (warning) lines.push(theme.fg("warning", ` ${warning}`));
+    lines.push(theme.fg("dim", ` ${hint}`), theme.fg("accent", "─".repeat(width)));
+}
+
+function editorLines(editor: Editor, width: number): string[] {
+    return editor.render(Math.max(1, width - 2)).map((line) => ` ${line}`);
+}
+
+// Esc closes an open suggestion list before the screen acts on it, and Enter applies the
+// highlighted suggestion instead of submitting, which a `/` completion would otherwise do.
+function handleAnswerEditorInput(editor: Editor, data: string, tui: TUI): boolean {
+    if (!editor.isShowingAutocomplete()) return false;
+    if (matchesKey(data, Key.escape)) {
+        editor.handleInput(data);
+    } else if (matchesKey(data, Key.enter)) {
+        editor.handleInput("\t");
+    } else {
+        return false;
+    }
+    tui.requestRender();
+    return true;
+}
+
+function handleEditModeInput(editor: Editor, data: string, tui: TUI, onCancel: () => void): void {
+    if (handleAnswerEditorInput(editor, data, tui)) return;
+    if (matchesKey(data, Key.escape)) {
+        onCancel();
+        tui.requestRender();
+        return;
+    }
+    editor.handleInput(data);
+    tui.requestRender();
+}
+
+async function askFreeText(
+    ctx: ExtensionToolContext,
+    question: string,
+    context: string | undefined,
+    autocomplete: AutocompleteProvider,
+): Promise<string | null> {
+    return ctx.ui.custom((tui, theme, _keybindings, done: (result: string | null) => void) => {
+        const editor = createAnswerEditor(tui, theme, autocomplete);
+
+        editor.onSubmit = (value) => done(value);
+
+        function handleInput(data: string) {
+            if (handleAnswerEditorInput(editor, data, tui)) return;
+            if (matchesKey(data, Key.escape)) {
+                done(null);
+                return;
+            }
+            editor.handleInput(data);
+            tui.requestRender();
+        }
+
+        function render(width: number): string[] {
+            const lines = dialogHeader(theme, question, context, width);
+            lines.push(...editorLines(editor, width));
+            dialogFooter(lines, theme, width, "Enter to submit • Tab insert • Esc cancel");
+            return lines;
+        }
+
+        return { render, invalidate: () => {}, handleInput };
+    });
+}
+
 async function askSingleChoice(
-    ctx: any,
+    ctx: ExtensionToolContext,
     question: string,
     context: string | undefined,
     options: AskOption[],
+    autocomplete: AutocompleteProvider,
 ): Promise<AskAnswer | null> {
-    const otherLabel = getOtherLabel(options);
-    const allOptions: DisplayOption[] = [
-        ...options.map((option, index) => ({ ...option, id: `option:${index}`, index: index + 1 })),
-        { id: "other", label: otherLabel, value: "__other__", isOther: true },
+    const items: ChoiceItem[] = [
+        ...optionItems(options),
+        { kind: "other", label: getOtherLabel(options) },
     ];
 
-    return (ctx.ui.custom as any)(
-        (tui: any, theme: any, _kb: any, done: (result: AskAnswer | null) => void) => {
-            let optionIndex = 0;
-            let editMode = false;
-            let cachedLines: string[] | undefined;
-            const editor = new Editor(tui, createEditorTheme(theme));
+    return ctx.ui.custom((tui, theme, _keybindings, done: (result: AskAnswer | null) => void) => {
+        let cursor = 0;
+        let editMode = false;
+        const editor = createAnswerEditor(tui, theme, autocomplete);
 
-            editor.onSubmit = (value) => {
-                const trimmed = value.trim();
-                if (!trimmed) return;
-                done({ type: "other", label: trimmed, value: trimmed });
-            };
+        editor.onSubmit = (value) => {
+            const trimmed = value.trim();
+            if (!trimmed) return;
+            done({ type: "other", label: trimmed, value: trimmed });
+        };
 
-            function refresh() {
-                cachedLines = undefined;
+        function handleInput(data: string) {
+            if (editMode) {
+                handleEditModeInput(editor, data, tui, () => {
+                    editMode = false;
+                    editor.setText("");
+                });
+                return;
+            }
+            if (matchesKey(data, Key.up)) {
+                cursor = Math.max(0, cursor - 1);
                 tui.requestRender();
+                return;
             }
+            if (matchesKey(data, Key.down)) {
+                cursor = Math.min(items.length - 1, cursor + 1);
+                tui.requestRender();
+                return;
+            }
+            if (matchesKey(data, Key.escape)) {
+                done(null);
+                return;
+            }
+            if (!matchesKey(data, Key.enter)) return;
 
-            function handleInput(data: string) {
-                if (editMode) {
-                    if (matchesKey(data, Key.escape)) {
-                        editMode = false;
-                        editor.setText("");
-                        refresh();
-                        return;
-                    }
-                    editor.handleInput(data);
-                    refresh();
-                    return;
-                }
+            const item = items[cursor];
+            if (item.kind === "other") {
+                editMode = true;
+                editor.setText("");
+                tui.requestRender();
+                return;
+            }
+            done({ type: "option", label: item.label, value: item.value, index: item.index });
+        }
 
-                if (matchesKey(data, Key.up)) {
-                    optionIndex = Math.max(0, optionIndex - 1);
-                    refresh();
-                    return;
-                }
-                if (matchesKey(data, Key.down)) {
-                    optionIndex = Math.min(allOptions.length - 1, optionIndex + 1);
-                    refresh();
-                    return;
-                }
-                if (matchesKey(data, Key.enter)) {
-                    const selected = allOptions[optionIndex];
-                    if (selected.isOther) {
-                        editMode = true;
-                        editor.setText("");
-                        refresh();
-                        return;
-                    }
-                    done({
-                        type: "option",
-                        label: selected.label,
-                        value: selected.value,
-                        index: selected.index!,
-                    });
-                    return;
-                }
-                if (matchesKey(data, Key.escape)) {
-                    done(null);
+        function render(width: number): string[] {
+            const lines = dialogHeader(theme, question, context, width);
+            const add = (...rows: string[]) => lines.push(...rows);
+
+            for (const [index, item] of items.entries()) {
+                const focused = index === cursor;
+                const label = item.kind === "option" ? `${item.index}. ${item.label}` : item.label;
+                const color = focused ? "accent" : "text";
+                add(`${focused ? theme.fg("accent", "> ") : "  "}${theme.fg(color, label)}`);
+                if (item.kind === "option" && item.description) {
+                    addWrappedWithPrefix(
+                        "     ",
+                        theme.fg("muted", item.description),
+                        lines,
+                        width,
+                    );
                 }
             }
 
-            function render(width: number): string[] {
-                if (cachedLines) return cachedLines;
-
-                const lines: string[] = [];
-                const add = (text: string) => lines.push(text);
-
-                add(theme.fg("accent", "─".repeat(width)));
-                addWrappedWithPrefix(" ", theme.fg("text", question), lines, width);
-                if (context) {
-                    lines.push("");
-                    addWrappedWithPrefix(" ", theme.fg("muted", context), lines, width);
-                }
-                lines.push("");
-
-                for (let i = 0; i < allOptions.length; i++) {
-                    const option = allOptions[i];
-                    const selected = i === optionIndex;
-                    const prefix = selected ? theme.fg("accent", "> ") : "  ";
-                    const label = option.isOther
-                        ? option.label
-                        : `${option.index}. ${option.label}`;
-                    const styled = selected ? theme.fg("accent", label) : theme.fg("text", label);
-                    add(`${prefix}${styled}`);
-                    if (option.description) {
-                        addWrappedWithPrefix(
-                            "     ",
-                            theme.fg("muted", option.description),
-                            lines,
-                            width,
-                        );
-                    }
-                }
-
-                if (editMode) {
-                    lines.push("");
-                    add(theme.fg("muted", " Write your custom answer:"));
-                    for (const line of editor.render(Math.max(1, width - 2))) {
-                        add(` ${line}`);
-                    }
-                    lines.push("");
-                    add(theme.fg("dim", " Enter to submit • Esc to go back"));
-                } else {
-                    lines.push("");
-                    add(theme.fg("dim", " ↑↓ navigate • Enter select • Esc cancel"));
-                }
-
-                add(theme.fg("accent", "─".repeat(width)));
-                cachedLines = lines;
-                return lines;
+            if (editMode) {
+                add(
+                    "",
+                    theme.fg("muted", " Write your custom answer:"),
+                    ...editorLines(editor, width),
+                );
+                dialogFooter(lines, theme, width, "Enter to submit • Tab insert • Esc to go back");
+            } else {
+                dialogFooter(lines, theme, width, "↑↓ navigate • Enter select • Esc cancel");
             }
+            return lines;
+        }
 
-            return {
-                render,
-                invalidate: () => {
-                    cachedLines = undefined;
-                },
-                handleInput,
-            };
-        },
-    );
+        return { render, invalidate: () => {}, handleInput };
+    });
 }
 
 async function askMultiChoice(
-    ctx: any,
+    ctx: ExtensionToolContext,
     question: string,
     context: string | undefined,
     options: AskOption[],
+    autocomplete: AutocompleteProvider,
 ): Promise<AskAnswer[] | null> {
-    const otherLabel = getOtherLabel(options);
-    const choiceItems: DisplayOption[] = options.map((option, index) => ({
-        ...option,
-        id: `option:${index}`,
-        index: index + 1,
-    }));
-    const submitItem: DisplayOption = {
-        id: "submit",
-        label: "Submit",
-        value: "__submit__",
-        isSubmit: true,
-    };
-    const allItems: DisplayOption[] = [
-        ...choiceItems,
-        { id: "other", label: otherLabel, value: "__other__", isOther: true },
-        submitItem,
+    const items: MultiChoiceItem[] = [
+        ...optionItems(options),
+        { kind: "other", label: getOtherLabel(options) },
+        { kind: "submit" },
     ];
 
-    return (ctx.ui.custom as any)(
-        (tui: any, theme: any, _kb: any, done: (result: AskAnswer[] | null) => void) => {
-            let optionIndex = 0;
-            let editMode = false;
-            let cachedLines: string[] | undefined;
-            const selected = new Map<string, AskAnswer>();
-            const editor = new Editor(tui, createEditorTheme(theme));
+    return ctx.ui.custom((tui, theme, _keybindings, done: (result: AskAnswer[] | null) => void) => {
+        let cursor = 0;
+        let editMode = false;
+        let otherAnswer: string | undefined;
+        const checked = new Set<number>();
+        const editor = createAnswerEditor(tui, theme, autocomplete);
 
-            editor.onSubmit = (value) => {
-                const trimmed = value.trim();
-                if (!trimmed) return;
-                selected.set("other", { type: "other", label: trimmed, value: trimmed });
-                editMode = false;
-                refresh();
-            };
+        function selectedCount(): number {
+            return checked.size + (otherAnswer === undefined ? 0 : 1);
+        }
 
-            function refresh() {
-                cachedLines = undefined;
+        function answers(): AskAnswer[] {
+            const picked: AskAnswer[] = [];
+            for (const item of items) {
+                if (item.kind !== "option" || !checked.has(item.index)) continue;
+                picked.push({
+                    type: "option",
+                    label: item.label,
+                    value: item.value,
+                    index: item.index,
+                });
+            }
+            if (otherAnswer !== undefined) {
+                picked.push({ type: "other", label: otherAnswer, value: otherAnswer });
+            }
+            return sortAnswers(picked);
+        }
+
+        function toggle(index: number) {
+            if (checked.has(index)) checked.delete(index);
+            else checked.add(index);
+            tui.requestRender();
+        }
+
+        function openOtherEditor() {
+            editMode = true;
+            editor.setText(otherAnswer ?? "");
+            tui.requestRender();
+        }
+
+        editor.onSubmit = (value) => {
+            const trimmed = value.trim();
+            if (!trimmed) return;
+            otherAnswer = trimmed;
+            editMode = false;
+            tui.requestRender();
+        };
+
+        function handleInput(data: string) {
+            if (editMode) {
+                handleEditModeInput(editor, data, tui, () => {
+                    editMode = false;
+                    editor.setText(otherAnswer ?? "");
+                });
+                return;
+            }
+            if (matchesKey(data, Key.up)) {
+                cursor = Math.max(0, cursor - 1);
                 tui.requestRender();
+                return;
+            }
+            if (matchesKey(data, Key.down)) {
+                cursor = Math.min(items.length - 1, cursor + 1);
+                tui.requestRender();
+                return;
+            }
+            if (matchesKey(data, Key.escape)) {
+                done(null);
+                return;
             }
 
-            function toggleOption(item: DisplayOption) {
-                if (selected.has(item.id)) {
-                    selected.delete(item.id);
-                } else {
-                    selected.set(item.id, {
-                        type: "option",
-                        label: item.label,
-                        value: item.value,
-                        index: item.index!,
-                    });
-                }
-                refresh();
+            const item = items[cursor];
+            if (item.kind === "submit") {
+                if (matchesKey(data, Key.enter) && selectedCount() > 0) done(answers());
+                return;
             }
-
-            function handleInput(data: string) {
-                if (editMode) {
-                    if (matchesKey(data, Key.escape)) {
-                        editMode = false;
-                        editor.setText(selected.get("other")?.label || "");
-                        refresh();
-                        return;
-                    }
-                    editor.handleInput(data);
-                    refresh();
+            if (item.kind === "other") {
+                const isSpace = matchesKey(data, Key.space);
+                if (!isSpace && !matchesKey(data, Key.enter)) return;
+                if (isSpace && otherAnswer !== undefined) {
+                    otherAnswer = undefined;
+                    tui.requestRender();
                     return;
                 }
-
-                if (matchesKey(data, Key.up)) {
-                    optionIndex = Math.max(0, optionIndex - 1);
-                    refresh();
-                    return;
-                }
-                if (matchesKey(data, Key.down)) {
-                    optionIndex = Math.min(allItems.length - 1, optionIndex + 1);
-                    refresh();
-                    return;
-                }
-
-                const current = allItems[optionIndex];
-                if (matchesKey(data, Key.space)) {
-                    if (current.isSubmit) return;
-                    if (current.isOther) {
-                        if (selected.has("other")) {
-                            selected.delete("other");
-                            refresh();
-                        } else {
-                            editMode = true;
-                            editor.setText("");
-                            refresh();
-                        }
-                        return;
-                    }
-                    toggleOption(current);
-                    return;
-                }
-
-                if (matchesKey(data, Key.enter)) {
-                    if (current.isSubmit) {
-                        if (selected.size > 0) {
-                            done(sortAnswers(Array.from(selected.values())));
-                        }
-                        return;
-                    }
-                    if (current.isOther) {
-                        editMode = true;
-                        editor.setText(selected.get("other")?.label || "");
-                        refresh();
-                        return;
-                    }
-                    toggleOption(current);
-                    return;
-                }
-
-                if (matchesKey(data, Key.escape)) {
-                    done(null);
-                }
+                openOtherEditor();
+                return;
             }
+            if (matchesKey(data, Key.space) || matchesKey(data, Key.enter)) toggle(item.index);
+        }
 
-            function render(width: number): string[] {
-                if (cachedLines) return cachedLines;
+        function render(width: number): string[] {
+            const lines = dialogHeader(theme, question, context, width);
+            const add = (...rows: string[]) => lines.push(...rows);
+            const count = selectedCount();
 
-                const lines: string[] = [];
-                const add = (text: string) => lines.push(text);
+            for (const [index, item] of items.entries()) {
+                const focused = index === cursor;
+                const prefix = focused ? theme.fg("accent", "> ") : "  ";
 
-                add(theme.fg("accent", "─".repeat(width)));
-                addWrappedWithPrefix(" ", theme.fg("text", question), lines, width);
-                if (context) {
-                    lines.push("");
-                    addWrappedWithPrefix(" ", theme.fg("muted", context), lines, width);
+                if (item.kind === "submit") {
+                    const label = count > 0 ? `✓ Submit (${count} selected)` : "○ Submit";
+                    const color = focused ? "accent" : count > 0 ? "success" : "dim";
+                    add(`${prefix}${theme.fg(color, label)}`);
+                    continue;
                 }
-                lines.push("");
-
-                for (let i = 0; i < allItems.length; i++) {
-                    const item = allItems[i];
-                    const isFocused = i === optionIndex;
-                    const prefix = isFocused ? theme.fg("accent", "> ") : "  ";
-
-                    if (item.isSubmit) {
-                        const label =
-                            selected.size > 0
-                                ? `✓ ${item.label} (${selected.size} selected)`
-                                : `○ ${item.label}`;
-                        const styled = isFocused
-                            ? theme.fg("accent", label)
-                            : theme.fg(selected.size > 0 ? "success" : "dim", label);
-                        add(`${prefix}${styled}`);
-                        continue;
-                    }
-
-                    if (item.isOther) {
-                        const other = selected.get("other");
-                        const marker = other ? "[x]" : "[ ]";
-                        const suffix = other ? ` — ${other.label}` : "";
-                        const styled = isFocused
-                            ? theme.fg("accent", `${marker} ${item.label}${suffix}`)
-                            : theme.fg(
-                                  other ? "success" : "text",
-                                  `${marker} ${item.label}${suffix}`,
-                              );
-                        add(`${prefix}${styled}`);
-                        continue;
-                    }
-
-                    const checked = selected.has(item.id);
-                    const marker = checked ? "[x]" : "[ ]";
-                    const label = `${marker} ${item.index}. ${item.label}`;
-                    const styled = isFocused
-                        ? theme.fg("accent", label)
-                        : theme.fg(checked ? "success" : "text", label);
-                    add(`${prefix}${styled}`);
-                    if (item.description) {
-                        addWrappedWithPrefix(
-                            "     ",
-                            theme.fg("muted", item.description),
-                            lines,
-                            width,
-                        );
-                    }
+                if (item.kind === "other") {
+                    const picked = otherAnswer !== undefined;
+                    const suffix = picked ? ` — ${otherAnswer}` : "";
+                    const label = `${picked ? "[x]" : "[ ]"} ${item.label}${suffix}`;
+                    const color = focused ? "accent" : picked ? "success" : "text";
+                    add(`${prefix}${theme.fg(color, label)}`);
+                    continue;
                 }
-
-                if (editMode) {
-                    lines.push("");
-                    add(theme.fg("muted", " Write your custom answer:"));
-                    for (const line of editor.render(Math.max(1, width - 2))) {
-                        add(` ${line}`);
-                    }
-                    lines.push("");
-                    add(theme.fg("dim", " Enter to save • Esc to go back"));
-                } else {
-                    lines.push("");
-                    if (selected.size === 0) {
-                        add(theme.fg("warning", " Select at least one answer before submitting."));
-                    }
-                    add(
-                        theme.fg(
-                            "dim",
-                            " ↑↓ navigate • Space toggle • Enter edit/submit • Esc cancel",
-                        ),
+                const isChecked = checked.has(item.index);
+                const label = `${isChecked ? "[x]" : "[ ]"} ${item.index}. ${item.label}`;
+                const color = focused ? "accent" : isChecked ? "success" : "text";
+                add(`${prefix}${theme.fg(color, label)}`);
+                if (item.description) {
+                    addWrappedWithPrefix(
+                        "     ",
+                        theme.fg("muted", item.description),
+                        lines,
+                        width,
                     );
                 }
-
-                add(theme.fg("accent", "─".repeat(width)));
-                cachedLines = lines;
-                return lines;
             }
 
-            return {
-                render,
-                invalidate: () => {
-                    cachedLines = undefined;
-                },
-                handleInput,
-            };
-        },
-    );
+            if (editMode) {
+                add(
+                    "",
+                    theme.fg("muted", " Write your custom answer:"),
+                    ...editorLines(editor, width),
+                );
+                dialogFooter(lines, theme, width, "Enter to save • Tab insert • Esc to go back");
+            } else {
+                dialogFooter(
+                    lines,
+                    theme,
+                    width,
+                    "↑↓ navigate • Space toggle • Enter edit/submit • Esc cancel",
+                    count === 0 ? "Select at least one answer before submitting." : undefined,
+                );
+            }
+            return lines;
+        }
+
+        return { render, invalidate: () => {}, handleInput };
+    });
 }
 
 // Mutex to serialize concurrent UI interactions.
@@ -644,12 +650,15 @@ export default function askUserQuestion(pi: ExtensionAPI) {
             }
 
             return withUILock(async () => {
+                const autocomplete = new CombinedAutocompleteProvider(
+                    pi.getCommands(),
+                    ctx.cwd,
+                    "fd",
+                );
+
                 if (mode === "text") {
-                    const editorTitle = context
-                        ? `${params.question}\n\n${context}`
-                        : params.question;
-                    const answer = await ctx.ui.editor(editorTitle);
-                    if (answer === undefined) {
+                    const answer = await askFreeText(ctx, params.question, context, autocomplete);
+                    if (answer === null) {
                         return cancelledResult(params.question, mode, context);
                     }
                     return buildResult(params.question, context, mode, [
@@ -658,14 +667,26 @@ export default function askUserQuestion(pi: ExtensionAPI) {
                 }
 
                 if (mode === "single-select") {
-                    const answer = await askSingleChoice(ctx, params.question, context, options);
+                    const answer = await askSingleChoice(
+                        ctx,
+                        params.question,
+                        context,
+                        options,
+                        autocomplete,
+                    );
                     if (!answer) {
                         return cancelledResult(params.question, mode, context);
                     }
                     return buildResult(params.question, context, mode, [answer]);
                 }
 
-                const answers = await askMultiChoice(ctx, params.question, context, options);
+                const answers = await askMultiChoice(
+                    ctx,
+                    params.question,
+                    context,
+                    options,
+                    autocomplete,
+                );
                 if (!answers) {
                     return cancelledResult(params.question, mode, context);
                 }

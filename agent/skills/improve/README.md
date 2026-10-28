@@ -68,13 +68,13 @@ A run against [shadcn/ui](https://github.com/shadcn-ui/ui) came back with findin
   every CLI honors it. Not a finding.
 ```
 
-Picking #1 produced [this plan](./examples/001-extract-shadow-config-resolution.md) — current code excerpted, exact steps, the repo's own test/lint commands as verification gates, and STOP conditions for when reality doesn't match.
+Picking #1 produces a plan with the current code excerpted, exact steps, the repo's own test/lint commands as verification gates, and STOP conditions for when reality doesn't match.
 
 ## How it works
 
 **Recon.** Maps the repo: stack, conventions, and the exact build/test/lint commands — these become verification gates in every plan. It also ingests intent and design docs when present — ADRs (`docs/adr/`), PRDs, `CONTEXT.md`, `DESIGN.md`, `PRODUCT.md` — so decided tradeoffs aren't re-flagged as findings, direction suggestions stay grounded in stated product intent, and plans speak the repo's own vocabulary. Composes with any repo that already maintains these docs.
 
-**Audit.** Fans out parallel subagents across nine categories: correctness, security, performance, test coverage, tech debt, dependencies & migrations, DX, docs, and direction (feature suggestions — every one must cite evidence from the repo itself, no generic idea-slop). Every finding carries `file:line` evidence, impact, effort, and confidence.
+**Audit.** Dispatches read-only subagents one at a time across nine categories: correctness, security, performance, test coverage, tech debt, dependencies & migrations, DX, docs, and direction (feature suggestions — every one must cite evidence from the repo itself, no generic idea-slop). Every finding carries `file:line` evidence, impact, effort, and confidence.
 
 **Vet.** Subagents over-report, so the advisor re-reads every cited location itself before showing you anything — false positives get dropped, wrong attributions get corrected, rejections get recorded.
 
@@ -96,7 +96,7 @@ Each plan also stamps the git commit it was written against, so executors run a 
 
 Plans aren't fire-and-forget:
 
-- **`execute <plan>`** dispatches executor subagents (as many as the plan demands), hands them the plan, then reviews the result like a tech lead — re-runs every done criterion, checks scope compliance, reads the diff against intent. Verdict: approve (applying changes stays your call), send back for revision (max 2 rounds), or block and refine the plan.
+- **`execute <plan>`** dispatches one executor subagent at a time, in dependency order, hands it the plan, then reviews the result like a tech lead — re-runs every done criterion, checks scope compliance, reads the diff against intent. Verdict: approve (applying changes stays your call), send back for revision (max 2 rounds), or block and refine the plan.
 - **`reconcile`** processes what happened since: verifies DONE plans still hold, investigates BLOCKED ones and rewrites around the obstacle, refreshes drifted plans, retires findings that got fixed independently.
 - **`--issues`** publishes plans as GitHub issues — same self-contained body, so any agent or human can pick them up where work already lives.
 
