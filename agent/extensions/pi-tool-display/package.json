@@ -4,7 +4,7 @@
     "type": "module",
     "pi": {
         "extensions": [
-            "./index.ts"
+            "./src/index.ts"
         ]
     }
 }

@@ -2,76 +2,78 @@
 
 ## Layout
 
+Four modules, no lazy imports. `package.json`'s `pi.extensions` points at `./src/index.ts`; that file
+imports `./wiring.js`, which imports the two vendored pi-style files.
+
 ```
 agent/extensions/pi-tool-display/
-  index.ts                     extension entry (loads config, wires everything)
-  package.json                 pi extension manifest (no runtime deps)
-  config.json                  live config (registerToolOverrides, boxedToolCalls, …)
+  package.json                 pi extension manifest: pi.extensions = ["./src/index.ts"]
   FORK.md                      changelog of every delta vs upstream 0.5.0
+  CHANGELOG.md                 release notes
   docs/                        this documentation
   src/
-    index.ts                   real entry: config load/save, command wiring, session events
-    tool-overrides.ts          built-in tool overrides + compact renderers + pi-style registration seams
-    bash-display.ts            upstream 0.5.0 verbatim (compact bash renderer)
-    diff-renderer.ts           upstream 0.5.0 verbatim (compact diff renderer)
-    config-store.ts, config-modal.ts, presets.ts, types.ts   config schema/persistence/UI
-    pistyle-bridge.ts          THIS fork: config/theme mapping + tool routing into pi-style
-    pistyle-tool-patch.ts      THIS fork: ToolExecutionComponent renderer-selection patch
-    db-query-card.ts           THIS fork: boxed card for db-viewer's query tools
-    subagent-card.ts           THIS fork: boxed card for the subagent tool
-    pistyle/                   vendored pi-style 0.2.11 (see below)
-  tool-display-api-consumer.js/.d.ts   upstream adapter for other extensions
+    index.ts                   entry: lifecycle, frozen TOOL_DISPLAY_CONFIG, tool metadata,
+                               debug logger, cleanup registry
+    wiring.ts                  renderer-resolver registration, pi-style bridge, tool/MCP
+                               decoration, thinking labels, user-message box, and the
+                               db-query/OCR/subagent cards
+    pistyle/index.ts           vendored pi-style 0.2.11: every boxed renderer + the dispatcher
+    pistyle/shared/index.ts    vendored pi-style 0.2.11: box, ANSI, diff, render budget,
+                               theme extras
 ```
 
-`src/pistyle/` is vendored from `@quandev104/pi-style@0.2.11`:
+Inside the merged files, `// from: <module>` markers name the original modules:
 
-```
-src/pistyle/
-  features/tools/boxed/   read, write, edit, bash, grep, find, ls, git, gh, batch, quick-edit,
-                          turn-summary, output-tree, fallback, command-shape, session-config,
-                          shared, index (dispatcher)
-  shared/                 box, ansi, elapsed, render-budget, split-diff, theme-extras
-```
+| File                          | Sections                                                                                                                                                                                                                          |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/pistyle/index.ts`        | `command-shape`, `output-tree`, `session-config`, `shared`, `gh`, `git`, `bash`, `batch`, `edit`, `fallback`, `find`, `grep`, `ls`, `read`, `write`, `index` (dispatcher)                                                         |
+| `src/pistyle/shared/index.ts` | `ansi`, `elapsed`, `render-budget`, `theme-extras`, `box`, `split-diff`                                                                                                                                                           |
+| `src/wiring.ts`               | `thinking-label`, `tool-decoration`, the six `user-message-box*` sections, `db-query-card`, `ocr-card`, `subagent-card`, plus the two bridge sections that carry the pi-style config/theme mapping and the renderer-patch history |
+| `src/index.ts`                | `ansi-utils`, `types`, `tool-metadata`, `debug-logger`, `disposable`, `index.ts (entry helper)`                                                                                                                                   |
 
 `src/pistyle/**` carries the fork deltas listed in `FORK.md`: the six dead declarations removed for
 this repo's `noUnusedLocals`, the card background pinned to the tokyo-night base (`#1a1b26`,
-`TOOL_CARD_BG_HEX` / `applyCardBackground` in `shared/box.ts`; `split-diff.ts` blends diff rows from
-the same base) instead of pi's status-driven fill, the status-colored frames and running glyphs, and
-the git/gh status plumbing. Everything else is pi-style source unmodified, and a re-port has to
-re-apply that list (`MAINTENANCE.md`).
+`TOOL_CARD_BG_HEX` / `applyCardBackground` in the `box` section of `shared/index.ts`; the `split-diff`
+section blends diff rows from the same base) instead of pi's status-driven fill, the status-colored
+frames and running glyphs, and the git/gh status plumbing. Everything else is pi-style source
+unmodified, and a re-port has to re-apply that list (`MAINTENANCE.md`).
 
-## Render flow (pi-style mode)
+## Render flow
 
 ```
 pi renders a tool block
         │
         ▼
-ToolExecutionComponent.getCallRenderer()/getResultRenderer()      ← patched by pistyle-tool-patch.ts
-        │  (flag on)
+pi.registerToolRenderer(resolver)         ← registerPistyleToolRenderer (src/wiring.ts)
+        │  resolver returns { renderShell: "self", renderCall, renderResult }
+        │  both renderers are wrapped by withOutputPad(context.outputPad)
         ▼
-pistyle-bridge.renderPistyleToolCall / renderPistyleToolResult
-        │  config sync (cheap, guarded) + theme prime (identity-guarded)
+renderPistyleToolCall / renderPistyleToolResult
+        │  frozen render config applied once at registration;
+        │  theme primed only when the theme instance changes
         │  tool-name routing
         ├── read | write | edit | bash   → pi-style dispatcher (dedicated boxed card)
         ├── powershell                   → alias → bash card
-        ├── query_sqlite | query_mysql   → db-query-card.ts (fork card, see below)
-        ├── subagent                     → subagent-card.ts (fork card, see below)
+        ├── query_sqlite | query_mysql   → db-query card (fork card, see below)
+        ├── ocr_review | ocr_scan        → OCR card (fork card, see below)
+        ├── subagent                     → subagent card (fork card, see below)
         └── everything else              → pi-style boxed fallback card
                     │
                     ▼
-        src/pistyle/features/tools/boxed/*  (box frame, title in top border,
-                                             footer in bottom border, registries)
+        src/pistyle/index.ts  (box frame, title in top border,
+                               footer in bottom border, registries)
 ```
 
-With the flag **off**, the patch returns pi's original renderer, i.e. upstream `pi-tool-display`
-compact rows. Nothing in the compact path depends on `src/pistyle/`.
+`renderShell: "self"` makes pi wrap the component in its bare `selfRenderContainer` — no padding,
+no status fill — instead of the default `contentBox`, so the card owns its own frame and background.
+There is no second rendering mode: a tool with no dedicated card gets the boxed fallback card.
 
 ## subagent card (fork addition)
 
-`subagent` routes to `src/subagent-card.ts`. Its own renderer (per-agent progress rows) is bypassed
-by the patch, and the fallback card printed only the call args plus the literal content string
-`(running...)` — the whole progress payload in `details.results` was dropped, so a running subagent
-told the user nothing about what it was doing.
+`subagent` routes to the subagent card in `src/wiring.ts`. Its own renderer (per-agent progress
+rows) is bypassed by the resolver, and the fallback card printed only the call args plus the literal
+content string `(running...)` — the whole progress payload in `details.results` was dropped, so a
+running subagent told the user nothing about what it was doing.
 
 - Call card: `➔ Subagent · single · <agent>` header, then the task text
   (title, then the task's first 5 lines; expanded shows all). `details` carries
@@ -88,17 +90,17 @@ told the user nothing about what it was doing.
 - Budget: collapsed lines are capped by a card-local `COLLAPSED_RUN_LINES` (24), **not**
   `previewLines` (8) — with the shared preview budget a two-agent run truncated before the output
   section and the card advertised `… more lines omitted` instead of showing the run.
-- A tool that needs its own presentation gets a card route in `pistyle-bridge.ts` (one line per
-  direction), next to the db-viewer and subagent cards.
+- A tool that needs its own presentation gets a card route in `src/wiring.ts` (one line per
+  direction), next to the db-viewer and OCR cards.
 
-Routing lives in `pistyle-bridge.ts` next to the db-viewer card, for the same re-port reason.
+Routing lives in `src/wiring.ts` next to the pi-style bridge, for the same re-port reason.
 
 ## db-viewer query card (fork addition)
 
-`query_sqlite` / `query_mysql` (db-viewer) route to `src/db-query-card.ts` instead of the fallback
-card. Two reasons: the fallback _call_ card prints every argument — including the credentials inside
-`connectionString` — and db-viewer's own `renderResult` (a markdown box table) is bypassed by the
-patch, so the table look would be lost.
+`query_sqlite` / `query_mysql` (db-viewer) route to the db-query card in `src/wiring.ts` instead of
+the fallback card. Two reasons: the fallback _call_ card prints every argument — including the
+credentials inside `connectionString` — and db-viewer's own `renderResult` (a markdown box table) is
+bypassed by the resolver, so the table look would be lost.
 
 - Call card: `➔ Query MySQL · <target>` header, SQL lines (5 collapsed / all expanded), `Max rows`
   when the argument is set. `redactConnectionTarget()` masks the password
@@ -109,8 +111,8 @@ patch, so the table look would be lost.
   footer instead of the word count. The body is a plain line-builder: the Markdown renders per paint,
   the same cost db-viewer's own renderer pays today.
 
-Routing lives in `pistyle-bridge.ts`, not in the vendored dispatcher registry: a pi-style re-port
-replaces `src/pistyle/index.ts` wholesale, and the bridge is documented as
+Routing lives in `src/wiring.ts`, not in the vendored dispatcher registry: a pi-style re-port
+replaces `src/pistyle/index.ts` wholesale, and the bridge section is documented as
 re-port-independent (`MAINTENANCE.md`).
 
 ## Expansion
@@ -124,7 +126,7 @@ the fallback card prints all arguments and the summary cards show a single path/
 ## Colors
 
 Status is carried by the title glyph (`✓` success / `✗` error / `󱦟` running) and by the frame
-color: `boxFrameColor` in `shared/box.ts` renders a settled box fully in the theme `success` green,
+color: `boxFrameColor` in the `box` section of `shared/index.ts` renders a settled box fully in the theme `success` green,
 a failed one in `error` red, and keeps the frame dim while the call is pending, running or streaming
 (`isPartial`/`isPending` gate it — `running` stays true after a call settles). The frame tracks the
 _tool result_, not a payload's own conclusion: a `gh run view` card can be green while its log shows
@@ -137,62 +139,66 @@ simple-glyph set, so lines carrying them are measured by grapheme segmentation. 
 marks running batch panels/members (`batch.ts`) and gh run statuses (`gh.ts`; cancelled/skipped stay
 a dim `-`). The tool name
 uses the theme accent (blue). Measured values use the metric identity colors — value in `warning`
-yellow, unit in `accent` blue (`formatMetricParts` / `formatElapsedMetric` in `shared/box.ts`) — and
+yellow, unit in `accent` blue (`formatMetricParts` / `formatElapsedMetric` in the `box` section of `shared/index.ts`) — and
 the result divider label is `warning` yellow. `formatElapsedParts` promotes elapsed units (ms → s → m
 → h: `812ms`, `15.28s`, `2m5s`, `1h2m`) for every footer, metric row and running label. The elapsed
 ticker refreshes every 100 ms, so the running value ticks in milliseconds.
 
-## Why the renderer-selection patch exists
+## Why a renderer resolver exists
 
 `pi.getAllTools()` returns `ToolInfo` — `name`/`description`/`parameters`/`promptGuidelines` only
 (pi's `dist/core/extensions/types.d.ts`). It carries **no** `renderCall`/`renderResult`, so a sweep
 over it cannot attach renderers to tools that were registered before this extension loaded
-(`ffgrep`, `fffind`, built-in `powershell`, `recall`, …). pi-style solves this by patching the
-component that resolves renderers; this fork does the same, guarded:
+(`ffgrep`, `fffind`, built-in `powershell`, `recall`, …). Pi ≥ 1.0.1 exposes the seam natively:
 
-- install only if both prototype methods exist; otherwise report `false` and fall back to the
-  registered renderers
-- restore the originals on `session_shutdown` (reason `reload`) and before re-installing
-- the returned renderer falls through to the original renderer when the flag is off
-- `neutralizeToolContainer` zeroes pi's container padding and clears pi's native status fill
-  (`contentBox`/`selfRenderContainer`, plus `contentText` for tools with no definition); the card
-  itself is then filled with the base background (`TOOL_CARD_BG_HEX`)
+- `registerToolRenderer(resolver: ToolRendererResolver)` (`types.d.ts:1256`) — the resolver is asked
+  for a tool's renderers by name, whichever extension registered the tool.
+- `ToolRenderers = Pick<AnyToolDefinition, "renderShell" | "renderCall" | "renderResult">`
+  (`types.d.ts:521`) is what the resolver returns.
+- `renderShell?: "default" | "self"` (`types.d.ts:469`) picks the container pi builds around the
+  renderer; `"self"` selects the bare `selfRenderContainer` and leaves the frame to the card.
 
-Registered renderers (`wrapToolRenderersForPistyle` in `src/tool-overrides.ts`) remain as a
-belt-and-braces path: they cover tools registered _after_ load (via the `pi.registerTool`
-interceptor) and any environment where the patch cannot install.
+`wrapToolRenderersForPistyle` remains a belt-and-braces path: it routes the renderers a _decorated_
+tool already carries through the boxed path, so decorated and undecorated tools present the same way.
+Decorated means "went through the `pi.registerTool` interceptor", which only sees tools registered
+after this extension loaded.
+
+One prototype patch does survive — the native user-message box. `patchNativeUserMessagePrototype`
+(in `src/wiring.ts`) rewrites `UserMessageComponent`'s render to draw the fork's border, is gated by
+`enableNativeUserMessageBox`, and is restored on reload.
 
 ## State and lifecycle
 
-- `resetPistyleRegistries()` (bridge) → pi-style's `resetGrepRegistry`, `resetBatchRegistry`,
-  `resetBashTreeRegistry`, `resetTurnRegistry`, plus the bridge's config/theme guards.
-  Called on `session_start` and `session_shutdown`.
+- `resetPistyleRegistries()` (wiring) → pi-style's `resetGrepRegistry`, `resetBatchRegistry`,
+  `resetBashTreeRegistry`, plus the primed-theme guard. Called on `session_start` and
+  `session_shutdown`.
 - pi-style keeps per-call registries keyed by `toolCallId`; pi-style's own coordinator also resets
   them on message boundaries — **not ported** (see open items in `MAINTENANCE.md`).
 - pi-style's elapsed ticker is a single shared 100 ms interval, active only while a tool runs.
 
 ## Config surface added by this fork
 
-| Key                 | Where                                                          | Effect                                                                     |
-| ------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `boxedToolCalls`    | `types.ts`, `config-store.ts`, `config-modal.ts`, `presets.ts` | selects pi-style cards vs compact rows                                     |
-| `collapseAfterTurn` | same files, plus `pistyle-bridge.ts`                           | mapped into pi-style's session config; **only effective in pi-style mode** |
+There is no config file and no command any more: `TOOL_DISPLAY_CONFIG` in `src/index.ts` is a frozen
+constant (`previewLines: 8`, `expandedPreviewMaxLines: 4000`, `collapseAfterTurn: false`,
+`enableNativeUserMessageBox: true`). `applyPistyleRenderConfig()` pushes it into pi-style once per
+registration:
 
-Mapping into pi-style's own session config (`pistyle-bridge.ts`):
+| pi-style field                | source                                        |
+| ----------------------------- | --------------------------------------------- |
+| `maxCollapsedLines`           | `TOOL_DISPLAY_CONFIG.previewLines`            |
+| `maxExpandedLines`            | `TOOL_DISPLAY_CONFIG.expandedPreviewMaxLines` |
+| `collapseAfterTurn`           | `TOOL_DISPLAY_CONFIG.collapseAfterTurn`       |
+| `nerdFonts`, `batchOpenGlyph` | `ZENTUI_NERD_FONTS !== "0"`                   |
 
-| pi-style field                | source                      |
-| ----------------------------- | --------------------------- |
-| `maxCollapsedLines`           | `previewLines`              |
-| `maxExpandedLines`            | `expandedPreviewMaxLines`   |
-| `nerdFonts`, `batchOpenGlyph` | `ZENTUI_NERD_FONTS !== "0"` |
-| `collapseAfterTurn`           | `collapseAfterTurn`         |
+Change the constant in the source and `/reload`; nothing else reads a config file.
 
 ## Performance contract
 
-Steady-state per render, per visible tool block, this fork adds: 4 integer comparisons (config
-guard), 1 identity comparison (theme guard), 2-3 boolean comparisons (frame color,
-`boxFrameColor`), 3 property writes (`neutralizeToolContainer`), plus the pre-existing `getConfig()`
-allocation that upstream's own renderers also pay. Lines carrying a running glyph (titles, live
+Steady-state per render, per visible tool block, this fork adds: 1 identity comparison (the primed
+theme), 2-3 boolean comparisons (frame color, `boxFrameColor`), and — only for a tool that sets
+`outputPad` — the `withOutputPad` wrapper's `String.repeat` and an intercept-and-reindent pass over
+the rendered lines. The frozen render config is applied once per registration, so the render path
+reads no config at all. Lines carrying a running glyph (titles, live
 footers, batch rows) leave `render-budget.ts`'s simple-glyph fast path for grapheme segmentation —
 the price of the PUA icons, restorable by adding their codepoints to `isSimpleWidthOneGlyphCode`.
 No filesystem I/O

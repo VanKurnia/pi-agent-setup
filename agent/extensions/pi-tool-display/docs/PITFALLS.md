@@ -69,6 +69,11 @@ change must be justified in `FORK.md`.
 
 ## 6. Sweeping `pi.getAllTools()` cannot attach renderers
 
+> **Historical (pre-1.0.1)**: the prototype patch this entry describes was replaced by
+> `pi.registerToolRenderer(resolver)`, which pi calls as `resolver(toolName, next)`. The trap still
+> applies: `getAllTools()` still carries no renderers, and the resolver still receives no render
+> arguments.
+
 **Symptom** — `ffgrep`, `fffind`, `powershell`, `recall` had no box while `read`/`bash` did.
 
 **Root cause** — `pi.getAllTools()` returns `ToolInfo`: `name`, `description`, `parameters`,
@@ -82,13 +87,20 @@ wrapping as the fallback path for environments where the patch cannot install.
 
 ## 7. Selector vs renderer: wrong argument flow in the patch
 
+> **Historical (pre-1.0.1)**: the prototype patch this entry describes was replaced by
+> `pi.registerToolRenderer(resolver)`, which pi calls as `resolver(toolName, next)`. The trap still
+> applies: `getAllTools()` still carries no renderers, and the resolver still receives no render
+> arguments.
+
 **Symptom** — patch installed but produced no change (or wrong arguments) for every tool.
 
 **Root cause** — pi's `getCallRenderer()` takes **no arguments** and _returns_ the renderer; the first
 patch version passed the render arguments into the selector instead of into the returned renderer.
 
 **Fix** — call the selector once with `[]`, then invoke the renderer it returns with
-`(args, theme, context)` / `(result, options, theme, context)`.
+`(args, theme, context)` / `(result, options, theme, context)`. Today the equivalent is the resolver's
+return value: `resolve(toolName, next)` returns `{ renderCall, renderResult }`, which are then called
+with `(args, theme, context)` / `(result, options, theme, context)`.
 
 ## 8. pi-style's search renderers are boxless
 
@@ -148,3 +160,5 @@ and assert every line's `visibleWidth` equals the box width and that no line con
 - **Config drift**: `config.json` was reset to defaults once during testing (all tool overrides `true`,
   `hidden` output modes, `enableNativeUserMessageBox: true`) — cause unknown (modal/preset). Check the
   live config before debugging renderer behavior; it silently changes what you are looking at.
+  (historical: there is no `config.json` any more — card sizing is the frozen `TOOL_DISPLAY_CONFIG`
+  in `src/index.ts`.)

@@ -1,5 +1,10 @@
 # Integration — how the pi-style port was performed
 
+> **Historical record.** This is the recipe as performed on 2026-09-30 against
+> `@quandev104/pi-style@0.2.11`; the file names below refer to the pre-merge modules. The current tree is
+> four files — see "Layout" in `ARCHITECTURE.md`. Step 6's `boxedToolCalls` flag no longer exists (card
+> sizing is the frozen `TOOL_DISPLAY_CONFIG`).
+
 Reproduce this from scratch if the vendored copy is ever lost. Commands run in Git Bash from `~/.pi`.
 
 ## 1. Vendor pi-style's tool surface (no install, no code rewrite)

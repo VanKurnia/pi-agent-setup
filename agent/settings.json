@@ -10,8 +10,8 @@
   ],
   "theme": "tokyo-night",
   "defaultProvider": "opencode-go",
-  "defaultModel": "muse-spark-1.3-contributor",
-  "defaultThinkingLevel": "xhigh",
+  "defaultModel": "deepseek-v4.1-flash",
+  "defaultThinkingLevel": "high",
   "defaultTools": [
     "read",
     "powershell",
@@ -34,5 +34,6 @@
   "httpIdleTimeoutMs": 300000,
   "editorPaddingX": 0,
   "doubleEscapeAction": "tree",
-  "fullscreenExitOutput": "transcript"
+  "fullscreenExitOutput": "transcript",
+  "hideThinkingBlock": false
 }

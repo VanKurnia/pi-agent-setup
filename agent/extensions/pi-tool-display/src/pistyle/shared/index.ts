@@ -939,23 +939,31 @@ export function getTextOutput(result: MetricResultLike | undefined): string {
         .join("\n")
         .replace(/\r/g, "");
 }
-// Word-character membership table powering countWords. ASCII and the UTF-16
-// surrogate range are initialized eagerly; every other BMP code point is
-// resolved through the Unicode letter/digit class on first sight and memoized,
-// so repeat scans are pure table lookups. The per-code-point regex dispatch
-// this replaces measured ~1.9ms per 90KB output on every boxed footer render;
-// note that String.match with a \p{L}\p{N} class is no faster on V8 — the
-// memoized scan is the only variant that hit the <0.2ms budget.
+// Word-character membership table powering countWords. The table is built on
+// first use — only the word-count footer reads it — and then memoized: the
+// ASCII and UTF-16 surrogate ranges are seeded up front, every other BMP code
+// point is resolved through the Unicode letter/digit class on first sight, so
+// repeat scans are pure table lookups. The per-code-point regex dispatch this
+// replaces measured ~1.9ms per 90KB output on every boxed footer render; note
+// that String.match with a \p{L}\p{N} class is no faster on V8 — the memoized
+// scan is the only variant that hit the <0.2ms budget.
 const WORD_CP_UNKNOWN = 255;
 const WORD_CP_SURROGATE = 254;
-const WORD_CP_CLASS = new Uint8Array(0x10000).fill(WORD_CP_UNKNOWN);
-for (let code = 0x30; code <= 0x39; code++) WORD_CP_CLASS[code] = 1; // 0-9
-for (let code = 0x41; code <= 0x5a; code++) WORD_CP_CLASS[code] = 1; // A-Z
-for (let code = 0x61; code <= 0x7a; code++) WORD_CP_CLASS[code] = 1; // a-z
-WORD_CP_CLASS[0x27] = 1; // '
-WORD_CP_CLASS[0x2d] = 1; // -
-WORD_CP_CLASS[0x5f] = 1; // _
-WORD_CP_CLASS.fill(WORD_CP_SURROGATE, 0xd800, 0xe000);
+let wordCpClass: Uint8Array | undefined;
+/** Built on first use: only the word-count footer reads it. */
+function wordTable(): Uint8Array {
+    if (wordCpClass) return wordCpClass;
+    const table = new Uint8Array(0x10000).fill(WORD_CP_UNKNOWN);
+    for (let code = 0x30; code <= 0x39; code++) table[code] = 1; // 0-9
+    for (let code = 0x41; code <= 0x5a; code++) table[code] = 1; // A-Z
+    for (let code = 0x61; code <= 0x7a; code++) table[code] = 1; // a-z
+    table[0x27] = 1; // '
+    table[0x2d] = 1; // -
+    table[0x5f] = 1; // _
+    table.fill(WORD_CP_SURROGATE, 0xd800, 0xe000);
+    wordCpClass = table;
+    return table;
+}
 const NON_ASCII_WORD_RE = /[\p{L}\p{N}]/u;
 const ASTRAL_WORD_CP = new Map<number, 0 | 1>();
 function astralWordMembership(codePoint: number): 0 | 1 {
@@ -969,12 +977,13 @@ function astralWordMembership(codePoint: number): 0 | 1 {
  *  underscore, apostrophe, hyphen) — identical counts to a per-code-point
  *  `\p{L}\p{N}_'-` class test, in one table-driven pass with no allocations. */
 function countWords(text: string): number {
+    const table = wordTable();
     const len = text.length;
     let count = 0;
     let inWord: number = 0;
     for (let i = 0; i < len; i++) {
         const code = text.charCodeAt(i);
-        const membership = WORD_CP_CLASS[code] ?? 0;
+        const membership = table[code] ?? 0;
         let isWord: number;
         if (membership <= 1) {
             isWord = membership;
@@ -991,7 +1000,7 @@ function countWords(text: string): number {
         } else {
             // First sight of this non-ASCII BMP code point: resolve once, memoize.
             isWord = NON_ASCII_WORD_RE.test(String.fromCharCode(code)) ? 1 : 0;
-            WORD_CP_CLASS[code] = isWord;
+            table[code] = isWord;
         }
         count += isWord & (inWord ^ 1);
         inWord = isWord;

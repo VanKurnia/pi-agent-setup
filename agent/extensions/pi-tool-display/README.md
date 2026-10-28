@@ -26,43 +26,44 @@ the same tools.
 
 ## Contents
 
-The module graph is deliberately **flat**. Pi loads extensions through jiti, which costs roughly
-**19 ms per module** regardless of size, so splitting 500 KB of code across 50 files cost more than
-the code itself. The boot-time graph is now 8 modules; everything else is loaded lazily.
+The module graph is deliberately **flat** — four files. Pi loads extensions through jiti, which
+costs roughly **19 ms per module** regardless of size, so splitting 500 KB of code across 50 files
+cost more than the code itself. The merges below traded file count for bytes; the bytes are the same.
 
-Boot-static (transpiled on every boot):
+| File                          | KB  | Contents                                                                                                                                    |
+| ----------------------------- | --- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/pistyle/index.ts`        | 257 | every boxed tool renderer (read/write/edit/find/grep/ls/bash/git/gh/batch/fallback) and the dispatcher                                      |
+| `src/pistyle/shared/index.ts` | 112 | box drawing, ANSI, diff, render budget, theme extras                                                                                        |
+| `src/wiring.ts`               | 93  | renderer resolver registration, the pi-style bridge, MCP decoration, thinking labels, user-message box, and the db-query/OCR/subagent cards |
+| `src/index.ts`                | 13  | the extension entry point: lifecycle, `TOOL_DISPLAY_CONFIG`, tool metadata, debug logger, cleanup registry                                  |
 
-| File                          | KB  | Contents                                                                                                            |
-| ----------------------------- | --- | ------------------------------------------------------------------------------------------------------------------- |
-| `src/pistyle/index.ts`        | 288 | every boxed tool renderer (read/write/edit/find/grep/ls/bash/git/gh/batch/turn-summary/fallback) and the dispatcher |
-| `src/pistyle/shared/index.ts` | 114 | box drawing, ANSI, diff, render budget, theme extras                                                                |
-| `src/wiring.ts`               | 57  | the bridge, the renderer patch, MCP decoration, thinking labels, user-message box                                   |
-| `src/fork-cards.ts`           | 41  | db-query, OCR and subagent cards                                                                                    |
-| `src/support.ts`              | 20  | config store, tool metadata, debug logger, agent dir, disposables                                                   |
-| `src/index.ts`                | 2   | the extension entry point                                                                                           |
-
-Lazy (only on `/tool-display`): `config-modal.ts`, `zellij-modal.ts`, `settings-inspector-modal.ts`,
-`presets.ts`, `modal-icons.ts`, `render-utils.ts`.
+Nothing is loaded lazily.
 
 - `src/pistyle/` — vendored `@quandev104/pi-style@0.2.11` boxed renderers and shared modules.
-- `src/wiring.ts` — maps this extension's config, theme, and Pi's renderer arguments onto the ported
-  renderers, and patches `ToolExecutionComponent`'s renderer resolution so tools owned by other
-  extensions are covered too.
+- `src/wiring.ts` — registers the renderer resolver through `pi.registerToolRenderer` (the native
+  replacement for the old `ToolExecutionComponent` patch), maps this extension's config, theme and
+  Pi's render arguments onto the ported renderers, and routes the fork-owned db-query/OCR/subagent
+  cards.
 - `src/wiring.ts` also publishes the `pi-tool-display.api.v1` global and promotes MCP tools with
   model-facing metadata (label, description, prompt snippet, parameters).
+- `src/index.ts` — the manifest entry (`package.json` → `pi.extensions` → `./src/index.ts`): the
+  extension factory plus the merged support sections behind it.
 - `FORK.md` — every intentional delta versus upstream.
 - `docs/` — architecture, integration recipe, pitfalls, maintenance.
-- `config.json` — live configuration, edited by `/tool-display`.
 
-The merged files carry `// ==== // from: <original>` section markers naming their source modules, so
+The merged files carry `// from: <original module>` section markers naming their source modules, so
 you can still find the code you are looking for. The merged files are the source of truth now -
 edit them in place.
 
 ## Use
 
-- `/tool-display` opens the settings modal. `previewLines` sets how much output a card shows while
-  collapsed; `collapseAfterTurn` folds a finished turn's tool calls into one summary line.
 - `/reload` applies extension changes.
+- Card sizing is not a runtime setting any more: edit `TOOL_DISPLAY_CONFIG` in `src/index.ts` (a
+  frozen constant) and `/reload`.
+- To disable the extension, toggle it off in `/extensions` (the workspace `ext-mgr` renames the
+  manifest entry `src/index.ts` → `src/index.ts.disabled`). Doing it by hand works the same way: pi
+  resolves the paths in `package.json`'s `pi.extensions`, and with no `index.ts`/`index.js` fallback in
+  this directory nothing loads.
 
 ## Updating
 

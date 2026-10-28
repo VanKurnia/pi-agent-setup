@@ -1,7 +1,0 @@
-{
-    "enabled": true,
-    "enableNativeUserMessageBox": true,
-    "collapseAfterTurn": false,
-    "previewLines": 8,
-    "expandedPreviewMaxLines": 4000
-}

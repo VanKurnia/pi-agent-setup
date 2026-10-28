@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **2026-10-28 — pi-tool-display consolidation.** The extension is four modules and boots from
+  `src/index.ts` (`package.json` → `pi.extensions`): `support.ts`, the root `index.ts` shim and
+  `fork-cards.ts` were folded into `src/index.ts` and `src/wiring.ts`, and the reload handler moved
+  inside the entry so a reload can no longer observe the cleanup registry before it exists. The
+  runtime config file and the `/tool-display` command are gone — `TOOL_DISPLAY_CONFIG` in
+  `src/index.ts` is a frozen constant, and debug logging is opt-in via `PI_TOOL_DISPLAY_DEBUG=1`.
+  The unreachable `quick_edit`/`substitute_edit`/`target_edit` routes were deleted from the vendored
+  dispatcher, the word-character table is built on first use, and MCP discovery is one immediate
+  sweep plus a single 100 ms timer per session instead of four retries re-armed on every agent
+  start.
+
 - **2026-10-19 — docs describe the herdr single-task contract.** `ARCHITECTURE.md`, `docs/README.md`, and `FORK.md` now describe the `subagent` card as `single · <agent>` with `details` `{mode: 'single', pane, session, reused}` instead of the legacy multi-agent payload. Docs only; no code changed.
 
 - **Boot module graph flattened, 46 files -> 8.** Pi loads extensions through jiti, which measures
@@ -30,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Byte size is unchanged (~515 KB boot-static) — this buys file count, not volume. Each merged file
     keeps `// from: <original>` section markers, and `.script/smoke-tool-display.mjs` exercises 11 render
     paths (read/bash/edit/write/grep/ls/find/unknown/ocr/db/subagent) as a regression check.
+    **Corrected 2026-10-28:** the boot graph is four files now and the smoke script exercises 12
+    (read/write/edit/bash/powershell/grep/ls/find/fffind/ocr_review/query_sqlite/subagent); see the
+    2026-10-28 entry above and `FORK.md`.
 
     Symbols renamed to avoid collisions introduced by the shared scope: the dispatcher is now
     `renderBoxedToolForCall` / `renderBoxedToolForResult` (the shared box helpers of those names are

@@ -1,39 +1,43 @@
 // Smoke test: load pi-tool-display the way Pi does and actually invoke the renderers.
-// Catches runtime breakage (TDZ, bad merges) that tsc cannot.
-import { createRequire } from "node:module";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+// Catches runtime breakage (TDZ, swapped bindings, box-math throws) that tsc cannot.
+//
+// Everything resolves from the repo (see helpers.mjs), so the script is cwd-independent
+// and never hardcodes an install path. The extension entry is read from the extension's
+// own manifest's entry list, so repointing that entry keeps this script working.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { ROOT, createTestJiti, runCases } from "./test/subagent/helpers.mjs";
 
-const PI = pathToFileURL(resolve("C:/npm-global/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/jiti-loader.js")).href;
-const { createJiti } = await import(PI);
-const require = createRequire(import.meta.url);
+const EXT_DIR = join(ROOT, "agent/extensions/pi-tool-display");
+const manifest = JSON.parse(readFileSync(join(EXT_DIR, "package.json"), "utf8"));
+const entryRel = manifest.pi.extensions[0];
 
-const pkgIndex = "C:/npm-global/node_modules/@earendil-works/pi-coding-agent/dist/index.js";
-const tuiIndex = "C:/npm-global/node_modules/@earendil-works/pi-tui/dist/index.js";
-const NM = "C:/npm-global/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works";
-const alias = {
-    "@earendil-works/pi-coding-agent": pkgIndex,
-    "@earendil-works/pi-tui": `${NM}/pi-tui/dist/index.js`,
-};
-
-const jiti = createJiti(import.meta.url, { moduleCache: false, alias });
-
-const entry = resolve("agent/extensions/pi-tool-display/index.ts");
-const mod = await jiti.import(entry, { default: true });
+// `moduleCache: false` matches production: the script never shares a module instance
+// with another run.
+const jiti = await createTestJiti(undefined, { moduleCache: false });
+const mod = await jiti.import(join(EXT_DIR, entryRel), { default: true });
 const factory = mod.default ?? mod;
-console.log("factory:", typeof factory);
+if (typeof factory !== "function") throw new Error(`no factory default export at ${entryRel}`);
 
-// minimal ExtensionAPI stub that records registrations
-const registered = { tools: [], commands: [], events: [] };
+// Minimal ExtensionAPI stub that records registrations and captures the resolver.
+let resolver;
+const registered = { commands: [], events: [] };
 const pi = {
-    on: (e) => registered.events.push(e),
-    registerTool: (t) => registered.tools.push(t.name),
-    registerCommand: (n) => registered.commands.push(n),
+    on: (event) => {
+        registered.events.push(event);
+    },
+    registerTool: () => {},
+    registerCommand: (name) => {
+        registered.commands.push(name);
+    },
     registerShortcut: () => {},
     registerFlag: () => {},
     registerMessageRenderer: () => {},
     registerMarkdownTransformer: () => {},
     registerEntryRenderer: () => {},
+    registerToolRenderer: (r) => {
+        resolver = r;
+    },
     getAllTools: () => [],
     getCommands: () => [],
     getFlag: () => undefined,
@@ -42,19 +46,9 @@ const pi = {
 
 const started = Date.now();
 factory(pi);
-console.log(`factory() ok in ${Date.now() - started}ms; commands=${registered.commands.join(",")}`);
-
-// Drive the renderers through the real production path: the prototype patch the
-// extension installs on ToolExecutionComponent. Avoids reaching into internals.
-const wiring = await jiti.import(resolve("agent/extensions/pi-tool-display/src/wiring.ts"));
-const { loadToolDisplayConfig } = await jiti.import(resolve("agent/extensions/pi-tool-display/src/support.ts"));
-const { ToolExecutionComponent } = await jiti.import(pkgIndex);
-const config = loadToolDisplayConfig().config;
-
-if (wiring.installPistyleToolRendererPatch(() => config) !== true) {
-    console.log("  FAIL renderer patch did not install");
-    process.exit(1);
-}
+console.log(`factory() ok in ${Date.now() - started}ms; resolver=${typeof resolver}`);
+if (typeof resolver !== "function") throw new Error("pi.registerToolRenderer was not called");
+console.log(`commands=${registered.commands.join(",") || "(none)"}`);
 
 const theme = {
     fg: (_c, t) => t,
@@ -63,64 +57,73 @@ const theme = {
     getBgAnsi: () => "",
     colors: {},
 };
-const ctx = {
-    args: {},
-    toolCallId: "call_1",
-    state: { elapsedMs: 1234 },
-    cwd: process.cwd(),
+const base = {
+    cwd: ROOT,
     argsComplete: true,
     executionStarted: true,
+    isPartial: false,
+    isError: false,
     expanded: false,
     invalidate: () => {},
+    outputPad: 0,
+    showImages: true,
 };
 
 const cases = [
+    // dedicated renderers (DEDICATED_TOOLS) + the powershell -> bash alias
     ["read", { path: "README.md" }],
-    ["bash", { command: "git status", description: "check" }],
-    ["edit", { path: "a.txt", oldText: "x", newText: "y" }],
     ["write", { path: "b.txt", content: "hello\nworld" }],
+    ["edit", { path: "a.txt", oldText: "x", newText: "y" }],
+    ["bash", { command: "git status", description: "check" }],
+    ["powershell", { command: "Get-Date" }],
+    // these four all render the boxed FALLBACK card (no by-name route in wiring.ts)
     ["grep", { pattern: "x", path: "." }],
     ["ls", { path: "." }],
     ["find", { pattern: "*.ts" }],
-    ["totally_unknown_tool", { foo: 1 }],
-    ["ocr_review", { action: "review", path: "." }],
-    ["db_query", { sql: "select 1" }],
-    ["subagent", { prompt: "hi" }],
+    ["fffind", { pattern: "smoke" }],
+    // fork cards
+    ["ocr_review", { path: "." }],
+    ["query_sqlite", { dbPath: "x.db", query: "select 1" }],
+    ["subagent", { agent: "scout", task: "hi" }],
 ];
 
-let pass = 0, fail = 0;
-for (const [name, args] of cases) {
-    try {
-        const instance = {
-            toolName: name,
-            getRenderShell: () => "self",
-            selfRenderContainer: { setBgFn() {}, paddingX: 1, paddingY: 1 },
-            contentBox: { setBgFn() {}, paddingX: 1, paddingY: 1 },
-            contentText: { setCustomBgFn() {} },
-            invalidate() {},
-        };
-        const proto = ToolExecutionComponent.prototype;
-        const callRenderer = proto.getCallRenderer.call(instance);
-        const resultRenderer = proto.getResultRenderer.call(instance);
-        if (typeof callRenderer !== "function" || typeof resultRenderer !== "function")
-            throw new Error("patched selector did not return a renderer");
-
-        const context = { ...ctx, args };
-        const call = callRenderer(args, theme, context);
-        const result = resultRenderer(
-            { content: [{ type: "text", text: "sample output\nline two" }], details: { elapsedMs: 1234 } },
-            { expanded: false, isPartial: false },
-            theme,
-            context,
-        );
-        if (!call || !result) throw new Error("renderer returned empty");
-        console.log(`  ok   ${name.padEnd(22)} call=${call.constructor?.name ?? typeof call} result=${result.constructor?.name ?? typeof result}`);
-        pass++;
-    } catch (e) {
-        console.log(`  FAIL ${name.padEnd(22)} ${e.message}`);
-        fail++;
-    }
-}
-wiring.removePistyleToolRendererPatch();
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+await runCases(
+    cases.map(([name, args]) => [
+        name,
+        () => {
+            const renderers = resolver(name, () => {
+                throw new Error(`resolver deferred to next() for ${name}`);
+            });
+            if (renderers?.renderShell !== "self") throw new Error(`renderShell=${renderers?.renderShell}`);
+            // Fresh `state` per case: pi-style memoises components on state slots, so a
+            // shared state would let one case's cached component answer another's.
+            // `isPartial: false` everywhere: the first partial pass renders `[]` by design.
+            // `outputPad: 0` makes withOutputPad a passthrough.
+            const context = { ...base, args, state: {}, toolCallId: `call_${name}` };
+            const callComponent = renderers.renderCall(args, theme, context);
+            const pendingLines = callComponent.render(80);
+            const resultLines = renderers
+                .renderResult(
+                    { content: [{ type: "text", text: "sample output\nline two" }], details: {} },
+                    { expanded: false, isPartial: false },
+                    theme,
+                    context,
+                )
+                .render(80);
+            // The settled repaint Pi performs once the result arrives. `read` and
+            // `write` put the whole card in the call component (the batch-leader
+            // panel / the footer state the call closes the box with), so their
+            // result component renders `[]` by design — the settled pass is what
+            // proves those two painted.
+            const settledLines = callComponent.render(80);
+            const painted = settledLines.length + resultLines.length;
+            if (pendingLines.length === 0 || painted === 0) {
+                throw new Error(
+                    `rendered zero lines (call=${pendingLines.length} result=${resultLines.length} settled=${settledLines.length})`,
+                );
+            }
+            return `call=${pendingLines.length}L result=${resultLines.length}L settled=${settledLines.length}L`;
+        },
+    ]),
+    "12 renderer paths",
+);
