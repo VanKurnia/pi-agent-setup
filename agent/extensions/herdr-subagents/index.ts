@@ -40,6 +40,7 @@ import {
     tabNameFor,
 } from "./session.js";
 import {
+    buildAppendSystemPromptFlags,
     discoverAgents,
     loadSubagentsSettings,
     resolveAgentFlags,
@@ -231,6 +232,13 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                 try {
                     const toolsFlag =
                         agent.tools.length > 0 ? ` --tools ${agent.tools.join(",")}` : "";
+                    const systemFlags = buildAppendSystemPromptFlags({
+                        agent,
+                        cwd,
+                        agentDir: getAgentDir(),
+                        projectTrusted: ctx.isProjectTrusted(),
+                        tmpDir: os.tmpdir(),
+                    });
                     if (linked !== undefined) {
                         // Post-acquire triage: reuse a live host, refuse to
                         // collide with a working one, recycle a stale one.
@@ -286,7 +294,7 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                             const nameFlag = fresh ? ` --name "${paneName}"` : "";
                             await runInPane(
                                 paneId,
-                                `pi-bolt --session-dir "${linked.sessionsRoot}" --session "${file}"${nameFlag}${toolsFlag}${modelFlag}${thinkingFlag}`,
+                                `pi-bolt --session-dir "${linked.sessionsRoot}" --session "${file}"${nameFlag}${toolsFlag}${modelFlag}${thinkingFlag}${systemFlags}`,
                             );
                         } else {
                             sessionFile = lookupSessionFile();
@@ -296,7 +304,7 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                         paneId = await splitPane(cwd);
                         await runInPane(
                             paneId,
-                            `pi-bolt --session-dir "${sessionDir}"${toolsFlag}${modelFlag}${thinkingFlag}`,
+                            `pi-bolt --session-dir "${sessionDir}"${toolsFlag}${modelFlag}${thinkingFlag}${systemFlags}`,
                         );
                     }
                 } finally {
@@ -310,7 +318,7 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                 // landed, return its text instead of reporting "aborted".
                 // Growth alone is not enough — the newest entry must be a
                 // complete assistant message, else a partial turn would
-                // yield the previous reply (see extractIfTurnComplete).
+                // yield the previous reply (see cachedTurnComplete).
                 const readLateReply = (): { text: string; session: string } | undefined => {
                     if (sessionFile === undefined || sizeBefore < 0) return undefined;
                     let sizeNow: number;
@@ -362,7 +370,7 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
                     );
                 }
                 const task = attachDelegationSnapshot(params.task, snapshot);
-                await runInPane(pane, `${agent.systemPrompt}\n\n---\n\nTask:\n${task}`);
+                await runInPane(pane, `Task:\n${task}`);
                 if (signal?.aborted) return aborted(pane);
                 const started = await awaitStatus(pane, ["working", "done"], 40000);
                 if (started === "aborted") return aborted(pane);

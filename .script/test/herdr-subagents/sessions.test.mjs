@@ -187,22 +187,6 @@ await runCases(
             },
         ],
         [
-            "legacyAgentSessionFiles: only unkeyed files match",
-            () => {
-                const key = session.projectKey("C:\\proj-a");
-                const files = stubFs({
-                    "2026-01-01T00-00-00-000Z_herdr-scout.jsonl": 1,
-                    [`2026-01-02T00-00-00-000Z_herdr-scout-${key}.jsonl`]: 1,
-                    "2026-01-03T00-00-00-000Z_herdr-worker.jsonl": 1,
-                    "2026-01-04T00-00-00-000Z_unrelated.jsonl": 1,
-                });
-                assert.deepEqual(session.legacyAgentSessionFiles("/dir", "scout", files), [
-                    "2026-01-01T00-00-00-000Z_herdr-scout.jsonl",
-                ]);
-                assert.deepEqual(session.legacyAgentSessionFiles("/dir", "../evil", files), []);
-            },
-        ],
-        [
             "buildChildHeader: parent link present or omitted",
             () => {
                 const linked = JSON.parse(
@@ -251,35 +235,25 @@ await runCases(
             },
         ],
         [
-            "extractIfTurnComplete: only a landed turn counts",
+            "cachedTurnComplete: only a landed turn counts",
             () => {
-                const msg = (id, parent, role, text) =>
-                    JSON.stringify({
-                        type: "message",
-                        id,
-                        parentId: parent,
-                        timestamp: "2026-10-17T00:00:00.000Z",
-                        message: {
-                            role,
-                            content: [{ type: "text", text }],
-                            timestamp: 0,
-                        },
-                    });
-                assert.equal(session.extractIfTurnComplete(""), undefined);
-                assert.equal(session.extractIfTurnComplete("not json\n"), undefined);
-                const partial = [msg("u1", null, "user", "hi")].join("\n");
-                assert.equal(session.extractIfTurnComplete(partial), undefined);
+                const turnComplete = (name, jsonl) =>
+                    session.cachedTurnComplete(path.join(root, name), jsonl);
+                assert.equal(turnComplete("empty.jsonl", ""), undefined);
+                assert.equal(turnComplete("garbage.jsonl", "not json\n"), undefined);
+                const partial = [jmsg("u1", null, "user", "hi")].join("\n");
+                assert.equal(turnComplete("partial.jsonl", partial), undefined);
                 const complete = [
-                    msg("u1", null, "user", "hi"),
-                    msg("a1", "u1", "assistant", "PONG"),
+                    jmsg("u1", null, "user", "hi"),
+                    jmsg("a1", "u1", "assistant", "PONG"),
                 ].join("\n");
-                assert.equal(session.extractIfTurnComplete(complete), "PONG");
+                assert.equal(turnComplete("complete.jsonl", complete), "PONG");
                 const stale = [
-                    msg("u1", null, "user", "hi"),
-                    msg("a1", "u1", "assistant", "OLD"),
-                    msg("u2", "a1", "user", "again"),
+                    jmsg("u1", null, "user", "hi"),
+                    jmsg("a1", "u1", "assistant", "OLD"),
+                    jmsg("u2", "a1", "user", "again"),
                 ].join("\n");
-                assert.equal(session.extractIfTurnComplete(stale), undefined);
+                assert.equal(turnComplete("stale.jsonl", stale), undefined);
             },
         ],
         [

@@ -73,10 +73,6 @@ function entriesToText(entries: SessionEntry[]): string | undefined {
     return texts.join("\n");
 }
 
-export function extractLastAssistantText(jsonl: string): string | undefined {
-    return entriesToText(parseSessionEntries(jsonl));
-}
-
 // Reply tail cache: session files only grow while reused, so a longer file
 // under the same name reuses the parsed prefix; a new or shrunk file means
 // rotation → full re-parse. One file retained (one per agent per parent).
@@ -122,11 +118,6 @@ function lastLineIsCompleteTurn(jsonl: string): boolean {
     if (typeof last !== "object" || last === null) return false;
     const entry = last as { type?: unknown; message?: { role?: unknown } };
     return entry.type === "message" && entry.message?.role === "assistant";
-}
-
-// Late-reply guard: the last assistant text, but only for a complete turn.
-export function extractIfTurnComplete(jsonl: string): string | undefined {
-    return lastLineIsCompleteTurn(jsonl) ? extractLastAssistantText(jsonl) : undefined;
 }
 
 // 8-hex project key: stable per cwd, filesystem- and pane-label-safe.
@@ -223,18 +214,6 @@ export function findAgentSessionFile(
 // sweepLegacySessionFiles shares this predicate.
 function isLegacySessionFile(agentName: string, name: string): boolean {
     return isSafeAgentName(agentName) && name.endsWith(`_herdr-${agentName}.jsonl`);
-}
-
-export function legacyAgentSessionFiles(
-    groupDir: string,
-    agentName: string,
-    fs: { readdirSync(dir: string): string[] } = defaultFs,
-): string[] {
-    try {
-        return fs.readdirSync(groupDir).filter((name) => isLegacySessionFile(agentName, name));
-    } catch {
-        return [];
-    }
 }
 
 // Sweep pre-upgrade session files out of an already-read directory

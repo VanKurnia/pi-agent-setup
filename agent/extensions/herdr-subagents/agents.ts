@@ -7,6 +7,7 @@ import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from "@earendil-works/
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { projectKey } from "./session.js";
 
 export type AgentScope = "user" | "project" | "both";
 export type AgentSource = "user" | "project";
@@ -211,6 +212,11 @@ export function defaultThinkingForAgent(name: string): ThinkingLevel | undefined
     return undefined;
 }
 
+// Flag values are interpolated into a pane shell command, so every value is quoted.
+function flag(name: string, value: string): string {
+    return ` --${name} "${value}"`;
+}
+
 export function resolveAgentFlags(
     agent: { name: string; model: string },
     settings: SubagentsSettings,
@@ -218,9 +224,53 @@ export function resolveAgentFlags(
     const model = settings.agentModels?.[agent.name] ?? agent.model;
     const thinking = settings.agentThinking?.[agent.name] ?? defaultThinkingForAgent(agent.name);
     return {
-        modelFlag: ` --model "${model}"`,
-        thinkingFlag: thinking ? ` --thinking "${thinking}"` : "",
+        modelFlag: flag("model", model),
+        thinkingFlag: thinking ? flag("thinking", thinking) : "",
     };
+}
+
+export interface AppendSystemPromptInput {
+    agent: Pick<AgentConfig, "name" | "systemPrompt">;
+    cwd: string;
+    agentDir: string;
+    /** `ctx.isProjectTrusted()` — the child runs in the same cwd. */
+    projectTrusted: boolean;
+    tmpDir: string;
+}
+
+/**
+ * Boot-time `--append-system-prompt` flags for a child: the agent persona plus
+ * the APPEND_SYSTEM.md the child would otherwise discover. Passing the flag
+ * replaces pi's own discovery of that file, so it is resolved here the same
+ * way: trusted project file first, agent directory second.
+ *
+ * The values are paths, never inline text: the command is typed into a pane
+ * shell, and persona markdown is full of backticks. The persona file is
+ * content-hashed, so an edit creates a new file instead of rewriting one that a
+ * running child may re-read.
+ */
+export function buildAppendSystemPromptFlags(input: AppendSystemPromptInput): string {
+    const { agent, cwd, agentDir, projectTrusted, tmpDir } = input;
+
+    const projectFile = path.join(cwd, CONFIG_DIR_NAME, "APPEND_SYSTEM.md");
+    const addendum =
+        projectTrusted && fs.existsSync(projectFile)
+            ? projectFile
+            : path.join(agentDir, "APPEND_SYSTEM.md");
+
+    const flags: string[] = [];
+    if (fs.existsSync(addendum)) flags.push(flag("append-system-prompt", addendum));
+
+    const persona = agent.systemPrompt.replace(/^\n+|\n+$/g, "");
+    if (persona.length > 0) {
+        const dir = path.join(tmpDir, "herdr-subagent-system");
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, `agent-${agent.name}-${projectKey(persona)}.md`);
+        if (!fs.existsSync(file)) fs.writeFileSync(file, persona, "utf-8");
+        flags.push(flag("append-system-prompt", file));
+    }
+
+    return flags.join("");
 }
 
 // Read-modify-write of the raw file: only the one entry changes, every other

@@ -1,4 +1,5 @@
-// Test for extractLastAssistantText in agent/extensions/herdr-subagents/session.ts.
+// Test for cachedAssistantText (last-assistant-text extraction) in
+// agent/extensions/herdr-subagents/session.ts.
 // Run from repo root: node .script/test/herdr-subagents/session.test.mjs
 // Silent on success (exit 0, no output); assertion failures exit non-zero.
 import assert from "node:assert/strict";
@@ -15,9 +16,12 @@ const loaderUrl = pathToFileURL(
 
 const { createJiti } = await import(loaderUrl);
 const jiti = createJiti(import.meta.url, {});
-const { extractLastAssistantText } = await jiti.import(
+const { cachedAssistantText } = await jiti.import(
     resolve(ROOT, "agent/extensions/herdr-subagents/session.js"),
 );
+
+// Each case is a new file, so the reply tail cache never reuses a parse.
+const extractLastAssistantText = (jsonl) => cachedAssistantText(`case-${jsonl.length}.jsonl`, jsonl);
 
 const HEADER = `{"type":"session","version":3,"id":"sess-1"}`;
 const user = (id, parentId) =>

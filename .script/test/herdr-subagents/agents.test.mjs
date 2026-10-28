@@ -1,4 +1,5 @@
-// Test for loadAgentsFromDir/discoverAgents in agent/extensions/herdr-subagents/agents.ts.
+// Tests for agent discovery and boot-time system-prompt flags in
+// agent/extensions/herdr-subagents/agents.ts.
 // Run from repo root: node .script/test/herdr-subagents/agents.test.mjs
 // Uses the shared harness (real SDK via jiti); fixtures live in os.tmpdir().
 import assert from "node:assert/strict";
@@ -16,6 +17,7 @@ const write = (dir, name, content) => {
     fs.writeFileSync(path.join(dir, name), content, "utf8");
 };
 const md = (frontmatter, body = "You are a test agent.") => `---\n${frontmatter}\n---\n\n${body}\n`;
+const flagPaths = (flags) => [...flags.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 
 const dirA = path.join(root, "a");
 write(dirA, "scout.md", md("name: scout\ndescription: recon\ntools: read, ffgrep ,read", "Scout body."));
@@ -221,6 +223,180 @@ await runCases(
                 const ghost = agents.resolveAgentFlags({ name: "ghost", model: "fallback/m" }, settings);
                 assert.equal(ghost.modelFlag, ' --model "prov/model:high"');
                 assert.equal(settings.agentThinking, undefined);
+            },
+        ],
+        [
+            "append flags: persona file holds the trimmed body",
+            () => {
+                const dir = fs.mkdtempSync(path.join(root, "append-1"));
+                const flags = agents.buildAppendSystemPromptFlags({
+                    agent: { name: "scout", systemPrompt: "\n\nScout body.\n" },
+                    cwd: path.join(dir, "cwd"),
+                    agentDir: path.join(dir, "agent"),
+                    projectTrusted: false,
+                    tmpDir: dir,
+                });
+                const paths = flagPaths(flags);
+                assert.equal(paths.length, 1);
+                assert.equal(fs.readFileSync(paths[0], "utf8"), "Scout body.");
+            },
+        ],
+        [
+            "append flags: stable filename per content, new file per changed body",
+            () => {
+                const dir = fs.mkdtempSync(path.join(root, "append-2"));
+                const input = {
+                    cwd: path.join(dir, "cwd"),
+                    agentDir: path.join(dir, "agent"),
+                    projectTrusted: false,
+                    tmpDir: dir,
+                };
+                const personaDir = path.join(dir, "herdr-subagent-system");
+                const withBody = (systemPrompt) => ({
+                    ...input,
+                    agent: { name: "scout", systemPrompt },
+                });
+                const same = flagPaths(
+                    agents.buildAppendSystemPromptFlags(withBody("Same body.")),
+                )[0];
+                const again = flagPaths(
+                    agents.buildAppendSystemPromptFlags(withBody("Same body.")),
+                )[0];
+                assert.equal(again, same);
+                assert.deepEqual(fs.readdirSync(personaDir), [path.basename(same)]);
+                const changed = flagPaths(
+                    agents.buildAppendSystemPromptFlags(withBody("Other body.")),
+                )[0];
+                assert.notEqual(changed, same);
+                assert.equal(fs.readdirSync(personaDir).length, 2);
+            },
+        ],
+        [
+            "append flags: addendum first, persona last",
+            () => {
+                const dir = fs.mkdtempSync(path.join(root, "append-3"));
+                const agentDir = path.join(dir, "agent");
+                write(agentDir, "APPEND_SYSTEM.md", "Addendum text.");
+                const flags = agents.buildAppendSystemPromptFlags({
+                    agent: { name: "scout", systemPrompt: "Persona body." },
+                    cwd: path.join(dir, "cwd"),
+                    agentDir,
+                    projectTrusted: false,
+                    tmpDir: dir,
+                });
+                const paths = flagPaths(flags);
+                assert.equal(paths.length, 2);
+                assert.equal(paths[0], path.join(agentDir, "APPEND_SYSTEM.md"));
+                assert.ok(path.basename(paths[1]).startsWith("agent-scout-"));
+                assert.equal(
+                    flags,
+                    paths.map((p) => ` --append-system-prompt "${p}"`).join(""),
+                );
+            },
+        ],
+        [
+            "append flags: trusted project addendum wins",
+            () => {
+                const dir = fs.mkdtempSync(path.join(root, "append-4"));
+                const cwd = path.join(dir, "cwd");
+                const agentDir = path.join(dir, "agent");
+                write(path.join(cwd, ".pi"), "APPEND_SYSTEM.md", "Project addendum.");
+                write(agentDir, "APPEND_SYSTEM.md", "Agent addendum.");
+                const flags = agents.buildAppendSystemPromptFlags({
+                    agent: { name: "scout", systemPrompt: "Persona body." },
+                    cwd,
+                    agentDir,
+                    projectTrusted: true,
+                    tmpDir: dir,
+                });
+                assert.equal(flagPaths(flags)[0], path.join(cwd, ".pi", "APPEND_SYSTEM.md"));
+            },
+        ],
+        [
+            "append flags: untrusted project addendum falls back to agent dir",
+            () => {
+                const dir = fs.mkdtempSync(path.join(root, "append-5"));
+                const cwd = path.join(dir, "cwd");
+                const agentDir = path.join(dir, "agent");
+                write(path.join(cwd, ".pi"), "APPEND_SYSTEM.md", "Project addendum.");
+                write(agentDir, "APPEND_SYSTEM.md", "Agent addendum.");
+                const flags = agents.buildAppendSystemPromptFlags({
+                    agent: { name: "scout", systemPrompt: "Persona body." },
+                    cwd,
+                    agentDir,
+                    projectTrusted: false,
+                    tmpDir: dir,
+                });
+                assert.equal(flagPaths(flags)[0], path.join(agentDir, "APPEND_SYSTEM.md"));
+            },
+        ],
+        [
+            "append flags: missing addendum yields persona only",
+            () => {
+                const dir = fs.mkdtempSync(path.join(root, "append-6"));
+                const flags = agents.buildAppendSystemPromptFlags({
+                    agent: { name: "worker", systemPrompt: "Persona body." },
+                    cwd: path.join(dir, "cwd"),
+                    agentDir: path.join(dir, "agent"),
+                    projectTrusted: false,
+                    tmpDir: dir,
+                });
+                assert.equal(flagPaths(flags).length, 1);
+                assert.ok(!flags.includes("APPEND_SYSTEM.md"));
+            },
+        ],
+        [
+            "append flags: empty body and missing addendum yields no flags",
+            () => {
+                const dir = fs.mkdtempSync(path.join(root, "append-7"));
+                const flags = agents.buildAppendSystemPromptFlags({
+                    agent: { name: "scout", systemPrompt: "\n\n" },
+                    cwd: path.join(dir, "cwd"),
+                    agentDir: path.join(dir, "agent"),
+                    projectTrusted: false,
+                    tmpDir: dir,
+                });
+                assert.equal(flags, "");
+            },
+        ],
+        [
+            "append flags: host loader accepts the produced flags",
+            async () => {
+                const dir = fs.mkdtempSync(path.join(root, "append-8"));
+                const cwd = path.join(dir, "cwd");
+                const agentDir = path.join(dir, "agent");
+                fs.mkdirSync(cwd, { recursive: true });
+                write(agentDir, "APPEND_SYSTEM.md", "Addendum text.");
+                const body = "Persona body for the loader.";
+                const paths = flagPaths(
+                    agents.buildAppendSystemPromptFlags({
+                        agent: { name: "scout", systemPrompt: body },
+                        cwd,
+                        agentDir,
+                        projectTrusted: false,
+                        tmpDir: dir,
+                    }),
+                );
+                const { DefaultResourceLoader } = await jiti.import(
+                    "@earendil-works/pi-coding-agent",
+                );
+                const loader = new DefaultResourceLoader({
+                    cwd,
+                    agentDir,
+                    appendSystemPrompt: paths,
+                    noExtensions: true,
+                    noSkills: true,
+                    noPromptTemplates: true,
+                    noThemes: true,
+                    noContextFiles: true,
+                });
+                await loader.reload();
+                const parts = loader.getAppendSystemPrompt();
+                assert.equal(parts.length, 2);
+                const joined = parts.join("\n\n");
+                assert.ok(joined.includes(body));
+                assert.ok(joined.includes("Addendum text."));
+                assert.equal(loader.getAppendSystemPromptSources().length, 2);
             },
         ],
     ],
