@@ -16,8 +16,8 @@ import type {
     ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { ANSI, DOT, SPINNER, TICK_MS, styled, styledDuration } from "../shared/widget-kit.js";
-import type { OcrRunState } from "./engine.js";
+import { ANSI, DOT, SPINNER, TICK_MS, styled, styledDuration } from "../shared/widget-kit.ts";
+import type { OcrRunState } from "./engine.ts";
 
 // `engine.js` pulls in child_process, so it must stay off the boot path. It is
 // loaded lazily everywhere it is needed. `invalidateOcrCmdCache` lives in

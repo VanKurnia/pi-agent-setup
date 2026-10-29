@@ -2,7 +2,7 @@
  * Shared row primitives used by the status widgets (palette, spinner, duration).
  */
 
-import { formatDuration } from "./text-format.js";
+import { formatDuration } from "./text-format.ts";
 
 /** Minimal ANSI palette — widget strings render verbatim, no theme access here. */
 const ANSI = {

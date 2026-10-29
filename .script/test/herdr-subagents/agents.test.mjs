@@ -399,6 +399,14 @@ await runCases(
                 assert.equal(loader.getAppendSystemPromptSources().length, 2);
             },
         ],
+        [
+            "trust flag: trusted project approves the child",
+            () => assert.equal(agents.buildTrustFlag(true), " --approve"),
+        ],
+        [
+            "trust flag: untrusted project refuses approval",
+            () => assert.equal(agents.buildTrustFlag(false), " --no-approve"),
+        ],
     ],
     "agents loader",
 );

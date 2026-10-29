@@ -13,7 +13,7 @@ import {
     registerThinkingLabeling,
     registerToolDecoration,
     resetPistyleRegistries,
-} from "./wiring.js";
+} from "./wiring.ts";
 
 // ── Main Extension Entry Point ──────────────────────────────────────────────
 

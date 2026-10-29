@@ -1,52 +1,34 @@
 ---
 name: grill-me
-description: Interview the user relentlessly about a plan or design until reaching shared understanding, resolving each branch of the decision tree. Use when user wants to stress-test a plan, get grilled on their design, or mentions "grill me".
+description: Interview the user relentlessly about a plan or design, resolving each branch of the decision tree. Use when the user wants to stress-test a plan, get grilled on their design, or mentions "grill me".
 ---
 
-Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
+Interview the user until every decision branch is resolved. Walk the tree one branch at a time, settling a decision before the ones that depend on it.
 
-**One question per turn.** Batching multiple questions hides dependencies — walk the tree one branch at a time.
+**One question per turn.** Batching hides dependencies, and an answer to a batch can contradict one already given.
 
-If a question can be answered by exploring the codebase, explore it instead — locate first, read only what it points at:
+**Explore before asking.** What the code can answer, look up: `fffind`/`ffgrep` to locate, `read` what they point at, `git log`/`git diff` for churn. Send one `scout` when the answer needs several files compared. Ask only what the code cannot answer — intent, preference, tradeoffs.
 
-- `fffind` / `ffgrep` — where a symbol, config key or error string lives
-- `read` — the file and line the search landed on
-- `powershell` with `git log` / `git diff` — whether this area is actively changing
-- a `scout` subagent — only when the answer needs several files read and compared; dispatch is synchronous, one at a time
+**Always take a position.** Each question carries your recommended answer and the reason, so the user is choosing between options, not designing for you.
 
-## Question delivery
+Ask through `ask_user_question`, which keeps its own help current on options, `details` and `multiSelect`; don't restate those fields here.
 
-Prefer the `ask_user_question` tool over plain text when the question has a discrete set of plausible answers. It renders a picker with an "Other" escape hatch, keeping the conversation moving while preserving free-form override.
+## Stop when
 
-- **One question per tool call.** Make separate `ask_user_question` calls for each question — don't bundle.
-- **Lead with your recommendation.** Put your preferred option first with `(Recommended)` in its label, and explain *why* in `description`.
-- **Use `details` for context.** Pass ASCII mockups, code snippets, or layout sketches there — it's shown below the question.
-- **Omit `options` for open-ended input.** When the question is genuinely open-ended (e.g., "what are the use cases?"), pass no options — the tool falls back to free-text input.
-- **Use `multiSelect: true` only when multiple answers to a single question are valid** (e.g., "which of these frameworks have you used?").
-- **Fall back to plain text only when the question is a quick aside** that doesn't warrant a tool invocation.
+1. No branch is open, and no remaining question depends on an unanswered one.
+2. A `worker` subagent could implement it with no ambiguity left.
+3. The user says stop.
 
-## Compatibility
+## Design summary
 
-This skill works alongside the orchestrator skill. Orchestrator's context-hygiene and investigation rules apply:
-- `fffind`/`ffgrep`/`read` before scout before asking — a search settles most claims
-  yourself; send one `scout` when the answer needs several files compared; ask only
-  what the code cannot answer
-- One question per ask_user_question call
-- Prefer ask_user_question over plain text for discrete multiple-choice questions
+Deliver a markdown file, or a fenced block when it is short:
 
-## Termination
+- **Decisions** — chosen option, rationale, rejected alternatives.
+- **Open questions** — deferred on purpose, each with the condition that reopens it.
+- **Architecture** — components, data flow, boundaries, 3–5 sentences.
 
-Stop interviewing when:
+## Look up the rest
 
-1. All decision branches are resolved (no remaining open questions with dependencies on unanswered ones)
-2. The design is sufficiently specified that a scout agent could start implementation without ambiguity
-3. The user asks to stop
-
-## Output Artifact
-
-Produce a structured design summary:
-- **Decisions made**: each with the chosen option, rationale, and rejected alternatives
-- **Open questions**: any unresolved items deferred intentionally with a trigger condition
-- **Architecture sketch**: components, data flow, boundaries (3-5 sentences)
-
-The summary goes in a code block (for easy copying) or as a markdown file.
+- Context hygiene, delegation, verification → [orchestrator](../orchestrator/SKILL.md)
+- `ask_user_question` fields and rendering → the tool's own help
+- Read-only recon subagent → `agent/extensions/herdr-subagents/agents/scout.md`

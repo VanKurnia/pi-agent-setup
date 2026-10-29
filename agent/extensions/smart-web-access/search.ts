@@ -3,13 +3,13 @@ import { Defuddle } from "defuddle/node";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { parseLinkedomHTML } from "./dom.js";
+import { parseLinkedomHTML } from "./dom.ts";
 import type {
     PageFetchResult,
     QueryProgress,
     SearchResultLink,
     WebSearchDetails,
-} from "./types.js";
+} from "./types.ts";
 
 // =============================================================================
 // Rate-limited Fetching for Search Results

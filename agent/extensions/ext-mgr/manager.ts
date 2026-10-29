@@ -15,7 +15,7 @@ import {
     type Theme,
 } from "@earendil-works/pi-coding-agent";
 import type { SelectItem } from "@earendil-works/pi-tui";
-import { promptForName, showPicker } from "../shared/picker.js";
+import { promptForName, showPicker } from "../shared/picker.ts";
 
 // =============================================================================
 // Constants & Types

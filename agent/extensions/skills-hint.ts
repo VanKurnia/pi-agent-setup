@@ -26,7 +26,7 @@ import type {
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { safeReadText } from "./shared/safe-read.js";
+import { safeReadText } from "./shared/safe-read.ts";
 
 // First `argument-hint:` line in frontmatter (covers nested metadata form too).
 function extractHint(frontmatter: string): string | null {

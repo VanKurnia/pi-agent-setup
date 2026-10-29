@@ -15,7 +15,7 @@ import {
     RUNNING_TITLE_GLYPH,
     renderBoxedToolCall,
     renderBoxedToolResult,
-} from "./pistyle/shared/index.js";
+} from "./pistyle/shared/index.ts";
 import {
     BoxedToolContext,
     renderBoxedToolForCall as renderBoxedDispatchCall,
@@ -34,7 +34,7 @@ import {
     stateElapsedMs,
     isResultSeen,
     getToolsRenderConfig,
-} from "./pistyle/index.js";
+} from "./pistyle/index.ts";
 import {
     TOOL_DISPLAY_CONFIG,
     isRecord,
@@ -49,7 +49,7 @@ import {
     ANSI_SGR_PATTERN,
     sanitizeAnsiForThemedOutput,
     onReloadShutdown,
-} from "./index.js";
+} from "./index.ts";
 import {
     ExtensionAPI,
     ExtensionContext,

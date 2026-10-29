@@ -24,8 +24,8 @@ import {
     type SessionHeader,
     type SessionInfoEntry,
 } from "@earendil-works/pi-coding-agent";
-import { promptForName, showPicker } from "../shared/picker.js";
-import { normalizeDir, shortenHome } from "../shared/text-format.js";
+import { promptForName, showPicker } from "../shared/picker.ts";
+import { normalizeDir, shortenHome } from "../shared/text-format.ts";
 
 // =============================================================================
 // Session File Primitives

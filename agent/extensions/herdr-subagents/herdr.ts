@@ -21,6 +21,26 @@ export class HerdrError extends Error {
     }
 }
 
+// Method names and shapes below are herdr protocol 22 (herdr 0.9.5). An older
+// server answers with unknown-method errors, which surface as a confusing
+// dispatch failure instead of an upgrade hint.
+const MIN_HERDR_PROTOCOL = 22;
+
+/** Message for an unsupported server protocol, or undefined when compatible. */
+export function protocolError(protocol: unknown): string | undefined {
+    if (typeof protocol === "number" && protocol >= MIN_HERDR_PROTOCOL) return undefined;
+    return `herdr server speaks protocol ${String(protocol)}; subagents need ${MIN_HERDR_PROTOCOL}+ (herdr 0.9.5+). Update herdr and retry.`;
+}
+
+/** Why this server cannot be used, or undefined when it speaks a usable protocol. */
+export async function herdrProtocolProblem(): Promise<string | undefined> {
+    try {
+        return protocolError((await callHerdr("ping", {}))?.protocol);
+    } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+    }
+}
+
 function callHerdr(
     method: string,
     params: Record<string, unknown>,
@@ -116,13 +136,14 @@ function callHerdr(
 }
 
 // Never pass an empty until array: the server matches nothing and
-// returns immediately.
+// returns immediately. Resolves true when the state that settled the wait is
+// `blocked`, i.e. herdr saw an approval or question dialog.
 export async function waitForAgentStatus(
     target: string,
     until: string[],
     timeoutMs: number,
     signal?: AbortSignal,
-): Promise<void> {
+): Promise<boolean> {
     // A fresh pane has no agent occupant yet, so the server answers
     // agent_not_found immediately instead of waiting. Retry until the
     // child boots; only the cold-boot window pays the 2000 ms granularity,
@@ -151,13 +172,14 @@ export async function waitForAgentStatus(
             throw new HerdrError("herdr agent.wait aborted.", "aborted");
         }
         try {
-            await callHerdr(
+            const result = await callHerdr(
                 "agent.wait",
                 { target, until, timeout_ms: remaining },
                 remaining + 15000,
                 signal,
             );
-            return;
+            const status: unknown = result?.agent?.agent_status;
+            return status === "blocked";
         } catch (err) {
             if (!(err instanceof HerdrError && err.code === "agent_not_found")) throw err;
             const retryIn = Math.min(2000, deadline - Date.now());
@@ -229,6 +251,24 @@ export function getPane(paneId: string): Promise<PaneState> {
     });
 }
 
+/**
+ * Last rendered lines of the agent in `paneId`, for a blocked report. Best
+ * effort: a read failure must not mask the original error.
+ */
+export async function readAgentTail(paneId: string): Promise<string> {
+    try {
+        const result = await callHerdr("agent.read", {
+            target: paneId,
+            source: "recent_unwrapped",
+            lines: 40,
+        });
+        const text: unknown = result?.read?.text;
+        return typeof text === "string" ? `\n--- pane ${paneId} ---\n${text}` : "";
+    } catch {
+        return "";
+    }
+}
+
 export interface PaneSummary {
     paneId: string;
     tabId?: string;
@@ -260,6 +300,23 @@ export function listPanes(): Promise<PaneSummary[]> {
 
 export function renamePane(paneId: string, label: string): Promise<void> {
     return callHerdr("pane.rename", { pane_id: paneId, label }).then(() => undefined);
+}
+
+export function renameAgent(paneId: string, name: string): Promise<void> {
+    return callHerdr("agent.rename", { target: paneId, name }).then(() => undefined);
+}
+
+/**
+ * Best-effort herdr toast: a blocked or timed-out child is easy to miss while
+ * the parent waits on it. `sound: "request"` is the attention variant, and a
+ * notification failure must never affect the dispatch.
+ */
+export async function notifyHerdr(title: string): Promise<void> {
+    try {
+        await callHerdr("notification.show", { title, sound: "request" });
+    } catch {
+        // A toast is advisory; the tool result carries the detail.
+    }
 }
 
 export function closePane(paneId: string): Promise<void> {

@@ -7,7 +7,7 @@ import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from "@earendil-works/
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { projectKey } from "./session.js";
+import { projectKey } from "./session.ts";
 
 export type AgentScope = "user" | "project" | "both";
 export type AgentSource = "user" | "project";
@@ -215,6 +215,16 @@ export function defaultThinkingForAgent(name: string): ThinkingLevel | undefined
 // Flag values are interpolated into a pane shell command, so every value is quoted.
 function flag(name: string, value: string): string {
     return ` --${name} "${value}"`;
+}
+
+/**
+ * Trust flags take no value, so `flag()` cannot build them: `--approve ""`
+ * would become a positional message. The parent's decision is mirrored so the
+ * child loads exactly the project resources the parent loaded, and never stops
+ * at a trust prompt the dispatch pipeline cannot answer.
+ */
+export function buildTrustFlag(projectTrusted: boolean): string {
+    return projectTrusted ? " --approve" : " --no-approve";
 }
 
 export function resolveAgentFlags(

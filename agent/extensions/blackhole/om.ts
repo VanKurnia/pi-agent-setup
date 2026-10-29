@@ -24,7 +24,7 @@ import {
     isModelTarget,
     loadBlackholeConfig,
     type BlackholeConfig,
-} from "./config.js";
+} from "./config.ts";
 
 type Theme = Parameters<MessageRenderer>[2];
 

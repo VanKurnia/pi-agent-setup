@@ -14,7 +14,7 @@ import { pipeline } from "node:stream/promises";
 import { Defuddle } from "defuddle/node";
 import { getProfiles, fetch as wreqFetch } from "wreq-js";
 
-import { parseLinkedomHTML } from "./dom.js";
+import { parseLinkedomHTML } from "./dom.ts";
 import {
     DEFAULT_ACCEPT_HEADER,
     DEFAULT_ACCEPT_LANGUAGE_HEADER,
@@ -44,7 +44,7 @@ import {
     type FetchResult,
     type FetchToolDefaults,
     type OutputFormat,
-} from "./types.js";
+} from "./types.ts";
 
 // ── DOM Polyfill ───────────────────────────────────────────────────────
 

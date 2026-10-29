@@ -46,7 +46,7 @@ import {
     isError,
     resolveFetchToolDefaults,
     searchParametersSchema,
-} from "./types.js";
+} from "./types.ts";
 
 // =============================================================================
 // Settings: Fetch

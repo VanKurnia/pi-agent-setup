@@ -12,7 +12,7 @@ import { Container, Key, Markdown, SelectList, Text, matchesKey } from "@earendi
 import { writeFile, rm, mkdir, readFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { registerExtensionApi } from "../shared/cross-extension-api.js";
-import type { FilechangesApi } from "../shared/filechanges-api.js";
+import type { FilechangesApi } from "../shared/filechanges-api.ts";
 
 // ── Inlined from tracker.ts (file deleted) ───────────────────────────
 // ── Types ──────────────────────────────────────────────

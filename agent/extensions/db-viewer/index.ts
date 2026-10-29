@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { DatabaseSync } from "node:sqlite";
 import { resolve } from "node:path";
-import { isQuerySafe } from "../shared/query-safe.js";
+import { isQuerySafe } from "../shared/query-safe.ts";
 import {
     formatRowsToMarkdown,
     getDbStatus,
@@ -13,9 +13,9 @@ import {
     resolveConnectionValue,
     type MysqlFactory,
     writeDbConfig,
-} from "../shared/db.js";
-import { normalizeDir } from "../shared/text-format.js";
-import { createToolResultComponent } from "../shared/markdown.js";
+} from "../shared/db.ts";
+import { normalizeDir } from "../shared/text-format.ts";
+import { createToolResultComponent } from "../shared/markdown.ts";
 
 function resolveMaxRows(raw: number | undefined): number {
     if (raw === undefined || !Number.isFinite(raw)) return 200;

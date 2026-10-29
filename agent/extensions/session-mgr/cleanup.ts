@@ -24,15 +24,15 @@ import {
 import { basename, dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { showPicker } from "../shared/picker.js";
-import { normalizeDir, shortenHome } from "../shared/text-format.js";
+import { showPicker } from "../shared/picker.ts";
+import { normalizeDir, shortenHome } from "../shared/text-format.ts";
 import {
     fileStamp,
     listSessionFiles,
     parseSessionHeader,
     readFileHead,
     readSessionCwd,
-} from "./session-ops.js";
+} from "./session-ops.ts";
 
 // =============================================================================
 // Settings: Cleanup

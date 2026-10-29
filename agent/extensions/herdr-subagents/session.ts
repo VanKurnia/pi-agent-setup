@@ -1,5 +1,5 @@
 import { closeSync, openSync, readdirSync, statSync, unlinkSync, writeSync } from "node:fs";
-import { getBlackholeSnapshotApi, type BlackholeSnapshotApi } from "../shared/blackhole-api.js";
+import { getBlackholeSnapshotApi, type BlackholeSnapshotApi } from "../shared/blackhole-api.ts";
 
 interface SessionEntry {
     id: string;
@@ -144,6 +144,16 @@ export function paneNameFor(agentName: string, cwd: string, parent?: string): st
 // matching stays label-first via the generic matchPane helper.
 export function tabNameFor(agentName: string, cwd: string, parent?: string): string {
     return paneNameFor(agentName, cwd, parent);
+}
+
+// Herdr agent names: [a-z][a-z0-9_-]{0,31}. The name is a display label for
+// `herdr agent list`, not an identity: dispatch targets the pane, and a second
+// live child of the same agent keeps the name (its rename is refused and
+// ignored). The slug is still folded and truncated because the registry has its
+// own alphabet and length limit.
+export function agentNameFor(agentName: string): string {
+    const slug = agentName.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    return `herdr-${slug.slice(0, 32 - "herdr-".length)}`;
 }
 
 export function agentSessionId(agentName: string, cwd: string, parent?: string): string {

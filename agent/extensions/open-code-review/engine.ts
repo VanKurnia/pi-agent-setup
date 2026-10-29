@@ -7,7 +7,7 @@
 
 import fs from "node:fs";
 import { spawn, execSync } from "node:child_process";
-import { stripAnsi } from "../shared/strip-ansi.js";
+import { stripAnsi } from "../shared/strip-ansi.ts";
 
 // =============================================================================
 // Run State & Progress Types

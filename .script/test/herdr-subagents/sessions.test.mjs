@@ -544,6 +544,38 @@ await runCases(
                 }
             },
         ],
+        [
+            "agentNameFor: registry-safe and deterministic",
+            () => {
+                const name = session.agentNameFor("scout");
+                assert.equal(name, "herdr-scout");
+                assert.match(name, /^[a-z][a-z0-9_-]{0,31}$/);
+                assert.equal(session.agentNameFor("scout"), name);
+            },
+        ],
+        [
+            "agentNameFor: distinct agents stay distinct",
+            () => {
+                assert.notEqual(session.agentNameFor("scout"), session.agentNameFor("worker"));
+            },
+        ],
+        [
+            "agentNameFor: long agent names are truncated to the registry limit",
+            () => {
+                const name = session.agentNameFor("a".repeat(40));
+                assert.match(name, /^[a-z][a-z0-9_-]{0,31}$/);
+                assert.equal(name.length, 32);
+                assert.ok(name.startsWith("herdr-"));
+            },
+        ],
+        [
+            "agentNameFor: dots and uppercase are sanitized",
+            () => {
+                const name = session.agentNameFor("My.Agent");
+                assert.equal(name, "herdr-my-agent");
+                assert.equal(name, name.toLowerCase());
+            },
+        ],
     ],
     { suite: "herdr-subagents sessions" },
 );
