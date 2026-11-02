@@ -7,7 +7,9 @@
 // coverage, a non-empty promptSnippet, snippet shape, and no restatement
 // across the three surfaces. No model calls, no session writes.
 import assert from "node:assert/strict";
-import { createTestJiti, importProd, runCases } from "../subagent/helpers.mjs";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { createTestJiti, importProd, ROOT, runCases } from "../subagent/helpers.mjs";
 
 const jiti = await createTestJiti();
 
@@ -33,10 +35,23 @@ const entries = {
     "agent/extensions/open-code-review/index.js": ["ocr_review", "ocr_scan", "ocr_health"],
     "agent/extensions/session-mgr/index.js": ["rename_session"],
     "agent/extensions/smart-web-access/index.js": ["web_search", "web_fetch"],
-    "agent/extensions/subagents/index.js": ["subagent"],
+    "agent/extensions/herdr-app-subagent/index.js": ["subagent"],
 };
 
-for (const [relPath, expected] of Object.entries(entries)) {
+// An entry is live when pi would load it: its `.ts` source still exists. Toggling an
+// extension renames `<name>.ts` to `<name>.ts.disabled`, so a missing source covers both.
+function isLiveEntry(relPath) {
+    return existsSync(resolve(ROOT, relPath.replace(/\.js$/, ".ts")));
+}
+
+const live = Object.entries(entries).filter(([relPath]) => {
+    if (isLiveEntry(relPath)) return true;
+    console.log(`  skip ${relPath} (extension disabled or file missing)`);
+    return false;
+});
+assert.ok(live.length > 0, "no live entry files — check the entries map and extension toggles");
+
+for (const [relPath, expected] of live) {
     const mod = await importProd(jiti, relPath);
     const factory = mod.default ?? mod;
     assert.equal(typeof factory, "function", `${relPath} factory missing`);
@@ -48,7 +63,7 @@ for (const [relPath, expected] of Object.entries(entries)) {
     }
 }
 
-const scoped = Object.values(entries).flat();
+const scoped = live.flatMap(([, expected]) => expected);
 for (const name of scoped) {
     const tool = tools[name];
     const guidelines = tool.promptGuidelines ?? [];
@@ -64,7 +79,7 @@ const cases = [];
 const test = (name, fn) => cases.push([name, fn]);
 
 test("each entry file registers exactly its expected tools", () => {
-    for (const [relPath, expected] of Object.entries(entries)) {
+    for (const [relPath, expected] of live) {
         assert.deepEqual(
             [...byFile[relPath]].sort(),
             [...expected].sort(),

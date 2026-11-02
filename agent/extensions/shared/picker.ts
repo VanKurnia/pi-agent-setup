@@ -189,5 +189,10 @@ export async function showPicker(
             };
             return view;
         },
+        {
+            // The picker is idle until the user picks: report OSC 7501 "blocked" so a
+            // terminal (or herdr pane) does not show pi as still working.
+            blocked: { kind: "question", message: title },
+        },
     );
 }

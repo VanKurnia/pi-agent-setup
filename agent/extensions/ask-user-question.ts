@@ -313,30 +313,34 @@ async function askFreeText(
     context: string | undefined,
     autocomplete: AutocompleteProvider,
 ): Promise<string | null> {
-    return ctx.ui.custom((tui, theme, _keybindings, done: (result: string | null) => void) => {
-        const editor = createAnswerEditor(tui, theme, autocomplete);
+    // pi is waiting on the user, not working: report OSC 7501 "blocked" for this inline dialog.
+    return ctx.ui.custom(
+        (tui, theme, _keybindings, done: (result: string | null) => void) => {
+            const editor = createAnswerEditor(tui, theme, autocomplete);
 
-        editor.onSubmit = (value) => done(value);
+            editor.onSubmit = (value) => done(value);
 
-        function handleInput(data: string) {
-            if (handleAnswerEditorInput(editor, data, tui)) return;
-            if (matchesKey(data, Key.escape)) {
-                done(null);
-                return;
+            function handleInput(data: string) {
+                if (handleAnswerEditorInput(editor, data, tui)) return;
+                if (matchesKey(data, Key.escape)) {
+                    done(null);
+                    return;
+                }
+                editor.handleInput(data);
+                tui.requestRender();
             }
-            editor.handleInput(data);
-            tui.requestRender();
-        }
 
-        function render(width: number): string[] {
-            const lines = dialogHeader(theme, question, context, width);
-            lines.push(...editorLines(editor, width));
-            dialogFooter(lines, theme, width, "Enter to submit • Tab insert • Esc cancel");
-            return lines;
-        }
+            function render(width: number): string[] {
+                const lines = dialogHeader(theme, question, context, width);
+                lines.push(...editorLines(editor, width));
+                dialogFooter(lines, theme, width, "Enter to submit • Tab insert • Esc cancel");
+                return lines;
+            }
 
-        return { render, invalidate: () => {}, handleInput };
-    });
+            return { render, invalidate: () => {}, handleInput };
+        },
+        { blocked: { kind: "question", message: question } },
+    );
 }
 
 async function askSingleChoice(
@@ -351,85 +355,94 @@ async function askSingleChoice(
         { kind: "other", label: getOtherLabel(options) },
     ];
 
-    return ctx.ui.custom((tui, theme, _keybindings, done: (result: AskAnswer | null) => void) => {
-        let cursor = 0;
-        let editMode = false;
-        const editor = createAnswerEditor(tui, theme, autocomplete);
+    return ctx.ui.custom(
+        (tui, theme, _keybindings, done: (result: AskAnswer | null) => void) => {
+            let cursor = 0;
+            let editMode = false;
+            const editor = createAnswerEditor(tui, theme, autocomplete);
 
-        editor.onSubmit = (value) => {
-            const trimmed = value.trim();
-            if (!trimmed) return;
-            done({ type: "other", label: trimmed, value: trimmed });
-        };
+            editor.onSubmit = (value) => {
+                const trimmed = value.trim();
+                if (!trimmed) return;
+                done({ type: "other", label: trimmed, value: trimmed });
+            };
 
-        function handleInput(data: string) {
-            if (editMode) {
-                handleEditModeInput(editor, data, tui, () => {
-                    editMode = false;
-                    editor.setText("");
-                });
-                return;
-            }
-            if (matchesKey(data, Key.up)) {
-                cursor = Math.max(0, cursor - 1);
-                tui.requestRender();
-                return;
-            }
-            if (matchesKey(data, Key.down)) {
-                cursor = Math.min(items.length - 1, cursor + 1);
-                tui.requestRender();
-                return;
-            }
-            if (matchesKey(data, Key.escape)) {
-                done(null);
-                return;
-            }
-            if (!matchesKey(data, Key.enter)) return;
-
-            const item = items[cursor];
-            if (item.kind === "other") {
-                editMode = true;
-                editor.setText("");
-                tui.requestRender();
-                return;
-            }
-            done({ type: "option", label: item.label, value: item.value, index: item.index });
-        }
-
-        function render(width: number): string[] {
-            const lines = dialogHeader(theme, question, context, width);
-            const add = (...rows: string[]) => lines.push(...rows);
-
-            for (const [index, item] of items.entries()) {
-                const focused = index === cursor;
-                const label = item.kind === "option" ? `${item.index}. ${item.label}` : item.label;
-                const color = focused ? "accent" : "text";
-                add(`${focused ? theme.fg("accent", "> ") : "  "}${theme.fg(color, label)}`);
-                if (item.kind === "option" && item.description) {
-                    addWrappedWithPrefix(
-                        "     ",
-                        theme.fg("muted", item.description),
-                        lines,
-                        width,
-                    );
+            function handleInput(data: string) {
+                if (editMode) {
+                    handleEditModeInput(editor, data, tui, () => {
+                        editMode = false;
+                        editor.setText("");
+                    });
+                    return;
                 }
+                if (matchesKey(data, Key.up)) {
+                    cursor = Math.max(0, cursor - 1);
+                    tui.requestRender();
+                    return;
+                }
+                if (matchesKey(data, Key.down)) {
+                    cursor = Math.min(items.length - 1, cursor + 1);
+                    tui.requestRender();
+                    return;
+                }
+                if (matchesKey(data, Key.escape)) {
+                    done(null);
+                    return;
+                }
+                if (!matchesKey(data, Key.enter)) return;
+
+                const item = items[cursor];
+                if (item.kind === "other") {
+                    editMode = true;
+                    editor.setText("");
+                    tui.requestRender();
+                    return;
+                }
+                done({ type: "option", label: item.label, value: item.value, index: item.index });
             }
 
-            if (editMode) {
-                add(
-                    "",
-                    theme.fg("muted", " Write your custom answer:"),
-                    ...editorLines(editor, width),
-                );
-                dialogFooter(lines, theme, width, "Enter to submit • Tab insert • Esc to go back");
-            } else {
-                dialogFooter(lines, theme, width, "↑↓ navigate • Enter select • Esc cancel");
-            }
-            return lines;
-        }
+            function render(width: number): string[] {
+                const lines = dialogHeader(theme, question, context, width);
+                const add = (...rows: string[]) => lines.push(...rows);
 
-        return { render, invalidate: () => {}, handleInput };
-    });
+                for (const [index, item] of items.entries()) {
+                    const focused = index === cursor;
+                    const label =
+                        item.kind === "option" ? `${item.index}. ${item.label}` : item.label;
+                    const color = focused ? "accent" : "text";
+                    add(`${focused ? theme.fg("accent", "> ") : "  "}${theme.fg(color, label)}`);
+                    if (item.kind === "option" && item.description) {
+                        addWrappedWithPrefix(
+                            "     ",
+                            theme.fg("muted", item.description),
+                            lines,
+                            width,
+                        );
+                    }
+                }
+
+                if (editMode) {
+                    add(
+                        "",
+                        theme.fg("muted", " Write your custom answer:"),
+                        ...editorLines(editor, width),
+                    );
+                    dialogFooter(
+                        lines,
+                        theme,
+                        width,
+                        "Enter to submit • Tab insert • Esc to go back",
+                    );
+                } else {
+                    dialogFooter(lines, theme, width, "↑↓ navigate • Enter select • Esc cancel");
+                }
+                return lines;
+            }
+
+            return { render, invalidate: () => {}, handleInput };
+        },
+        { blocked: { kind: "question", message: question } },
+    );
 }
 
 async function askMultiChoice(
@@ -445,154 +458,162 @@ async function askMultiChoice(
         { kind: "submit" },
     ];
 
-    return ctx.ui.custom((tui, theme, _keybindings, done: (result: AskAnswer[] | null) => void) => {
-        let cursor = 0;
-        let editMode = false;
-        let otherAnswer: string | undefined;
-        const checked = new Set<number>();
-        const editor = createAnswerEditor(tui, theme, autocomplete);
+    return ctx.ui.custom(
+        (tui, theme, _keybindings, done: (result: AskAnswer[] | null) => void) => {
+            let cursor = 0;
+            let editMode = false;
+            let otherAnswer: string | undefined;
+            const checked = new Set<number>();
+            const editor = createAnswerEditor(tui, theme, autocomplete);
 
-        function selectedCount(): number {
-            return checked.size + (otherAnswer === undefined ? 0 : 1);
-        }
-
-        function answers(): AskAnswer[] {
-            const picked: AskAnswer[] = [];
-            for (const item of items) {
-                if (item.kind !== "option" || !checked.has(item.index)) continue;
-                picked.push({
-                    type: "option",
-                    label: item.label,
-                    value: item.value,
-                    index: item.index,
-                });
+            function selectedCount(): number {
+                return checked.size + (otherAnswer === undefined ? 0 : 1);
             }
-            if (otherAnswer !== undefined) {
-                picked.push({ type: "other", label: otherAnswer, value: otherAnswer });
+
+            function answers(): AskAnswer[] {
+                const picked: AskAnswer[] = [];
+                for (const item of items) {
+                    if (item.kind !== "option" || !checked.has(item.index)) continue;
+                    picked.push({
+                        type: "option",
+                        label: item.label,
+                        value: item.value,
+                        index: item.index,
+                    });
+                }
+                if (otherAnswer !== undefined) {
+                    picked.push({ type: "other", label: otherAnswer, value: otherAnswer });
+                }
+                return sortAnswers(picked);
             }
-            return sortAnswers(picked);
-        }
 
-        function toggle(index: number) {
-            if (checked.has(index)) checked.delete(index);
-            else checked.add(index);
-            tui.requestRender();
-        }
-
-        function openOtherEditor() {
-            editMode = true;
-            editor.setText(otherAnswer ?? "");
-            tui.requestRender();
-        }
-
-        editor.onSubmit = (value) => {
-            const trimmed = value.trim();
-            if (!trimmed) return;
-            otherAnswer = trimmed;
-            editMode = false;
-            tui.requestRender();
-        };
-
-        function handleInput(data: string) {
-            if (editMode) {
-                handleEditModeInput(editor, data, tui, () => {
-                    editMode = false;
-                    editor.setText(otherAnswer ?? "");
-                });
-                return;
-            }
-            if (matchesKey(data, Key.up)) {
-                cursor = Math.max(0, cursor - 1);
+            function toggle(index: number) {
+                if (checked.has(index)) checked.delete(index);
+                else checked.add(index);
                 tui.requestRender();
-                return;
-            }
-            if (matchesKey(data, Key.down)) {
-                cursor = Math.min(items.length - 1, cursor + 1);
-                tui.requestRender();
-                return;
-            }
-            if (matchesKey(data, Key.escape)) {
-                done(null);
-                return;
             }
 
-            const item = items[cursor];
-            if (item.kind === "submit") {
-                if (matchesKey(data, Key.enter) && selectedCount() > 0) done(answers());
-                return;
+            function openOtherEditor() {
+                editMode = true;
+                editor.setText(otherAnswer ?? "");
+                tui.requestRender();
             }
-            if (item.kind === "other") {
-                const isSpace = matchesKey(data, Key.space);
-                if (!isSpace && !matchesKey(data, Key.enter)) return;
-                if (isSpace && otherAnswer !== undefined) {
-                    otherAnswer = undefined;
+
+            editor.onSubmit = (value) => {
+                const trimmed = value.trim();
+                if (!trimmed) return;
+                otherAnswer = trimmed;
+                editMode = false;
+                tui.requestRender();
+            };
+
+            function handleInput(data: string) {
+                if (editMode) {
+                    handleEditModeInput(editor, data, tui, () => {
+                        editMode = false;
+                        editor.setText(otherAnswer ?? "");
+                    });
+                    return;
+                }
+                if (matchesKey(data, Key.up)) {
+                    cursor = Math.max(0, cursor - 1);
                     tui.requestRender();
                     return;
                 }
-                openOtherEditor();
-                return;
-            }
-            if (matchesKey(data, Key.space) || matchesKey(data, Key.enter)) toggle(item.index);
-        }
+                if (matchesKey(data, Key.down)) {
+                    cursor = Math.min(items.length - 1, cursor + 1);
+                    tui.requestRender();
+                    return;
+                }
+                if (matchesKey(data, Key.escape)) {
+                    done(null);
+                    return;
+                }
 
-        function render(width: number): string[] {
-            const lines = dialogHeader(theme, question, context, width);
-            const add = (...rows: string[]) => lines.push(...rows);
-            const count = selectedCount();
-
-            for (const [index, item] of items.entries()) {
-                const focused = index === cursor;
-                const prefix = focused ? theme.fg("accent", "> ") : "  ";
-
+                const item = items[cursor];
                 if (item.kind === "submit") {
-                    const label = count > 0 ? `✓ Submit (${count} selected)` : "○ Submit";
-                    const color = focused ? "accent" : count > 0 ? "success" : "dim";
-                    add(`${prefix}${theme.fg(color, label)}`);
-                    continue;
+                    if (matchesKey(data, Key.enter) && selectedCount() > 0) done(answers());
+                    return;
                 }
                 if (item.kind === "other") {
-                    const picked = otherAnswer !== undefined;
-                    const suffix = picked ? ` — ${otherAnswer}` : "";
-                    const label = `${picked ? "[x]" : "[ ]"} ${item.label}${suffix}`;
-                    const color = focused ? "accent" : picked ? "success" : "text";
-                    add(`${prefix}${theme.fg(color, label)}`);
-                    continue;
+                    const isSpace = matchesKey(data, Key.space);
+                    if (!isSpace && !matchesKey(data, Key.enter)) return;
+                    if (isSpace && otherAnswer !== undefined) {
+                        otherAnswer = undefined;
+                        tui.requestRender();
+                        return;
+                    }
+                    openOtherEditor();
+                    return;
                 }
-                const isChecked = checked.has(item.index);
-                const label = `${isChecked ? "[x]" : "[ ]"} ${item.index}. ${item.label}`;
-                const color = focused ? "accent" : isChecked ? "success" : "text";
-                add(`${prefix}${theme.fg(color, label)}`);
-                if (item.description) {
-                    addWrappedWithPrefix(
-                        "     ",
-                        theme.fg("muted", item.description),
+                if (matchesKey(data, Key.space) || matchesKey(data, Key.enter)) toggle(item.index);
+            }
+
+            function render(width: number): string[] {
+                const lines = dialogHeader(theme, question, context, width);
+                const add = (...rows: string[]) => lines.push(...rows);
+                const count = selectedCount();
+
+                for (const [index, item] of items.entries()) {
+                    const focused = index === cursor;
+                    const prefix = focused ? theme.fg("accent", "> ") : "  ";
+
+                    if (item.kind === "submit") {
+                        const label = count > 0 ? `✓ Submit (${count} selected)` : "○ Submit";
+                        const color = focused ? "accent" : count > 0 ? "success" : "dim";
+                        add(`${prefix}${theme.fg(color, label)}`);
+                        continue;
+                    }
+                    if (item.kind === "other") {
+                        const picked = otherAnswer !== undefined;
+                        const suffix = picked ? ` — ${otherAnswer}` : "";
+                        const label = `${picked ? "[x]" : "[ ]"} ${item.label}${suffix}`;
+                        const color = focused ? "accent" : picked ? "success" : "text";
+                        add(`${prefix}${theme.fg(color, label)}`);
+                        continue;
+                    }
+                    const isChecked = checked.has(item.index);
+                    const label = `${isChecked ? "[x]" : "[ ]"} ${item.index}. ${item.label}`;
+                    const color = focused ? "accent" : isChecked ? "success" : "text";
+                    add(`${prefix}${theme.fg(color, label)}`);
+                    if (item.description) {
+                        addWrappedWithPrefix(
+                            "     ",
+                            theme.fg("muted", item.description),
+                            lines,
+                            width,
+                        );
+                    }
+                }
+
+                if (editMode) {
+                    add(
+                        "",
+                        theme.fg("muted", " Write your custom answer:"),
+                        ...editorLines(editor, width),
+                    );
+                    dialogFooter(
                         lines,
+                        theme,
                         width,
+                        "Enter to save • Tab insert • Esc to go back",
+                    );
+                } else {
+                    dialogFooter(
+                        lines,
+                        theme,
+                        width,
+                        "↑↓ navigate • Space toggle • Enter edit/submit • Esc cancel",
+                        count === 0 ? "Select at least one answer before submitting." : undefined,
                     );
                 }
+                return lines;
             }
 
-            if (editMode) {
-                add(
-                    "",
-                    theme.fg("muted", " Write your custom answer:"),
-                    ...editorLines(editor, width),
-                );
-                dialogFooter(lines, theme, width, "Enter to save • Tab insert • Esc to go back");
-            } else {
-                dialogFooter(
-                    lines,
-                    theme,
-                    width,
-                    "↑↓ navigate • Space toggle • Enter edit/submit • Esc cancel",
-                    count === 0 ? "Select at least one answer before submitting." : undefined,
-                );
-            }
-            return lines;
-        }
-
-        return { render, invalidate: () => {}, handleInput };
-    });
+            return { render, invalidate: () => {}, handleInput };
+        },
+        { blocked: { kind: "question", message: question } },
+    );
 }
 
 // Mutex to serialize concurrent UI interactions.

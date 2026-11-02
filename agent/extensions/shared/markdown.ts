@@ -15,15 +15,19 @@ const COLLAPSED_LINES = 10;
  * authored as markdown (never raw command output).
  */
 export function createMarkdownResult(markdown: string, expanded = false): Component {
+    // One instance: pi-tui's Markdown caches its parsed lines by width and only
+    // re-renders on invalidate() or a width change — a fresh instance per frame
+    // throws that cache away and re-parses the whole document every redraw.
+    const md = new Markdown(markdown, 0, 0, getMarkdownTheme());
     if (expanded) {
-        return new Markdown(markdown, 0, 0, getMarkdownTheme());
+        return md;
     }
     return {
-        // No cached state (a fresh Markdown renders per call), so no-op.
-        // Required: Component.invalidate() is NOT optional.
-        invalidate(): void {},
+        invalidate(): void {
+            md.invalidate();
+        },
         render(width: number): string[] {
-            const lines = new Markdown(markdown, 0, 0, getMarkdownTheme()).render(width);
+            const lines = md.render(width);
             if (lines.length <= COLLAPSED_LINES) return lines;
             const remaining = lines.length - COLLAPSED_LINES;
             return [...lines.slice(0, COLLAPSED_LINES), `... (${remaining} more lines, expand)`];

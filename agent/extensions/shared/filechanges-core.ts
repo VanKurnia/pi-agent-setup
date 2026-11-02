@@ -623,7 +623,7 @@ export function installFileChangeCore(
 
     registerExtensionApi<FilechangesApi>("filechanges", {
         trackFile: async (
-            ctx: any,
+            _ctx: any,
             relPath: string,
             absPath: string,
             originalContent: string | null,

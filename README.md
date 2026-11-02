@@ -159,7 +159,7 @@ enough. Memory moves forward; it does not evaporate.
 
 ### 2. Two subagents — minimal, foreground, context-aware
 
-[`herdr-subagents`](agent/extensions/herdr-subagents/) registers exactly two agents:
+[`herdr-app-subagent`](agent/extensions/herdr-app-subagent/) registers exactly two agents:
 
 - **`scout`** — read-only recon: codebase mapping, fact-checking, lightweight web research.
 - **`worker`** — the main agent's working toolset, for actual changes.
@@ -185,10 +185,11 @@ dynamically rather than fixing two, and neither paper measures this repository's
 
 The working loop follows [shadcn/improve](https://github.com/shadcn/improve) — audit with your
 strongest model, write plans, execute with a cheaper one — wired into the tools that already exist
-here: recon dispatches sequential `scout` calls, one at a time, plans land in `.plans/` (browsable through
-`plan-artifact`), probes live in `.plans/probes/`, and execution is dispatched to `worker`
-subagents. The plan is the handoff artifact: the planner/executor split
-[Plan-and-Act](https://arxiv.org/abs/2503.09572) formalizes for long-horizon tasks.
+here: recon dispatches sequential `scout` calls, one at a time, plans land in `.plans/` (browsable
+through `plan-artifact` when that extension is enabled), probes live in `.plans/probes/`, and
+execution is dispatched to `worker` subagents. The plan is the handoff artifact: the
+planner/executor split [Plan-and-Act](https://arxiv.org/abs/2503.09572) formalizes for long-horizon
+tasks.
 
 <img src="https://arxiv.org/html/2503.09572v1/System_Diagram.png" alt="Plan-and-Act Figure 1: a Planner turns the user query into a structured multi-step plan, a separate Executor turns each step into environment actions, and observations trigger replanning" width="720">
 
@@ -227,7 +228,7 @@ bash install.sh
 
 `install.sh` is idempotent: it fetches the latest version, stashes any local changes, and reinstalls dependencies while preserving your existing config files.
 
-> **Note:** `install.sh` is the entry point for fresh machines; `/update-setup` (via `.script/update.sh`) is the updater for existing checkouts.
+> **Note:** `install.sh` is the entry point for fresh machines; `bash .script/update.sh` is the updater for existing checkouts.
 
 ### Post-install
 

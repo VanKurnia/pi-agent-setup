@@ -15,7 +15,7 @@ import {
     type ExtensionAPI,
     getAgentDir,
     getMarkdownTheme,
-    keyHint,
+    type KeybindingHints,
     type Theme,
     type ThemeColor,
 } from "@earendil-works/pi-coding-agent";
@@ -301,6 +301,7 @@ export function createWebFetchResultComponent(
     details: WebFetchRenderDetails | undefined,
     expanded: boolean,
     theme: Pick<Theme, "fg" | "bold">,
+    hints: KeybindingHints,
 ): Container {
     const container = new Container();
     if (details?.error) {
@@ -370,7 +371,7 @@ export function createWebFetchResultComponent(
         container.addChild(new Spacer(1));
         container.addChild(
             new Text(
-                `${theme.fg("muted", "... (")} ${keyHint("app.tools.expand", "to expand full document")} ${theme.fg("muted", ")")}`,
+                `${theme.fg("muted", "... (")} ${hints.keyHint("app.tools.expand", "to expand full document")} ${theme.fg("muted", ")")}`,
                 0,
                 0,
             ),
@@ -449,7 +450,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
             };
         },
 
-        renderResult(result, opts, theme) {
+        renderResult(result, opts, theme, context) {
             const answer = result.content
                 .map((block) => ("text" in block ? block.text : ""))
                 .join("");
@@ -468,7 +469,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                     ? new Markdown(answer, 0, 0, getMarkdownTheme())
                     : new Text(
                           theme.fg("muted", "... (") +
-                              keyHint("app.tools.expand", "to show results") +
+                              context.keyHint("app.tools.expand", "to show results") +
                               theme.fg("muted", ")"),
                           0,
                           0,
@@ -665,9 +666,9 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
             }
         },
 
-        renderResult(result, { expanded }, theme) {
+        renderResult(result, { expanded }, theme, context) {
             const details = result.details as WebFetchRenderDetails | undefined;
-            return createWebFetchResultComponent(details, expanded, theme);
+            return createWebFetchResultComponent(details, expanded, theme, context);
         },
     });
 }

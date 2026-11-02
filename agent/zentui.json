@@ -162,12 +162,11 @@
           "extensionStatuses": {
             "defaultPlacement": "right",
             "placements": {
-              "filechanges": "right",
               "codebase-memory": "right",
               "ext-mgr": "right"
             },
             "colorModes": {
-              "filechanges": "original",
+              "filechanges": "zentui",
               "codebase-memory": "zentui",
               "ext-mgr": "zentui"
             }
@@ -231,6 +230,35 @@
         "codebase-memory": "hide"
       },
       "defaultVisibility": "hide"
+    },
+    "toolDisplay": {
+      "enabled": false,
+      "style": "opencode",
+      "registerToolOverrides": {
+        "read": true,
+        "write": true,
+        "edit": true,
+        "bash": true,
+        "grep": true,
+        "find": true,
+        "ls": true
+      },
+      "builtinRendererOverrides": {},
+      "customToolOverrides": {},
+      "readOutputMode": "hidden",
+      "searchOutputMode": "hidden",
+      "mcpOutputMode": "hidden",
+      "bashOutputMode": "opencode",
+      "bashSyntax": "semantic",
+      "previewLines": 8,
+      "expandedPreviewMaxLines": 4000,
+      "bashCollapsedLines": 10,
+      "diffViewMode": "auto",
+      "diffIndicatorMode": "bars",
+      "diffSplitMinWidth": 120,
+      "diffCollapsedLines": 24,
+      "diffWordWrap": true,
+      "showTruncationHints": false
     }
   }
 }

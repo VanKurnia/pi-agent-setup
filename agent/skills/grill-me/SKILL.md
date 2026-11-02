@@ -31,4 +31,4 @@ Deliver a markdown file, or a fenced block when it is short:
 
 - Context hygiene, delegation, verification → [orchestrator](../orchestrator/SKILL.md)
 - `ask_user_question` fields and rendering → the tool's own help
-- Read-only recon subagent → `agent/extensions/herdr-subagents/agents/scout.md`
+- Read-only recon subagent → `agent/extensions/herdr-app-subagent/agents/scout.md`

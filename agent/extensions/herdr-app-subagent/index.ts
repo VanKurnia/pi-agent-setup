@@ -7,6 +7,12 @@ export default function herdrSubagents(pi: ExtensionAPI): void {
         label: "Subagent",
         description:
             "Run a subagent to complete a task. The child runs as a separate pi-bolt process in a sub-agent terminal of this session and only its final reply is returned. A read-only parent snapshot is auto-attached as reference. Requires a session started by herdr-core.",
+        promptSnippet: "Run a subagent (scout/worker) for delegated tasks",
+        promptGuidelines: [
+            "Use subagent to delegate reasoning and decisions: codebase exploration and web research (scout), or isolated code changes (worker).",
+            "Parallel tool calls are the primary parallelism mechanism; do not use subagents to parallelize simple I/O.",
+            "Include only what the parent snapshot lacks: goal, constraints, and expected output format.",
+        ],
         parameters: Type.Object({
             agent: Type.String({ description: "Name of the agent to invoke." }),
             task: Type.String({ description: "Task description for the subagent." }),

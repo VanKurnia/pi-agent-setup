@@ -7,6 +7,7 @@
 
 import fs from "node:fs";
 import { spawn, execSync } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 import { stripAnsi } from "../shared/strip-ansi.ts";
 
 // =============================================================================
@@ -325,33 +326,70 @@ export async function runOcr(args: string[], options: RunOcrOptions = {}): Promi
         let timer: ReturnType<typeof setTimeout> | undefined;
         let resolved = false;
 
+        const stdoutDecoder = new StringDecoder("utf8");
+        const stderrDecoder = new StringDecoder("utf8");
+
+        let killTimer: ReturnType<typeof setTimeout> | undefined;
+        const killWithEscalation = (): void => {
+            if (killTimer) return;
+            child.kill();
+            // A CLI that ignores SIGTERM would otherwise hang this promise forever.
+            killTimer = setTimeout(() => child.kill("SIGKILL"), 5000);
+        };
+
+        // A runaway review must not exhaust memory: unbounded `+=` ends in a RangeError.
+        const MAX_CAPTURE_CHARS = 16 * 1024 * 1024;
+        let truncated = false;
+
+        const append = (target: "stdout" | "stderr", text: string): void => {
+            if (!text) return;
+            if (stdout.length + stderr.length + text.length > MAX_CAPTURE_CHARS) {
+                truncated = true;
+                killWithEscalation();
+                return;
+            }
+            if (target === "stdout") stdout += text;
+            else stderr += text;
+        };
+
+        // Report the trailing stderr line, then drain the decoders' partial UTF-8 bytes into
+        // the capture. Both must happen before a result is completed.
+        const flush = (): void => {
+            if (options.onStderrLine && stderrRemainder.trim()) {
+                options.onStderrLine(stderrRemainder.trim());
+            }
+            append("stdout", stdoutDecoder.end());
+            append("stderr", stderrDecoder.end());
+        };
+
         const complete = (res: OcrRunResult) => {
             if (resolved) return;
             resolved = true;
             if (timer) clearTimeout(timer);
+            if (killTimer) clearTimeout(killTimer);
             options.signal?.removeEventListener("abort", onAbort);
             resolve(res);
         };
 
         if (options.timeoutMs && options.timeoutMs > 0) {
             timer = setTimeout(() => {
-                child.kill();
-                stderr += "\n[pi-ocr] Process timed out";
+                killWithEscalation();
+                append("stderr", "\n[pi-ocr] Process timed out");
             }, options.timeoutMs);
         }
 
         const onAbort = () => {
-            child.kill();
+            killWithEscalation();
         };
         options.signal?.addEventListener("abort", onAbort, { once: true });
 
         child.stdout?.on("data", (chunk: Buffer) => {
-            stdout += chunk.toString("utf8");
+            append("stdout", stdoutDecoder.write(chunk));
         });
 
         child.stderr?.on("data", (chunk: Buffer) => {
-            const text = chunk.toString("utf8");
-            stderr += text;
+            const text = stderrDecoder.write(chunk);
+            append("stderr", text);
 
             if (options.onStderrLine) {
                 const combined = stderrRemainder + text;
@@ -365,15 +403,14 @@ export async function runOcr(args: string[], options: RunOcrOptions = {}): Promi
 
         child.on("error", (err: NodeJS.ErrnoException) => {
             if (err.code === "ENOENT") invalidateOcrCmdCache();
-            if (options.onStderrLine && stderrRemainder.trim()) {
-                options.onStderrLine(stderrRemainder.trim());
-            }
+            flush();
             complete({ code: 1, stdout, stderr: `${stderr}\n${err.message}`.trim() });
         });
 
         child.on("close", (code) => {
-            if (options.onStderrLine && stderrRemainder.trim()) {
-                options.onStderrLine(stderrRemainder.trim());
+            flush();
+            if (truncated) {
+                stderr += "\n[pi-ocr] Output exceeded the capture limit and was truncated";
             }
             complete({ code: code ?? 1, stdout, stderr });
         });

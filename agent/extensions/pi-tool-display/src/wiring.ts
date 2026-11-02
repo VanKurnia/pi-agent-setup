@@ -289,6 +289,17 @@ function stripLeadingAnsiFragments(text: string): string {
     }
 }
 function stripThinkingPresentationArtifacts(text: string): string {
+    // Without an ESC byte stripAnsi is the identity and the loop below can only trim leading
+    // whitespace, so skip its full-length regex passes when neither anchored pattern matches.
+    if (!text.includes("\u001b")) {
+        const trimmed = text.trimStart();
+        if (
+            !THINKING_LABEL_PREFIX_PATTERN.test(trimmed) &&
+            !LEADING_ANSI_FRAGMENT_PATTERN.test(trimmed)
+        ) {
+            return trimmed;
+        }
+    }
     let current = stripAnsi(text);
     let removedThinkingLabel = false;
     while (true) {
