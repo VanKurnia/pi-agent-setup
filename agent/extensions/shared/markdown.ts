@@ -36,6 +36,23 @@ export function createMarkdownResult(markdown: string, expanded = false): Compon
 }
 
 /**
+ * Markdown result that survives component rebuilds: the instance lives on `state[slot]`, so
+ * pi-tui keeps its parsed lines across redraws instead of re-parsing the document every time the
+ * host rebuilds the row. Use it where the host can re-render the same content repeatedly.
+ */
+export function createCachedMarkdownResult(
+    state: Record<string, unknown> | undefined,
+    slot: string,
+    markdown: string,
+): Component {
+    const cached = state?.[slot] as { text: string; component: Component } | undefined;
+    if (cached?.text === markdown) return cached.component;
+    const component = createMarkdownResult(markdown, true);
+    if (state) state[slot] = { text: markdown, component };
+    return component;
+}
+
+/**
  * Drop-in `renderResult` body for tools whose success text is authored
  * markdown: errors and empty output stay plain text, markdown renders
  * boxed with collapse. Core strips `isError` from the result object, so the

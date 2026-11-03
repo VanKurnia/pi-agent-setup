@@ -57,14 +57,6 @@ function cleanString(value: unknown): string | undefined {
     return trimmed ? trimmed : undefined;
 }
 
-function agentDirSafe(): string {
-    try {
-        return getAgentDir();
-    } catch {
-        return join(homedir(), ".pi", "agent");
-    }
-}
-
 // mtime-keyed read-through cache for the JSON config file (mirrors
 // shared/db.ts read-through shape). Env overrides are applied per call in
 // loadConfig() so env changes are never stale; file re-reads happen only
@@ -75,7 +67,9 @@ let _cachedConfigPath: string | null = null;
 let _cachedConfigMtimeMs = -1;
 
 function loadConfigFile(): Partial<Record<string, unknown>> {
-    const candidates = [join(agentDirSafe(), "9router-config.json")];
+    const candidates = [join(getAgentDir(), "9router-config.json")];
+    // Literal pre-getAgentDir location, still read when the agent dir is
+    // overridden (PI_CODING_AGENT_DIR) or the config dir is rebranded.
     const legacy = join(homedir(), ".pi", "agent", "9router-config.json");
     if (!candidates.includes(legacy)) candidates.push(legacy);
     let found: string | null = null;

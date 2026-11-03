@@ -4,14 +4,18 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
-import { ExtensionContext, ThemeColor, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+    ExtensionContext,
+    ThemeColor,
+    ExtensionAPI,
+    getAgentDir,
+} from "@earendil-works/pi-coding-agent";
 
 // ============================================================
 // from: ..\..\pi-speeed\src\config.ts
 // ============================================================
 
-export const CONFIG_PATH = join(homedir(), ".pi", "agent", "pi-speeed.json");
+export const CONFIG_PATH = join(getAgentDir(), "pi-speeed.json");
 export type CountStrategy = "estimate" | "direct";
 export type Config = {
     enabled: boolean;

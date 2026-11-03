@@ -1,4 +1,13 @@
+import { readFileSync } from "node:fs";
 import { defineConfig } from "vite-plus";
+
+/**
+ * Extensions switched off by extmgr, from the scope `.script/dev-scope.mjs` writes for
+ * `tsconfig.json`, so typecheck, lint and format share one off-set.
+ */
+const { exclude: offScope } = JSON.parse(
+    readFileSync(new URL("./tsconfig.devscope.json", import.meta.url), "utf8"),
+) as { exclude: string[] };
 
 export default defineConfig({
     lint: {
@@ -17,6 +26,7 @@ export default defineConfig({
             "**/node_modules",
             "**/dist",
             "**/build",
+            ...offScope,
         ],
         rules: {
             "constructor-super": "error",
@@ -221,6 +231,10 @@ export default defineConfig({
         trailingComma: "all",
         printWidth: 100,
         sortPackageJson: false,
-        ignorePatterns: ["**/package-lock.json", "agent/extensions/herdr-agent-state.ts"],
+        ignorePatterns: [
+            "**/package-lock.json",
+            "agent/extensions/herdr-agent-state.ts",
+            ...offScope,
+        ],
     },
 });

@@ -37,7 +37,10 @@ export default function (pi: ExtensionAPI) {
                 import("./publish.ts"),
             ]);
             publisher = publishModule.publish;
-            core = coreModule.installFileChangeCore(pi, { owner: "herdr", onChange: () => settle() });
+            core = coreModule.installFileChangeCore(pi, {
+                owner: "herdr",
+                onChange: () => settle(),
+            });
             return core;
         })();
         return loading;

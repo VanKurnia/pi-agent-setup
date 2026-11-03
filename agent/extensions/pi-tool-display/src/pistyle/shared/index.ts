@@ -12,7 +12,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { highlightCode } from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, getAgentDir, highlightCode } from "@earendil-works/pi-coding-agent";
 
 // from: pistyle\shared\ansi.ts
 
@@ -704,14 +704,14 @@ function readSettingsPackagePaths(settingsPath: string): string[] {
 /** Scan known theme directories for a JSON file whose "name" matches themeName. */
 function discoverThemeExtras(themeName: string): ThemeDiscovery | null {
     const searchDirs = new Set<string>();
-    addThemeDir(searchDirs, join(homedir(), ".pi", "agent", "themes"));
-    addThemeDir(searchDirs, resolve(process.cwd(), ".pi", "themes"));
+    addThemeDir(searchDirs, join(getAgentDir(), "themes"));
+    addThemeDir(searchDirs, resolve(process.cwd(), CONFIG_DIR_NAME, "themes"));
     addBundledThemeDirs(searchDirs);
-    collectThemeDirs(join(homedir(), ".pi", "agent", "git"), searchDirs);
-    collectThemeDirs(resolve(process.cwd(), ".pi", "git"), searchDirs);
+    collectThemeDirs(join(getAgentDir(), "git"), searchDirs);
+    collectThemeDirs(resolve(process.cwd(), CONFIG_DIR_NAME, "git"), searchDirs);
     const localPackagePaths = [
-        ...readSettingsPackagePaths(join(homedir(), ".pi", "agent", "settings.json")),
-        ...readSettingsPackagePaths(resolve(process.cwd(), ".pi", "settings.json")),
+        ...readSettingsPackagePaths(join(getAgentDir(), "settings.json")),
+        ...readSettingsPackagePaths(resolve(process.cwd(), CONFIG_DIR_NAME, "settings.json")),
     ];
     for (const packagePath of localPackagePaths) {
         addThemeDir(searchDirs, resolve(process.cwd(), packagePath, "themes"));
@@ -750,7 +750,7 @@ function resolveThemeName(theme: unknown): string | null {
     if (typeof definition?.name === "string") return definition.name;
     if (typeof record.name === "string") return record.name;
     try {
-        const settingsPath = join(homedir(), ".pi", "agent", "settings.json");
+        const settingsPath = join(getAgentDir(), "settings.json");
         if (existsSync(settingsPath)) {
             const settings = JSON.parse(readFileSync(settingsPath, "utf-8")) as Record<
                 string,

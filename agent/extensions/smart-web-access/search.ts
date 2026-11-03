@@ -2,7 +2,7 @@ import { fetch } from "wreq-js";
 import { Defuddle } from "defuddle/node";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { parseLinkedomHTML } from "./dom.ts";
 import type {
     PageFetchResult,
@@ -164,7 +164,7 @@ async function loadResultsPerQuery(
     cwd: string,
     userSettingsDir: string = getAgentDir(),
 ): Promise<number> {
-    const projectSettings = join(cwd, ".pi", "settings.json");
+    const projectSettings = join(cwd, CONFIG_DIR_NAME, "settings.json");
     const userSettings = join(userSettingsDir, "settings.json");
 
     const resultsPerQuery =

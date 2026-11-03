@@ -12,22 +12,17 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+    CONFIG_DIR_NAME,
     type ExtensionAPI,
     getAgentDir,
-    getMarkdownTheme,
     type KeybindingHints,
     type Theme,
     type ThemeColor,
 } from "@earendil-works/pi-coding-agent";
-import {
-    Container,
-    Markdown,
-    Spacer,
-    Text,
-    truncateToWidth,
-    visibleWidth,
-} from "@earendil-works/pi-tui";
+import { Container, Spacer, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+
+import { createCachedMarkdownResult } from "../shared/markdown.ts";
 
 import {
     type FetchResult,
@@ -183,7 +178,7 @@ export async function loadPiSmartFetchSettings(
     agentDir = getAgentDir(),
 ): Promise<ResolvedPiSmartFetchSettings> {
     const globalSettings = await readSettingsFile(join(agentDir, "settings.json"));
-    const projectSettings = await readSettingsFile(join(cwd, ".pi", "settings.json"));
+    const projectSettings = await readSettingsFile(join(cwd, CONFIG_DIR_NAME, "settings.json"));
     return resolvePiSmartFetchSettings(globalSettings, projectSettings);
 }
 
@@ -301,7 +296,7 @@ export function createWebFetchResultComponent(
     details: WebFetchRenderDetails | undefined,
     expanded: boolean,
     theme: Pick<Theme, "fg" | "bold">,
-    hints: KeybindingHints,
+    context: KeybindingHints & { state?: Record<string, unknown> },
 ): Container {
     const container = new Container();
     if (details?.error) {
@@ -355,7 +350,9 @@ export function createWebFetchResultComponent(
 
     if (expanded) {
         container.addChild(new Spacer(1));
-        container.addChild(new Markdown(result.content, 0, 0, getMarkdownTheme()));
+        container.addChild(
+            createCachedMarkdownResult(context.state, "__webFetchBody", result.content),
+        );
     } else {
         const previewLines = result.content
             .split(/\r?\n/)
@@ -371,7 +368,7 @@ export function createWebFetchResultComponent(
         container.addChild(new Spacer(1));
         container.addChild(
             new Text(
-                `${theme.fg("muted", "... (")} ${hints.keyHint("app.tools.expand", "to expand full document")} ${theme.fg("muted", ")")}`,
+                `${theme.fg("muted", "... (")} ${context.keyHint("app.tools.expand", "to expand full document")} ${theme.fg("muted", ")")}`,
                 0,
                 0,
             ),
@@ -466,7 +463,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
             container.addChild(new Spacer(1));
             container.addChild(
                 opts.expanded && answer
-                    ? new Markdown(answer, 0, 0, getMarkdownTheme())
+                    ? createCachedMarkdownResult(context.state, "__webSearchAnswer", answer)
                     : new Text(
                           theme.fg("muted", "... (") +
                               context.keyHint("app.tools.expand", "to show results") +

@@ -9,8 +9,9 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
+import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
 
-const piConfigDir = process.env.PI_CONFIG_DIR || ".pi";
+const piConfigDir = process.env.PI_CONFIG_DIR || CONFIG_DIR_NAME;
 const envPath = join(homedir(), piConfigDir, ".env");
 
 if (existsSync(envPath)) {

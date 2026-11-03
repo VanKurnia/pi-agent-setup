@@ -1,8 +1,11 @@
 import {
+    closeSync,
     copyFileSync,
     existsSync,
     mkdirSync,
+    openSync,
     readFileSync,
+    readSync,
     readdirSync,
     renameSync,
     unlinkSync,
@@ -730,6 +733,39 @@ function sessionIdFromStoreFilename(file: string): string {
     return dash > 0 ? stem.slice(0, dash) : stem;
 }
 
+/** Bytes scanned for a session header, which ends at the first newline long before this cap. */
+const MAX_HEADER_BYTES = 1024 * 1024;
+
+/**
+ * Session id from a transcript's header line. The file is read in chunks because transcripts reach
+ * hundreds of MB and only the first line carries the id.
+ */
+function readSessionId(filePath: string): string | undefined {
+    const fd = openSync(filePath, "r");
+    const parts: Buffer[] = [];
+    try {
+        const chunk = Buffer.allocUnsafe(4096);
+        let total = 0;
+        while (total < MAX_HEADER_BYTES) {
+            const read = readSync(fd, chunk, 0, chunk.length, null);
+            if (read === 0) break;
+            const slice = chunk.subarray(0, read);
+            const newline = slice.indexOf(0x0a);
+            if (newline !== -1) {
+                parts.push(slice.subarray(0, newline));
+                break;
+            }
+            parts.push(Buffer.from(slice));
+            total += read;
+        }
+    } finally {
+        closeSync(fd);
+    }
+    if (parts.length === 0) return undefined;
+    const header = JSON.parse(Buffer.concat(parts).toString("utf8"));
+    return header?.type === "session" && typeof header?.id === "string" ? header.id : undefined;
+}
+
 export function cleanupOrphanedPendingFiles(keepSessionId?: string): {
     removed: number;
     preserved: number;
@@ -753,12 +789,8 @@ export function cleanupOrphanedPendingFiles(keepSessionId?: string): {
                         stack.push(fullPath);
                     } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
                         try {
-                            const content = readFileSync(fullPath, "utf8");
-                            const firstLine = content.slice(0, content.indexOf("\n") || undefined);
-                            const header = JSON.parse(firstLine);
-                            if (header?.type === "session" && typeof header?.id === "string") {
-                                activeSessionIds.add(header.id);
-                            }
+                            const sessionId = readSessionId(fullPath);
+                            if (sessionId) activeSessionIds.add(sessionId);
                         } catch {
                             // Unreadable/corrupted session file — skip
                         }

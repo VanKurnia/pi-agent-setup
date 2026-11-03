@@ -7,9 +7,9 @@
 
 import { type Dirent } from "node:fs";
 import { access, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join, matchesGlob, relative } from "node:path";
 import {
+    CONFIG_DIR_NAME,
     getAgentDir,
     type ExtensionCommandContext,
     type Theme,
@@ -566,11 +566,15 @@ async function writePackages(settingsPath: string, packages: PackageSetting[]): 
 function extensionRoots(cwd: string): RootConfig[] {
     return [
         {
-            root: join(homedir(), ".pi", "agent", "extensions"),
+            root: join(getAgentDir(), "extensions"),
             scope: "global",
             label: "~/.pi/agent/extensions",
         },
-        { root: join(cwd, ".pi", "extensions"), scope: "project", label: ".pi/extensions" },
+        {
+            root: join(cwd, CONFIG_DIR_NAME, "extensions"),
+            scope: "project",
+            label: ".pi/extensions",
+        },
     ];
 }
 

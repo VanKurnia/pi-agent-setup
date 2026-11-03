@@ -17,7 +17,7 @@
  * to pi's default (file) completion.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
 import type {
     AutocompleteItem,
     AutocompleteProvider,
@@ -56,7 +56,7 @@ function loadHintedSkills(cwd: string): Map<string, string[]> {
     const dirs = [
         join(getAgentDir(), "skills"),
         join(homedir(), ".agents", "skills"),
-        join(cwd, ".pi", "skills"),
+        join(cwd, CONFIG_DIR_NAME, "skills"),
         join(cwd, ".agents", "skills"),
     ];
 
