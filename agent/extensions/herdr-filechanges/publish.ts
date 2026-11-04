@@ -1,7 +1,7 @@
 /**
- * The herdr-app snapshot writer — the only part of this extension that touches
- * the filesystem or knows about herdr. Imported lazily from `index.ts`, so a
- * plain pi session (no herdr) never evaluates it.
+ * The herdr-app snapshot writer: the panel's side of this extension. Imported
+ * lazily from `index.ts`, so a plain pi session (no herdr) never evaluates it.
+ * `fanout.ts` reads the same snapshots, so the folder it writes to is exported.
  */
 import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -9,7 +9,7 @@ import { join } from "node:path";
 import type { FileChangeCore } from "../shared/filechanges-core.ts";
 
 /** Where the mod reads from. Sibling of the app's own `data/<mod>/` folders. */
-const DATA_DIR = join(homedir(), ".config", "herdr-app", "data", "herdr-filechanges");
+export const DATA_DIR = join(homedir(), ".config", "herdr-app", "data", "herdr-filechanges");
 /** A panel renders a few hundred rows at most; a patch is capped per file. */
 const FILES_CAP = 400;
 const DIFF_CAP = 40_000;

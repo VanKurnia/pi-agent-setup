@@ -32,14 +32,16 @@ export default function (pi: ExtensionAPI) {
     async function load(): Promise<FileChangeCore> {
         if (core) return core;
         loading ??= (async () => {
-            const [coreModule, publishModule] = await Promise.all([
+            const [coreModule, publishModule, fanOutModule] = await Promise.all([
                 import("../shared/filechanges-core.ts"),
                 import("./publish.ts"),
+                import("./fanout.ts"),
             ]);
             publisher = publishModule.publish;
             core = coreModule.installFileChangeCore(pi, {
                 owner: "herdr",
                 onChange: () => settle(),
+                fanOut: fanOutModule.fanOut,
             });
             return core;
         })();

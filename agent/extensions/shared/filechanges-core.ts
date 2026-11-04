@@ -3,8 +3,10 @@
  *
  * Tracks files pi changes through the `edit`/`write` tools, writes them to the
  * session as custom entries, keeps an in-memory tracker, serves the legacy
- * subagent API and owns `/filechanges-accept` + `/filechanges-decline`. It
- * renders **nothing**: the TUI panel lives in `agent/extensions/filechanges/`,
+ * subagent API and owns `/filechanges-accept` + `/filechanges-decline`. Those two
+ * also ask the sub-agents this session started, through the frontend's `fanOut`
+ * (each is another process with its own log). It renders **nothing**: the TUI
+ * panel lives in `agent/extensions/filechanges/`,
  * the herdr sidebar in `agent/extensions/herdr-filechanges.ts`, and either one
  * can be enabled without the other.
  *
@@ -368,11 +370,42 @@ export type FileChangeCore = {
     refresh(): void;
 };
 
+/**
+ * Who else a command has to reach: the sub-agents this session started.
+ *
+ * A sub-agent is another pi process in another terminal, with its own tracker
+ * and its own session log, so nothing installed in this process can clear or
+ * revert its files. Only a frontend that can talk to those terminals supplies
+ * this (the herdr one); without it accept/decline stays local to this session.
+ */
+export type FanOutPlan = {
+    /** Sub-agents this command can reach. */
+    reachable: string[];
+    /** Sub-agents it must leave alone, each with the reason. */
+    skipped: { address: string; why: string }[];
+    /** Why no sub-agents could be listed at all, when listing itself failed. */
+    error?: string;
+};
+
+export type FanOut = {
+    /** Direct sub-agents. Never throws: a failed listing is `error`, not an exception. */
+    plan: () => Promise<FanOutPlan>;
+    /** Run the same command there. Throws with a readable reason. */
+    send: (address: string, command: "accept" | "decline") => Promise<void>;
+    /** Resolve true once that terminal's log is empty, false if it did not get there. */
+    settled: (address: string, timeoutMs: number) => Promise<boolean>;
+};
+
+/** How a fan-out went: who refused it, and who never showed an empty log. */
+type FanOutOutcome = { failed: string[]; unready: string[] };
+
 type CoreState = {
     tracker: FileChangeTracker;
     /** The extension instance that installed the writer hooks and commands. */
     owner: ExtensionAPI | null;
     listeners: Map<string, () => void>;
+    /** Set by the frontend that can reach sub-agents (herdr only). */
+    fanOut: FanOut | null;
 };
 
 const CORE_KEY = "__pi_filechanges_core";
@@ -387,7 +420,12 @@ function coreState(): CoreState {
     const g = globalState();
     let state = g[CORE_KEY] as CoreState | undefined;
     if (!state) {
-        state = { tracker: new FileChangeTracker(), owner: null, listeners: new Map() };
+        state = {
+            tracker: new FileChangeTracker(),
+            owner: null,
+            listeners: new Map(),
+            fanOut: null,
+        };
         g[CORE_KEY] = state;
     }
     return state;
@@ -402,13 +440,14 @@ function coreState(): CoreState {
  */
 export function installFileChangeCore(
     pi: ExtensionAPI,
-    opts: { owner?: string; onChange?: () => void } = {},
+    opts: { owner?: string; onChange?: () => void; fanOut?: FanOut } = {},
 ): FileChangeCore {
     const g = globalState();
     const state = coreState();
     const { tracker } = state;
 
     if (opts.owner && opts.onChange) state.listeners.set(opts.owner, opts.onChange);
+    if (opts.fanOut) state.fanOut = opts.fanOut;
 
     function refresh(): void {
         for (const fn of state.listeners.values()) {
@@ -435,48 +474,130 @@ export function installFileChangeCore(
         void ctx;
     }
 
-    async function accept(ctx: ExtensionCommandContext): Promise<void> {
+    // ── Sub-agents: the same command, one level down ──
+
+    const SUBAGENT_SETTLE_MS = 10_000;
+
+    async function subagentPlan(): Promise<FanOutPlan> {
+        return state.fanOut ? state.fanOut.plan() : { reachable: [], skipped: [] };
+    }
+
+    /**
+     * Run the same command in the sub-agents this session started, and wait for
+     * each to say it is done (its published log empty).
+     *
+     * Sub-agents go first on purpose: a child's baseline is the younger one, so
+     * the session holding the older baseline writes last. A file two sessions
+     * changed then ends at its oldest content instead of at the child's.
+     */
+    async function fanOut(command: "accept" | "decline", plan: FanOutPlan): Promise<FanOutOutcome> {
+        const reach = state.fanOut;
+        const failed: string[] = [];
+        const unready: string[] = [];
+        if (!reach) return { failed, unready };
+        await Promise.all(
+            plan.reachable.map(async (address) => {
+                try {
+                    await reach.send(address, command);
+                    if (!(await reach.settled(address, SUBAGENT_SETTLE_MS))) unready.push(address);
+                } catch (err) {
+                    const why = err instanceof Error ? err.message : String(err);
+                    failed.push(`${address} refused (${why})`);
+                }
+            }),
+        );
+        return { failed, unready };
+    }
+
+    /** " in this session and in 2 sub-agent(s) it started", for a confirm prompt. */
+    function scope(plan: FanOutPlan): string {
+        return plan.reachable.length > 0
+            ? ` in this session and in ${plan.reachable.length} sub-agent(s) it started`
+            : " in this session";
+    }
+
+    /** What happened to the sub-agents, as the tail of a summary line. */
+    function subagentNote(plan: FanOutPlan, outcome: FanOutOutcome): string {
+        const parts: string[] = [];
+        if (plan.reachable.length > 0) parts.push(`${plan.reachable.length} sub-agent(s) asked`);
+        for (const skip of plan.skipped.slice(0, 4)) {
+            parts.push(`${skip.address} left alone (${skip.why})`);
+        }
+        if (plan.skipped.length > 4) parts.push(`${plan.skipped.length - 4} more left alone`);
+        for (const failure of outcome.failed) parts.push(failure);
+        if (outcome.unready.length > 0) {
+            parts.push(`${outcome.unready.join(", ")} did not confirm`);
+        }
+        if (plan.error) parts.push(`sub-agents unknown (${plan.error})`);
+        return parts.length === 0 ? "" : ` ${parts.join("; ")}.`;
+    }
+
+    /** Warning when a sub-agent refused or never confirmed, so the notice says so. */
+    function notifyLevel(outcome: FanOutOutcome): "info" | "warning" {
+        return outcome.failed.length > 0 || outcome.unready.length > 0 ? "warning" : "info";
+    }
+
+    /**
+     * The gate accept/decline share: what the command would touch and the
+     * confirmation. Null when there is nothing to do or the person said no.
+     */
+    async function prepare(
+        command: "accept" | "decline",
+        ctx: ExtensionCommandContext,
+        detail: string,
+    ): Promise<{ plan: FanOutPlan; count: number } | null> {
         await ctx.waitForIdle();
 
-        if (tracker.getTrackedSize() === 0) {
-            if (ctx.hasUI) ctx.ui.notify("filechanges: nothing to accept.", "info");
-            return;
+        const plan = await subagentPlan();
+        const count = tracker.getTrackedSize();
+        if (count === 0 && plan.reachable.length === 0) {
+            if (ctx.hasUI) {
+                const nothing = subagentNote(plan, { failed: [], unready: [] });
+                ctx.ui.notify(`filechanges: nothing to ${command}.${nothing}`, "info");
+            }
+            return null;
         }
 
+        const label = command === "accept" ? "Accept" : "Decline";
         const force = (ctx as any).args?.includes("force") ?? false;
         if (ctx.hasUI && !force) {
-            const ok = await ctx.ui.confirm(
-                "Accept pi changes?",
-                "This will keep current files as-is and clear the modification log.",
-            );
-            if (!ok) return;
-        } else if (!ctx.hasUI && !force) {
-            throw new Error("Accept requires confirmation. Run: /filechanges-accept force");
+            const ok = await ctx.ui.confirm(`${label} pi changes?`, `${detail}${scope(plan)}.`);
+            if (!ok) return null;
+        } else if (!force) {
+            throw new Error(`${label} requires confirmation. Run: /filechanges-${command} force`);
         }
+        return { plan, count };
+    }
 
-        const count = tracker.getTrackedSize();
-        await clearLog(ctx, "accept");
-        if (ctx.hasUI) ctx.ui.notify(`filechanges: accepted changes for ${count} file(s).`, "info");
+    async function accept(ctx: ExtensionCommandContext): Promise<void> {
+        const prepared = await prepare(
+            "accept",
+            ctx,
+            "This will keep current files as-is and clear the modification log",
+        );
+        if (!prepared) return;
+        const { plan, count } = prepared;
+
+        const outcome = await fanOut("accept", plan);
+        if (count > 0) await clearLog(ctx, "accept");
+        if (ctx.hasUI) {
+            ctx.ui.notify(
+                `filechanges: accepted changes for ${count} file(s).${subagentNote(plan, outcome)}`,
+                notifyLevel(outcome),
+            );
+        }
     }
 
     async function decline(ctx: ExtensionCommandContext): Promise<void> {
-        await ctx.waitForIdle();
+        const prepared = await prepare(
+            "decline",
+            ctx,
+            "This will revert ALL currently logged pi changes (overwrite files / delete created files)",
+        );
+        if (!prepared) return;
+        const { plan, count } = prepared;
 
-        if (tracker.getTrackedSize() === 0) {
-            if (ctx.hasUI) ctx.ui.notify("filechanges: nothing to decline.", "info");
-            return;
-        }
-
-        const force = (ctx as any).args?.includes("force") ?? false;
-        if (ctx.hasUI && !force) {
-            const ok = await ctx.ui.confirm(
-                "Decline pi changes?",
-                "This will revert ALL currently logged pi changes (overwrite files / delete created files).",
-            );
-            if (!ok) return;
-        } else if (!ctx.hasUI && !force) {
-            throw new Error("Decline requires confirmation. Run: /filechanges-decline force");
-        }
+        const outcome = await fanOut("decline", plan);
 
         const items = tracker.getAllTracked().sort((a, b) => b.updatedAt - a.updatedAt);
         let reverted = 0;
@@ -501,7 +622,7 @@ export function installFileChangeCore(
             // Don't clear — let the person retry the failed files.
             if (ctx.hasUI) {
                 ctx.ui.notify(
-                    `filechanges: declined with ${errors.length} error(s). Run /filechanges-decline to retry.`,
+                    `filechanges: declined with ${errors.length} error(s). Run /filechanges-decline to retry.${subagentNote(plan, outcome)}`,
                     "warning",
                 );
                 console.warn("[filechanges] decline errors:\n" + errors.join("\n"));
@@ -511,10 +632,13 @@ export function installFileChangeCore(
             return;
         }
 
-        await clearLog(ctx, "decline");
+        if (count > 0) await clearLog(ctx, "decline");
 
         if (ctx.hasUI) {
-            ctx.ui.notify(`filechanges: declined changes for ${reverted} file(s).`, "info");
+            ctx.ui.notify(
+                `filechanges: declined changes for ${reverted} file(s).${subagentNote(plan, outcome)}`,
+                notifyLevel(outcome),
+            );
         }
     }
 
