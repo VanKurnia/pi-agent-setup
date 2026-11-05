@@ -12,7 +12,7 @@ Dispatch a `scout` (never review the plan yourself first) with the plan file's a
 
 **Pass 1 — rigor and executability.** Is every excerpt, path and convention inlined, with no reference to chat history? Does every step end in a machine-checkable command and expected result? Do the drift-check SHA and in-scope paths match the Scope section? Are the STOP conditions specific to this plan's risks rather than boilerplate?
 
-**Pass 2 — simplification and anti-bloat.** Flag speculative wrappers, adapters and pass-through layers that add indirection without removing real complexity. Cross-check planned additions against utilities that already exist in the workspace and flag what should reuse them. Flag unneeded config options, generic type machinery and extension points the immediate task does not require (YAGNI). Flag defensive runtime branching in trusted internal code and recommend tightening the type model instead. Any removal of intentional functionality needs an explicit rationale: what, why, impact, simpler replacement, user confirmation. Require an instruction forbidding `TODO`/`FIXME`/plan references left in code.
+**Pass 2 — simplification and anti-bloat.** Apply [simplify-changes](../../prompts/simplify-changes.md) as normative: remove or fix any planned change that violates it (speculative indirection, duplication of existing workspace utilities, speculative flexibility, defensive code in trusted paths, restating/tracking comments), and flag significant removals for the approval gate it defines. Name simplify constraints in the plan only where a step must follow them.
 
 ---
 

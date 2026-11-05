@@ -68,6 +68,8 @@ Present findings ordered by leverage, impact ÷ effort discounted by confidence 
 
 Read [references/plan-template.md](references/plan-template.md) before the first plan.
 
+Every plan written here — full workflow and `plan <description>` — is bound by [simplify-changes](../../prompts/simplify-changes.md) as normative (scope, anti-bloat, comment hygiene, approval gate); do not restate it here. Edits to this skill itself necessarily follow [skill-diet](../skill-diet/SKILL.md).
+
 ```
 .plans/
   README.md          index: execution order, dependencies, status table
@@ -90,7 +92,7 @@ Write for the weakest plausible executor: context inlined, ordered steps that ea
 | `branch` | scope = files changed since the merge-base with the default branch plus their direct importers/callers (`git diff --name-only $(git merge-base origin/<default> HEAD)..HEAD`). Light recon, all categories, usually no scouts. Tag every finding `introduced` or `pre-existing` and keep them apart in the table — legacy debt in touched files is not the branch's fault, but it is what the branch builds on. On the default branch or zero commits ahead, say so and offer a full audit. |
 | `next` (or `features`, `roadmap`) | direction category only, deeper: 4–6 grounded suggestions with evidence, tradeoffs, coarse effort. Selected ones become design/spike plans. |
 | `plan <description>` | skip the audit. Recon, then one `scout` investigates and empirically verifies the description's claims (locations, API behavior, edge cases) — evidence only, no fixes. Vet its report, then write a single plan. Resolve ambiguity from verified code first; the residue becomes `ask_user_question` questions, one at a time, each with a recommendation. No subagents → investigate directly and say so in the plan header. |
-| `review-plan <file>` | [references/closing-the-loop.md](references/closing-the-loop.md): scout reviews in two passes (rigor, then simplification), you vet and edit the plan in place. |
+| `review-plan <file>` | [references/closing-the-loop.md](references/closing-the-loop.md): scout reviews in two passes (rigor, then simplification per [simplify-changes](../../prompts/simplify-changes.md)), you vet and edit the plan in place. |
 | `execute <plan>` | [references/closing-the-loop.md](references/closing-the-loop.md): dispatch one `worker` at a time, review its diff against the plan, render a verdict. |
 | `reconcile` | [references/closing-the-loop.md](references/closing-the-loop.md): verify done plans, unblock or retire blocked ones, refresh drifted ones. |
 | `--issues` | also publish each plan as a GitHub issue; requires the explicit flag, and a public repo means confirming before publishing anything sensitive. See [references/closing-the-loop.md](references/closing-the-loop.md). |

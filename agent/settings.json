@@ -34,5 +34,6 @@
   "httpIdleTimeoutMs": 300000,
   "editorPaddingX": 0,
   "doubleEscapeAction": "tree",
-  "fullscreenExitOutput": "transcript"
+  "fullscreenExitOutput": "transcript",
+  "hideThinkingBlock": false
 }

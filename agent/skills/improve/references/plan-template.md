@@ -177,5 +177,5 @@ Check each plan before finishing:
 - **Verifiable**: every verification is a command with an expected result, never "make sure it works"; every step names exact files and symbols.
 - **Specific**: STOP conditions describe this plan's actual risks, not boilerplate. Reviewer reading only "Why this matters" + "Done criteria" understands what they approve.
 - **Clean**: no secret values (locations and types only); `Planned at` filled in and its in-scope paths match the Scope section; the executor is told to leave no `TODO`, `FIXME` or plan references in code.
-- **Simple**: no speculative flexibility, extra configuration or premature abstraction; existing workspace utilities and mechanisms are reused rather than duplicated; internal invariants are enforced by tighter types instead of redundant runtime checks; removing intentional code or a deliberate abstraction requires an explicit approval note (what, why, impact, simpler replacement).
+- **Simple**: the plan must satisfy [simplify-changes](../../../prompts/simplify-changes.md) as normative (checked in `review-plan` pass 2, via [closing-the-loop.md](closing-the-loop.md)); the steps write down only the simplification constraints that are non-obvious here.
 - **Grounded**: every claim about bugs, behavior or module contracts was verified this session; no guesses survive.
