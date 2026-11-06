@@ -32,7 +32,7 @@ cost more than the code itself. The merges below traded file count for bytes; th
 
 | File                          | KB  | Contents                                                                                                                                    |
 | ----------------------------- | --- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/pistyle/index.ts`        | 257 | every boxed tool renderer (read/write/edit/find/grep/ls/bash/git/gh/batch/fallback) and the dispatcher                                      |
+| `src/pistyle/index.ts`        | 257 | every boxed tool renderer (read/write/edit/find/grep/ls/bash/powershell/git/gh/batch/fallback) and the dispatcher                           |
 | `src/pistyle/shared/index.ts` | 112 | box drawing, ANSI, diff, render budget, theme extras                                                                                        |
 | `src/wiring.ts`               | 93  | renderer resolver registration, the pi-style bridge, MCP decoration, thinking labels, user-message box, and the db-query/OCR/subagent cards |
 | `src/index.ts`                | 13  | the extension entry point: lifecycle, `TOOL_DISPLAY_CONFIG`, tool metadata, debug logger, cleanup registry                                  |

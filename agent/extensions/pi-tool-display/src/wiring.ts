@@ -74,18 +74,14 @@ import {
 /**
  * Bridge between this extension and the vendored pi-style boxed renderers
  * (src/pistyle/). It normalizes the extension's config, the theme, and Pi's
- * untyped renderer arguments, so the ported renderers stay unmodified apart
- * from dead-code removal.
+ * untyped renderer arguments, so the ported renderers keep only the deltas
+ * recorded in FORK.md.
  */
-/** Tools with a dedicated pi-style boxed renderer; powershell shares bash's arguments. */
-const DEDICATED_TOOLS = new Set(["read", "write", "edit", "bash"]);
+/** Tools that get a dedicated pi-style boxed card; the two shell tools share one. */
+const DEDICATED_TOOLS = new Set(["read", "write", "edit", "bash", "powershell"]);
 /** Resolves the dedicated renderer name for a tool, or undefined for the boxed fallback card. */
 function dedicatedToolName(toolName: unknown): string | undefined {
-    if (typeof toolName !== "string") {
-        return undefined;
-    }
-    const name = toolName === "powershell" ? "bash" : toolName;
-    return DEDICATED_TOOLS.has(name) ? name : undefined;
+    return typeof toolName === "string" && DEDICATED_TOOLS.has(toolName) ? toolName : undefined;
 }
 /** Result shape shared by the boxed and fallback result renderers. */
 interface BoxedResult {

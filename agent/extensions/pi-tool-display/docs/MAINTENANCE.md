@@ -57,8 +57,10 @@ smoke script + a manual render pass.
 2. **`fff-multi-grep` uses the boxed fallback card.** Its args are `{ patterns: [...] }`, which no
    pi-style renderer parses. An adapter could synthesise a `pattern` string and route it to the grep
    renderer — deliberately not done (would be a hand-rolled invention again).
-3. **pi-style's git/gh cards are only reachable through the `bash` renderer's command parsing.** The
-   `git_*` tool family renders as fallback cards.
+3. **pi-style's git/gh cards are only reachable through the shell renderer's command parsing.**
+   Both `bash` and `powershell` route into it, so classification is POSIX-shaped: `git`/`gh`/`rg`
+   commands get their cards in either tool, while native PowerShell cmdlets never classify and stay
+   in the boxed shell. The `git_*` tool family renders as fallback cards.
 4. **Card sizing is source-only.** There is no config file any more; `TOOL_DISPLAY_CONFIG` in
    `src/index.ts` is the only knob, and changing it needs a `/reload`.
 

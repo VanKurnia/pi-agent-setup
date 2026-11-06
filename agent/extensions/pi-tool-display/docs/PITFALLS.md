@@ -108,8 +108,10 @@ with `(args, theme, context)` / `(result, options, theme, context)`.
 
 **Root cause** — pi-style renders `grep`/`find`/`ls` as _boxless_ tree panels by design.
 
-**Fix** — only `read`/`write`/`edit`/`bash` (plus the `powershell` alias) use dedicated renderers;
-everything else goes to the boxed fallback card, so every tool is framed the same way.
+**Fix** — only `read`/`write`/`edit` and the two shell tools (`bash`, `powershell`) use dedicated
+renderers; everything else goes to the boxed fallback card, so every tool is framed the same way.
+The shell card is one implementation parameterized by flavor (`ShellFlavor`), so its title and prompt
+follow the tool that ran rather than a fixed bash label.
 
 ## 9. Per-render config/theme work in the bridge
 

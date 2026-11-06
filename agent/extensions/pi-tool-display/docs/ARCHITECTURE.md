@@ -52,8 +52,8 @@ renderPistyleToolCall / renderPistyleToolResult
         │  frozen render config applied once at registration;
         │  theme primed only when the theme instance changes
         │  tool-name routing
-        ├── read | write | edit | bash   → pi-style dispatcher (dedicated boxed card)
-        ├── powershell                   → alias → bash card
+        ├── read | write | edit          → pi-style dispatcher (dedicated boxed card)
+        ├── bash | powershell            → shell card, titled per tool ($ / PS>)
         ├── query_sqlite | query_mysql   → db-query card (fork card, see below)
         ├── ocr_review | ocr_scan        → OCR card (fork card, see below)
         ├── subagent                     → subagent card (fork card, see below)

@@ -61,11 +61,11 @@ Responsibilities, in order:
 2. `primeTheme(theme)` — `setFullTheme(theme)` only when the theme object identity changes.
 3. Tool routing:
 
-| Tool                            | Renderer                                                                       |
-| ------------------------------- | ------------------------------------------------------------------------------ |
-| `read`, `write`, `edit`, `bash` | pi-style dispatcher (dedicated boxed card)                                     |
-| `powershell`                    | alias → `bash` card                                                            |
-| every other tool                | pi-style **boxed fallback** card (`renderFallbackCall`/`renderFallbackResult`) |
+| Tool                    | Renderer                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `read`, `write`, `edit` | pi-style dispatcher (dedicated boxed card)                                     |
+| `bash`, `powershell`    | pi-style shell card, labeled per tool (`Bash` → `$ `, `PowerShell` → `PS> `)   |
+| every other tool        | pi-style **boxed fallback** card (`renderFallbackCall`/`renderFallbackResult`) |
 
 Routing deliberately bypasses pi-style's `grep`/`find`/`ls` renderers: those are _boxless_ tree
 panels, and this setup wants one framed look for every tool.

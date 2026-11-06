@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **2026-11-06 — the shell card follows the tool that ran.** `bash` and `powershell` now render the
+  same boxed card with their own title and prompt (`Bash` → `$ `, `PowerShell` → `PS> `, continuation
+  `> ` / `>> `) instead of aliasing `powershell` into the bash card, so a Windows session no longer
+  shows a `Bash` header and a `$ ` prompt above a PowerShell command. One `shellTool(flavor)` factory
+  backs both registry entries, and `dedicatedToolName` passes the tool name through unchanged. Command
+  classification stays POSIX-shaped: `git`/`gh`/`rg` commands keep their cards in either tool, native
+  cmdlets fall back to the plain boxed shell.
+
 - **2026-10-28 — pi-tool-display consolidation.** The extension is four modules and boots from
   `src/index.ts` (`package.json` → `pi.extensions`): `support.ts`, the root `index.ts` shim and
   `fork-cards.ts` were folded into `src/index.ts` and `src/wiring.ts`, and the reload handler moved

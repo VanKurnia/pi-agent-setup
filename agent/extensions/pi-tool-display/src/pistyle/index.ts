@@ -4054,22 +4054,42 @@ function stripBashToolNoticeLines(text: string): string {
         .replace(/\n{3,}/g, "\n\n")
         .trimEnd();
 }
-function bashWidthKey(rawCommand: string, timeout: unknown): string {
-    return boxedToolWidthKey("Bash", `${rawCommand}|${timeout ?? ""}`);
+/** Shell flavor of the tool being rendered, mirroring pi's own shell labels. */
+type ShellFlavor = "bash" | "powershell";
+interface ShellLabels {
+    readonly title: string;
+    readonly prompt: string;
+    readonly continuation: string;
+}
+const SHELL_FLAVORS: Record<ShellFlavor, ShellLabels> = {
+    bash: { title: "Bash", prompt: "$ ", continuation: "> " },
+    powershell: { title: "PowerShell", prompt: "PS> ", continuation: ">> " },
+};
+/** Command preview rows, each prefixed with the shell's prompt. */
+function shellReferenceLines(command: string, flavor: ShellFlavor): string[] {
+    const { prompt, continuation } = SHELL_FLAVORS[flavor];
+    return command
+        .split("\n")
+        .map((line, index) => `${index === 0 ? prompt : continuation}${line}`);
+}
+function bashWidthKey(rawCommand: string, timeout: unknown, flavor: ShellFlavor): string {
+    return boxedToolWidthKey(SHELL_FLAVORS[flavor].title, `${rawCommand}|${timeout ?? ""}`);
 }
 function renderBoxedBashCall(
     theme: BoxTheme,
     commandLines: string[],
     context: BoxedToolContext,
-    widthKey: string,
+    flavor: ShellFlavor,
 ): Component {
+    const { title, prompt, continuation } = SHELL_FLAVORS[flavor];
+    const widthKey = bashWidthKey(commandLines.join("\n"), context?.args?.timeout, flavor);
     // Expanded (click / Ctrl+O) reveals the whole command; collapsed keeps the
     // command head plus an omitted-line note.
     const maxCommandLines = context.expanded ? commandLines.length : 5;
     const shownCount = Math.min(commandLines.length, maxCommandLines + 1);
     const detailLines: string[] = [];
     for (let i = 0; i < shownCount; i++) {
-        const prefix = i === 0 ? theme.fg("dim", "$ ") : theme.fg("dim", "> ");
+        const prefix = theme.fg("dim", i === 0 ? prompt : continuation);
         detailLines.push(`${prefix}${highlightBashLine(commandLines[i] ?? "", theme)}`);
     }
     if (commandLines.length > maxCommandLines + 1) {
@@ -4091,14 +4111,14 @@ function renderBoxedBashCall(
         // footer and a `No output received yet` line. The first partial result
         // renders nothing, so this card is never duplicated below.
         detailLines.push(theme.fg("dim", "No output received yet"));
-        return renderBoxedToolCall(theme, "Bash", detailLines, {
+        return renderBoxedToolCall(theme, title, detailLines, {
             ...base,
             pendingLabel: formatBoxedRunningStatus(theme, getStateElapsedMs(context.state)),
         });
     }
     // Streaming (a result renderer already continues this box) and terminal
     // (settled) passes leave the box open so the result closes it.
-    return renderBoxedToolCall(theme, "Bash", detailLines, { ...base, resultSeen });
+    return renderBoxedToolCall(theme, title, detailLines, { ...base, resultSeen });
 }
 // ── Terminal status detection ────────────────────────────────────────────────
 // The bash tool appends a `\n\n<status>` suffix to failed results (nonzero exit,
@@ -4239,6 +4259,7 @@ function renderBashStreamingResult(
     raw: string,
     options: { expanded: boolean },
     context: BoxedToolContext,
+    flavor: ShellFlavor,
 ): Component {
     // Tail-only processing: the preview collapses to maxCollapsedLines lines
     // anyway, so only the last maxCollapsedLines + 10 raw lines (the same headroom
@@ -4264,10 +4285,8 @@ function renderBashStreamingResult(
         theme,
         bashBodyComponent(preview, hasOutput ? undefined : emptyLines),
         {
-            widthKey: bashWidthKey(rawCommand, context?.args?.timeout),
-            referenceLines: rawCommand
-                .split("\n")
-                .map((line, index) => `${index === 0 ? "$ " : "> "}${line}`),
+            widthKey: bashWidthKey(rawCommand, context?.args?.timeout, flavor),
+            referenceLines: shellReferenceLines(rawCommand, flavor),
             dividerLabel: "Output",
             showDivider: hasOutput,
             footerLines: [formatBoxedRunningStatus(theme, elapsed)],
@@ -4280,6 +4299,7 @@ function renderBashFinalResult(
     raw: string,
     options: { expanded: boolean },
     context: BoxedToolContext,
+    flavor: ShellFlavor,
 ): Component {
     const isError = Boolean(context.isError);
     const clean = stripAnsi(raw);
@@ -4290,10 +4310,8 @@ function renderBashFinalResult(
     const footer = bashFooter(theme, status, elapsed, output, isError);
     const errorLabel = isError ? (bashErrorLabel(status) ?? "✗ Error") : undefined;
     const rawCommand = String(context?.args?.command ?? "...");
-    const widthKey = bashWidthKey(rawCommand, context?.args?.timeout);
-    const referenceLines = rawCommand
-        .split("\n")
-        .map((line, index) => `${index === 0 ? "$ " : "> "}${line}`);
+    const widthKey = bashWidthKey(rawCommand, context?.args?.timeout, flavor);
+    const referenceLines = shellReferenceLines(rawCommand, flavor);
     if (!options.expanded) {
         // Collapsed: only process the tail of the output (notices stripped per line).
         const scanLines = getToolsRenderConfig().maxCollapsedLines + 10;
@@ -4741,6 +4759,7 @@ function renderSemanticPanel(
     theme: BoxTheme,
     toolCallId: string,
     context: BoxedToolContext,
+    flavor: ShellFlavor,
 ): Component {
     const state = semanticStates.get(toolCallId);
     return {
@@ -4753,7 +4772,7 @@ function renderSemanticPanel(
                         theme,
                         state.command.split("\n"),
                         context,
-                        bashWidthKey(state.command, context?.args?.timeout),
+                        flavor,
                     ).render(width);
                 }
                 if (isBashTreeClass(state.cls)) {
@@ -4794,162 +4813,160 @@ function renderSemanticPanel(
         },
     };
 }
-const bashTool: BoxedToolDefinition = {
-    call(args, theme, context) {
-        noteExecutionStart(context);
-        const cls = classifyBashSemantic(String(args?.command ?? ""));
-        if (cls) {
-            const command = String(args?.command ?? "");
-            const existing = semanticStates.get(context.toolCallId);
-            if (existing) {
-                if (existing.command !== command || existing.cls.kind !== cls.kind) {
-                    delete existing.parsed;
-                    delete existing.fallback;
-                    existing.finished = false;
-                    existing.revision++;
-                    delete existing.renderCache;
-                    delete existing.lastParsedLength;
+/** One boxed shell card per pi shell tool; the flavor only changes labels and prompts. */
+function shellTool(flavor: ShellFlavor): BoxedToolDefinition {
+    return {
+        call(args, theme, context) {
+            noteExecutionStart(context);
+            const cls = classifyBashSemantic(String(args?.command ?? ""));
+            if (cls) {
+                const command = String(args?.command ?? "");
+                const existing = semanticStates.get(context.toolCallId);
+                if (existing) {
+                    if (existing.command !== command || existing.cls.kind !== cls.kind) {
+                        delete existing.parsed;
+                        delete existing.fallback;
+                        existing.finished = false;
+                        existing.revision++;
+                        delete existing.renderCache;
+                        delete existing.lastParsedLength;
+                    }
+                    existing.command = command;
+                    existing.cls = cls;
+                } else {
+                    semanticStates.set(context.toolCallId, {
+                        cls,
+                        command,
+                        finished: false,
+                        revision: 0,
+                    });
                 }
-                existing.command = command;
-                existing.cls = cls;
-            } else {
-                semanticStates.set(context.toolCallId, {
-                    cls,
-                    command,
-                    finished: false,
-                    revision: 0,
-                });
+                return renderSemanticPanel(theme, context.toolCallId, context, flavor);
             }
-            return renderSemanticPanel(theme, context.toolCallId, context);
-        }
-        noteBoxedCallState(context);
-        const rawCommand = String(args?.command ?? "...");
-        return renderBoxedBashCall(
-            theme,
-            rawCommand.split("\n"),
-            context,
-            bashWidthKey(rawCommand, args?.timeout),
-        );
-    },
-    result(result, options, theme, context) {
-        const firstResultPass = !isResultSeen(context.state);
-        markResultSeen(context.state);
-        const cls = classifyBashSemantic(String(context?.args?.command ?? ""));
-        // Action classes (commit/push/pull/fetch) also attempt parsing on exit-1
-        // results so informational states like `git commit` with nothing staged
-        // render as a card; the fail-closed parser keeps genuine errors raw.
-        if (cls && (!context.isError || isGitActionClass(cls))) {
-            // Semantic-classified commands render in the call panel; the result adds
-            // nothing. Keep terminal state in sync without an elapsed ticker. Git
-            // parsers only run on the terminal result: streaming partial output may
-            // hold a truncated line that would fail parsing and wrongly fall back.
-            if (!options.isPartial) {
+            noteBoxedCallState(context);
+            const rawCommand = String(args?.command ?? "...");
+            return renderBoxedBashCall(theme, rawCommand.split("\n"), context, flavor);
+        },
+        result(result, options, theme, context) {
+            const firstResultPass = !isResultSeen(context.state);
+            markResultSeen(context.state);
+            const cls = classifyBashSemantic(String(context?.args?.command ?? ""));
+            // Action classes (commit/push/pull/fetch) also attempt parsing on exit-1
+            // results so informational states like `git commit` with nothing staged
+            // render as a card; the fail-closed parser keeps genuine errors raw.
+            if (cls && (!context.isError || isGitActionClass(cls))) {
+                // Semantic-classified commands render in the call panel; the result adds
+                // nothing. Keep terminal state in sync without an elapsed ticker. Git
+                // parsers only run on the terminal result: streaming partial output may
+                // hold a truncated line that would fail parsing and wrongly fall back.
+                if (!options.isPartial) {
+                    recordExecutionEnded(context.state);
+                    stopElapsedTicker(context.state);
+                }
+                if (!options.isPartial || isBashTreeClass(cls)) {
+                    const output = stripBashToolNoticeLines(stripAnsi(getTextOutput(result)));
+                    const state = semanticStates.get(context.toolCallId);
+                    // Live tree classes re-parse on streaming passes, but only once the raw
+                    // output grew ≥ PARTIAL_REPARSE_THRESHOLD chars since the last parse
+                    // attempt: re-parsing the full buffer on every partial pass made
+                    // streaming O(n²). Small deltas keep the current tree; the final pass
+                    // always re-parses, so the settled registry state matches the ungated
+                    // path byte for byte.
+                    const shouldParse =
+                        !options.isPartial ||
+                        state === undefined ||
+                        state.lastParsedLength === undefined ||
+                        output.length - state.lastParsedLength >= PARTIAL_REPARSE_THRESHOLD;
+                    const parsed = shouldParse ? parseSemanticOutput(cls, output) : undefined;
+                    if (parsed) {
+                        if (state) {
+                            state.parsed = parsed;
+                            state.finished = !options.isPartial;
+                            state.revision++;
+                            delete state.renderCache;
+                            if (options.isPartial) state.lastParsedLength = output.length;
+                        } else
+                            semanticStates.set(context.toolCallId, {
+                                cls,
+                                command: String(context?.args?.command ?? ""),
+                                parsed,
+                                finished: !options.isPartial,
+                                revision: 0,
+                                ...(options.isPartial ? { lastParsedLength: output.length } : {}),
+                            });
+                        // `git diff` / `git show` render a boxed adaptive-diff result (one frame
+                        // per file); `gh run view --job=<id>` renders a boxed log result. Every
+                        // other semantic class renders its whole panel in the call card, so the
+                        // result adds nothing.
+                        if (isGitDiffClass(cls)) {
+                            return renderGitDiffResult(
+                                theme,
+                                parsed as GitDiffParsed,
+                                options,
+                                context,
+                            );
+                        }
+                        if (isGhRunJobClass(cls)) {
+                            return renderGhRunJobResult(
+                                theme,
+                                parsed as GhRunJobParsed,
+                                options,
+                                context,
+                            );
+                        }
+                        return EMPTY_BASH_TREE_RESULT;
+                    }
+                    if (!shouldParse) {
+                        // Skipped re-parse (sub-threshold growth): keep the current panel. A
+                        // live parsed tree still owns the display (the call panel renders it, the
+                        // result adds nothing); a fallback keeps streaming raw output into the
+                        // open box below.
+                        if (state?.parsed !== undefined) return EMPTY_BASH_TREE_RESULT;
+                    }
+                    // Unparseable output (ls -l, raw rg summary, non-git output): the boxed
+                    // shell owns the result; flag the call panel to render nothing so the
+                    // two don't duplicate. Skipped passes (sub-threshold growth) leave the
+                    // current panel untouched.
+                    if (shouldParse) {
+                        if (state) {
+                            state.fallback = true;
+                            state.finished = !options.isPartial;
+                            state.revision++;
+                            delete state.renderCache;
+                            if (options.isPartial) state.lastParsedLength = output.length;
+                        }
+                    }
+                }
+            } else if (options.isPartial) {
+                startElapsedTicker(context.state, context.invalidate);
+            } else {
                 recordExecutionEnded(context.state);
                 stopElapsedTicker(context.state);
             }
-            if (!options.isPartial || isBashTreeClass(cls)) {
-                const output = stripBashToolNoticeLines(stripAnsi(getTextOutput(result)));
-                const state = semanticStates.get(context.toolCallId);
-                // Live tree classes re-parse on streaming passes, but only once the raw
-                // output grew ≥ PARTIAL_REPARSE_THRESHOLD chars since the last parse
-                // attempt: re-parsing the full buffer on every partial pass made
-                // streaming O(n²). Small deltas keep the current tree; the final pass
-                // always re-parses, so the settled registry state matches the ungated
-                // path byte for byte.
-                const shouldParse =
-                    !options.isPartial ||
-                    state === undefined ||
-                    state.lastParsedLength === undefined ||
-                    output.length - state.lastParsedLength >= PARTIAL_REPARSE_THRESHOLD;
-                const parsed = shouldParse ? parseSemanticOutput(cls, output) : undefined;
-                if (parsed) {
-                    if (state) {
-                        state.parsed = parsed;
-                        state.finished = !options.isPartial;
-                        state.revision++;
-                        delete state.renderCache;
-                        if (options.isPartial) state.lastParsedLength = output.length;
-                    } else
-                        semanticStates.set(context.toolCallId, {
-                            cls,
-                            command: String(context?.args?.command ?? ""),
-                            parsed,
-                            finished: !options.isPartial,
-                            revision: 0,
-                            ...(options.isPartial ? { lastParsedLength: output.length } : {}),
-                        });
-                    // `git diff` / `git show` render a boxed adaptive-diff result (one frame
-                    // per file); `gh run view --job=<id>` renders a boxed log result. Every
-                    // other semantic class renders its whole panel in the call card, so the
-                    // result adds nothing.
-                    if (isGitDiffClass(cls)) {
-                        return renderGitDiffResult(
-                            theme,
-                            parsed as GitDiffParsed,
-                            options,
-                            context,
-                        );
-                    }
-                    if (isGhRunJobClass(cls)) {
-                        return renderGhRunJobResult(
-                            theme,
-                            parsed as GhRunJobParsed,
-                            options,
-                            context,
-                        );
-                    }
-                    return EMPTY_BASH_TREE_RESULT;
-                }
-                if (!shouldParse) {
-                    // Skipped re-parse (sub-threshold growth): keep the current panel. A
-                    // live parsed tree still owns the display (the call panel renders it, the
-                    // result adds nothing); a fallback keeps streaming raw output into the
-                    // open box below.
-                    if (state?.parsed !== undefined) return EMPTY_BASH_TREE_RESULT;
-                }
-                // Unparseable output (ls -l, raw rg summary, non-git output): the boxed
-                // shell owns the result; flag the call panel to render nothing so the
-                // two don't duplicate. Skipped passes (sub-threshold growth) leave the
-                // current panel untouched.
-                if (shouldParse) {
-                    if (state) {
-                        state.fallback = true;
-                        state.finished = !options.isPartial;
-                        state.revision++;
-                        delete state.renderCache;
-                        if (options.isPartial) state.lastParsedLength = output.length;
-                    }
-                }
+            const raw = getTextOutput(result);
+            if (options.isPartial) {
+                // First partial pass: the running call card stands alone. Later passes
+                // stream output into the open continuation without a Response divider.
+                if (firstResultPass) return EMPTY_BASH_RESULT;
+                return renderBashStreamingResult(theme, raw, options, context, flavor);
             }
-        } else if (options.isPartial) {
-            startElapsedTicker(context.state, context.invalidate);
-        } else {
-            recordExecutionEnded(context.state);
-            stopElapsedTicker(context.state);
-        }
-        const raw = getTextOutput(result);
-        if (options.isPartial) {
-            // First partial pass: the running call card stands alone. Later passes
-            // stream output into the open continuation without a Response divider.
-            if (firstResultPass) return EMPTY_BASH_RESULT;
-            return renderBashStreamingResult(theme, raw, options, context);
-        }
-        return memoizedStateComponent(
-            context.state,
-            "__piStyleBashFinalResult",
-            getRenderCacheKey(
-                "bash-final-result",
-                theme,
-                Boolean(options.expanded),
-                Boolean(context.isError),
-                String(context?.args?.command ?? ""),
-                raw,
-                getStateElapsedMs(context.state) ?? "",
-            ),
-            () => renderBashFinalResult(theme, raw, options, context),
-        );
-    },
-};
+            return memoizedStateComponent(
+                context.state,
+                "__piStyleBashFinalResult",
+                getRenderCacheKey(
+                    `${flavor}-final-result`,
+                    theme,
+                    Boolean(options.expanded),
+                    Boolean(context.isError),
+                    String(context?.args?.command ?? ""),
+                    raw,
+                    getStateElapsedMs(context.state) ?? "",
+                ),
+                () => renderBashFinalResult(theme, raw, options, context, flavor),
+            );
+        },
+    };
+}
 
 // from: pistyle\features\tools\boxed\batch.ts
 
@@ -6215,7 +6232,8 @@ const REGISTRY: Readonly<Record<string, BoxedToolDefinition>> = {
     read: readTool,
     write: writeTool,
     edit: editTool,
-    bash: bashTool,
+    bash: shellTool("bash"),
+    powershell: shellTool("powershell"),
     ls: lsTool,
     find: findTool,
     grep: grepTool,

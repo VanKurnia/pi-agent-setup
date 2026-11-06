@@ -70,12 +70,35 @@ const base = {
 };
 
 const cases = [
-    // dedicated renderers (DEDICATED_TOOLS) + the powershell -> bash alias
+    // dedicated renderers (DEDICATED_TOOLS); bash/powershell share the shell card
     ["read", { path: "README.md" }],
     ["write", { path: "b.txt", content: "hello\nworld" }],
     ["edit", { path: "a.txt", oldText: "x", newText: "y" }],
     ["bash", { command: "git status", description: "check" }],
     ["powershell", { command: "Get-Date" }],
+    // the shell card is labelled per tool: a PowerShell call must not title
+    // itself `Bash` or prompt with `$ `
+    [
+        "shell labels",
+        () => {
+            const card = (name) => {
+                const args = { command: "Get-Date" };
+                const { renderCall } = resolver(name, () => {});
+                const context = { ...base, args, state: {}, toolCallId: `label_${name}` };
+                return renderCall(args, theme, context).render(80).join("\n");
+            };
+            for (const [name, title, prompt] of [
+                ["bash", "Bash", "$ "],
+                ["powershell", "PowerShell", "PS> "],
+            ]) {
+                const lines = card(name);
+                if (!lines.includes(title) || !lines.includes(prompt)) {
+                    throw new Error(`${name} card is missing ${title} / ${prompt}:\n${lines}`);
+                }
+            }
+            return "labels and prompts follow the tool";
+        },
+    ],
     // these four all render the boxed FALLBACK card (no by-name route in wiring.ts)
     ["grep", { pattern: "x", path: "." }],
     ["ls", { path: "." }],
