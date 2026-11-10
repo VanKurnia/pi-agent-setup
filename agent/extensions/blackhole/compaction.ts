@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import { relative } from "node:path";
 import { calculateContextTokens, estimateTokens } from "@earendil-works/pi-coding-agent";
+import { truncateChars } from "../shared/text-format.ts";
 
 export interface CompileInput {
     messages: Array<{ role?: string; content?: unknown }>;
@@ -88,7 +89,7 @@ function buildTranscriptExcerpt(messages: Array<{ role?: string; content?: unkno
             .replace(/\s+/g, " ")
             .trim();
         if (text.length < 20) continue;
-        const slice = text.slice(0, EXCERPT_MESSAGE_CHARS);
+        const slice = truncateChars(text, EXCERPT_MESSAGE_CHARS);
         lines.unshift(`- ${msg.role}: ${slice}`);
         used += slice.length;
     }
@@ -107,10 +108,8 @@ export function compileVccSummary(input: CompileInput): string {
     const memory = input.omSummary?.trim() ?? "";
     if (memory) {
         const memoryBudget = Math.floor(budget * OM_BUDGET_SHARE);
-        const body =
-            memory.length > memoryBudget
-                ? `${memory.slice(0, memoryBudget)}\n... (memory truncated)`
-                : memory;
+        const memoryHead = truncateChars(memory, memoryBudget);
+        const body = memoryHead === memory ? memory : `${memoryHead}\n... (memory truncated)`;
         sections.push(`### Active Context & Insights\n${body}`);
     }
 
@@ -149,9 +148,8 @@ export function compileVccSummary(input: CompileInput): string {
     }
 
     const summary = sections.join("\n\n---\n\n");
-    return summary.length > budget
-        ? `${summary.slice(0, budget)}\n... (summary truncated)`
-        : summary;
+    const head = truncateChars(summary, budget);
+    return head === summary ? summary : `${head}\n... (summary truncated)`;
 }
 
 export interface SessionEntryLike {

@@ -28,6 +28,7 @@ import { Type } from "typebox";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { truncateChars } from "./shared/text-format.ts";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -327,10 +328,8 @@ function formatFetchResponse(route: string, payload: unknown, maxCharacters: num
         content?: { text?: unknown; format?: unknown };
     };
     const raw = typeof response.content?.text === "string" ? response.content.text : "";
-    const text =
-        raw.length > maxCharacters
-            ? `${raw.slice(0, maxCharacters)}\n\n[truncated ${raw.length - maxCharacters} chars]`
-            : raw;
+    const head = truncateChars(raw, maxCharacters);
+    const text = head === raw ? raw : `${head}\n\n[truncated ${raw.length - head.length} chars]`;
     const lines = [
         `9router web fetch: ${typeof response.url === "string" ? response.url : ""}`,
         `Route: ${route}${response.provider ? ` (provider: ${String(response.provider)})` : ""}`,

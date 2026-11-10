@@ -46,6 +46,8 @@ export interface FetchOptions {
     proxy?: string;
     timeoutMs?: number;
     tempDir?: string;
+    /** Caller's abort signal; cancels the request and reports `code: "aborted"`. */
+    signal?: AbortSignal;
 }
 
 export interface BaseFetchResult {
@@ -87,7 +89,8 @@ export type FetchErrorCode =
     | "processing_error"
     | "download_error"
     | "no_content"
-    | "too_many_redirects";
+    | "too_many_redirects"
+    | "aborted";
 
 export type FetchErrorPhase =
     | "validation"

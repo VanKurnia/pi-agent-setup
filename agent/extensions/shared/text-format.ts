@@ -23,6 +23,14 @@ export function formatDuration(ms: number): string {
     return `${Math.floor(ms / 60000)}m${Math.floor((ms % 60000) / 1000)}s`;
 }
 
+/** Cut to at most `maxChars` UTF-16 units without leaving a lone surrogate. */
+export function truncateChars(text: string, maxChars: number): string {
+    if (text.length <= maxChars) return text;
+    const last = text.charCodeAt(maxChars - 1);
+    const cut = last >= 0xd800 && last <= 0xdbff ? maxChars - 1 : maxChars;
+    return text.slice(0, cut);
+}
+
 export function truncLine(text: string, maxWidth: number): string {
     if (visibleWidth(text) <= maxWidth) return text;
     let result = "";

@@ -6,6 +6,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { closeSync, openSync, readFileSync, readSync } from "node:fs";
 import { getExtensionApi, getParentLinkGlobal } from "../shared/cross-extension-api.js";
+import { truncateChars } from "../shared/text-format.ts";
 import type { SubagentParentLink, SubagentsApi } from "../subagents/src/core.ts";
 import { collectTouchedFiles } from "./compaction.ts";
 import { loadBlackholeConfig } from "./config.ts";
@@ -315,7 +316,7 @@ export async function runRecallTool(
             content: [
                 {
                     type: "text",
-                    text: expandedEntries.join("\n\n---\n\n").slice(0, maxChars),
+                    text: truncateChars(expandedEntries.join("\n\n---\n\n"), maxChars),
                 },
             ],
             details: undefined,
@@ -351,7 +352,7 @@ export async function runRecallTool(
                 {
                     type: "text",
                     text:
-                        serialized.slice(0, maxChars) +
+                        truncateChars(serialized, maxChars) +
                         (serialized.length > maxChars ? "\n... (truncated)" : ""),
                 },
             ],
@@ -400,7 +401,7 @@ export async function runRecallTool(
     for (const { m, idx } of candidateMessages) {
         const text = messageSearchText(m, params.mode === "file");
         if (regex.test(text)) {
-            hits.push(`[#${idx} ${m.role || "unknown"}]: ${text.slice(0, 200)}...`);
+            hits.push(`[#${idx} ${m.role || "unknown"}]: ${truncateChars(text, 200)}...`);
         }
     }
 
@@ -419,7 +420,7 @@ export async function runRecallTool(
             {
                 type: "text",
                 text:
-                    output.slice(0, maxChars) +
+                    truncateChars(output, maxChars) +
                     (output.length > maxChars ? "\n... (truncated)" : ""),
             },
         ],

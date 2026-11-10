@@ -14,6 +14,7 @@ import { pipeline } from "node:stream/promises";
 import { Defuddle } from "defuddle/node";
 import { getProfiles, fetch as wreqFetch } from "wreq-js";
 
+import { truncateChars } from "../shared/text-format.ts";
 import { parseLinkedomHTML } from "./dom.ts";
 import {
     DEFAULT_ACCEPT_HEADER,
@@ -274,8 +275,8 @@ export function markdownToText(markdown: string): string {
 }
 
 export function truncateContent(content: string, maxChars: number): string {
-    if (content.length <= maxChars) return content;
-    return `${content.slice(0, maxChars)}\n\n[... truncated]`;
+    const head = truncateChars(content, maxChars);
+    return head === content ? content : `${head}\n\n[... truncated]`;
 }
 
 export function buildCompactMetadataHeader(result: FetchResult): string {
@@ -1036,6 +1037,15 @@ function extractHostname(url: string): string {
     }
 }
 
+function buildAbortedError(url: string): FetchError {
+    return {
+        error: "Fetch cancelled by the user.",
+        code: "aborted",
+        retryable: false,
+        url,
+    };
+}
+
 function buildTimeoutError(context: FetchErrorContext): FetchError {
     const targetUrl = context.finalUrl ?? context.url;
     const timeoutLabel = `${context.timeoutMs}ms`;
@@ -1535,6 +1545,10 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
             fetchOptions.proxy = opts.proxy;
         }
 
+        if (opts.signal) {
+            fetchOptions.signal = opts.signal;
+        }
+
         const errorContext: FetchErrorContext = {
             url: opts.url,
             phase: "connecting",
@@ -2016,7 +2030,9 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
             emitProgress(hooks, { status: "done", progress: 1, phase: "done" });
             return result;
         } catch (error) {
-            const fetchError = buildThrownFetchError(error, errorContext);
+            const fetchError = opts.signal?.aborted
+                ? buildAbortedError(opts.url)
+                : buildThrownFetchError(error, errorContext);
             emitStatus(hooks, "error");
             emitProgress(hooks, { status: "error", progress: 1, phase: "error" });
             return fetchError;
@@ -2061,8 +2077,9 @@ export async function executeFetchToolCall(
     params: Record<string, unknown>,
     defaults: FetchToolDefaults,
     hooks: FetchExecutionHooks = {},
+    signal?: AbortSignal,
 ): Promise<FetchResult | FetchError> {
-    return defuddleFetch(buildFetchOptionsFromParams(params, defaults), hooks);
+    return defuddleFetch({ ...buildFetchOptionsFromParams(params, defaults), signal }, hooks);
 }
 
 const PROGRESS_BY_STATUS: Record<BatchFetchItemStatus, number> = {

@@ -420,11 +420,16 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
             );
         },
 
-        async execute(_toolCallId, params, _signal, onUpdate, ctx) {
+        async execute(_toolCallId, params, signal, onUpdate, ctx) {
             const { executeWebSearch } = await import("./search.js");
-            const result = await executeWebSearch(params.searches, ctx.cwd, (progressByQuery) => {
-                onUpdate?.({ content: [], details: { progressByQuery } });
-            });
+            const result = await executeWebSearch(
+                params.searches,
+                ctx.cwd,
+                (progressByQuery) => {
+                    onUpdate?.({ content: [], details: { progressByQuery } });
+                },
+                signal,
+            );
             const emptyLinks: Array<{ title: string; url: string }> = [];
             const results = (result.details?.progressByQuery || []).map((q) => {
                 const res = q.result;
@@ -505,7 +510,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
             return createWebFetchCallComponent(args, theme);
         },
 
-        async execute(_toolCallId, params: Record<string, unknown>, _signal, onUpdate, ctx) {
+        async execute(_toolCallId, params: Record<string, unknown>, signal, onUpdate, ctx) {
             const settings = await loadPiSmartFetchSettings(ctx.cwd, getAgentDir());
             const runtimeDefaults = resolveFetchToolDefaults(settings);
             const verbose = (params.verbose as boolean) ?? settings.verboseByDefault;
@@ -539,24 +544,29 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                     buildUserFacingFetchErrorSummary,
                 } = await import("./fetch.js");
 
-                const result = await executeFetchToolCall(params, runtimeDefaults, {
-                    onStatusChange(status) {
-                        emitProgress({
-                            ...latestDetails,
-                            status,
-                            phase: undefined,
-                            progress: status === "done" ? 1 : undefined,
-                        });
+                const result = await executeFetchToolCall(
+                    params,
+                    runtimeDefaults,
+                    {
+                        onStatusChange(status) {
+                            emitProgress({
+                                ...latestDetails,
+                                status,
+                                phase: undefined,
+                                progress: status === "done" ? 1 : undefined,
+                            });
+                        },
+                        onProgressChange(update) {
+                            emitProgress({
+                                ...latestDetails,
+                                status: update.status,
+                                progress: update.progress,
+                                phase: update.phase,
+                            });
+                        },
                     },
-                    onProgressChange(update) {
-                        emitProgress({
-                            ...latestDetails,
-                            status: update.status,
-                            progress: update.progress,
-                            phase: update.phase,
-                        });
-                    },
-                });
+                    signal,
+                );
 
                 if (spinnerTimer) {
                     clearInterval(spinnerTimer);

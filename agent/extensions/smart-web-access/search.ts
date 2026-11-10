@@ -34,7 +34,11 @@ async function waitBeforeNextFetch(): Promise<void> {
     await currentWait;
 }
 
-async function fetchReadablePage(url: string, resultsPerQuery: number): Promise<PageFetchResult> {
+async function fetchReadablePage(
+    url: string,
+    resultsPerQuery: number,
+    signal?: AbortSignal,
+): Promise<PageFetchResult> {
     try {
         await waitBeforeNextFetch();
         const response = await fetch(url, {
@@ -46,6 +50,7 @@ async function fetchReadablePage(url: string, resultsPerQuery: number): Promise<
             },
             redirect: "follow",
             timeout: 12_000,
+            signal,
         });
 
         if (response.status === 202) {
@@ -274,6 +279,7 @@ export async function executeWebSearch(
     queries: string[],
     cwd: string,
     onProgress?: (progressByQuery: QueryProgress[]) => void,
+    signal?: AbortSignal,
 ): Promise<{ text: string; details: WebSearchDetails }> {
     const resultsPerQuery = await loadResultsPerQuery(cwd);
 
@@ -287,13 +293,29 @@ export async function executeWebSearch(
     reportProgress();
 
     for (const entry of progressByQuery) {
+        if (signal?.aborted) break;
         entry.status = "loading";
         reportProgress();
 
-        entry.result = await fetchReadablePage(buildSearchUrl(entry.query), resultsPerQuery);
+        entry.result = await fetchReadablePage(
+            buildSearchUrl(entry.query),
+            resultsPerQuery,
+            signal,
+        );
         entry.status = entry.result.ok ? "done" : "error";
         reportProgress();
     }
+
+    for (const entry of progressByQuery) {
+        if (entry.status !== "queued") continue;
+        entry.status = "error";
+        entry.result = {
+            ok: false,
+            requestedUrl: buildSearchUrl(entry.query),
+            error: "cancelled before this query ran",
+        };
+    }
+    reportProgress();
 
     return {
         text: renderToolResult(progressByQuery),
