@@ -5,8 +5,7 @@
     {
       "source": "npm:pi-x-ide",
       "extensions": []
-    },
-    "npm:pi-zentui"
+    }
   ],
   "theme": "tokyo-night",
   "defaultProvider": "opencode-go",

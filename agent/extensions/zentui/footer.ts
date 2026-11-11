@@ -1,0 +1,1013 @@
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
+import { componentColor } from "./component-colors.ts";
+import type { SeparatorStyle, ZentuiConfig } from "./config.ts";
+import { FOOTER_FORMAT_ALIASES, FOOTER_FORMAT_VARIABLES } from "./config.ts";
+import { renderCustomValue } from "./custom-value-colors.ts";
+import { AtomicTemplateValues, normalizeTemplateVariables } from "./custom-variable-format.ts";
+import { sanitizeEditorMetadataText } from "./editor-metadata-format.ts";
+import {
+	type CompiledCompactChunk,
+	compiledFooterFormat,
+	renderFormatSplit,
+	renderFormatTokens,
+	stripOrphanSeparators,
+} from "./footer-format.ts";
+import {
+	type CompactLayoutChunk,
+	compactChunkBudget,
+	fullFooterFitsAligned,
+	packCompactChunks,
+	packCompactZones,
+	reflowFullFooter,
+} from "./footer-layout.ts";
+import { truncateFooterText } from "./footer-text.ts";
+import {
+	buildContextDisplayLabel,
+	buildSessionDurationLabel,
+	type ContextUsageSnapshot,
+	contextColorTier,
+	formatCwdLabel,
+	formatGitBranchText,
+	formatGitCommitSegment,
+	formatGitMetricsSegment,
+	formatOsLabel,
+	formatPackageVersionSegment,
+	formatRuntimeSegment,
+	formatTimeLabel,
+	formatUsernameHostLabel,
+	resolveContextUsage,
+} from "./format.ts";
+import { type HostTemplateValues, isHostTemplateVariable } from "./host-template-values.ts";
+import { resolveRuntimeSymbol } from "./icons.ts";
+import type { LiveContextOverride } from "./live-context.ts";
+import { liveMetadataColor } from "./live-metadata-display.ts";
+import { type FooterState, modelLabelFor } from "./state.ts";
+import { renderStyleForSource } from "./style.ts";
+
+const separatorText: Record<SeparatorStyle, string> = {
+	pipe: " | ",
+	dot: " · ",
+	chevron: " › ",
+	none: " ",
+};
+
+function joinStatusTexts(statusTexts: string[], separator: string): string {
+	return statusTexts.filter(Boolean).join(separator);
+}
+
+function normalizeModelInfoPart(value: string): string {
+	return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function composeModelInfoLabel(model: string, provider: string): string {
+	const normalizedModel = normalizeModelInfoPart(model);
+	const normalizedProvider = normalizeModelInfoPart(provider);
+	const providerIsDuplicated =
+		normalizedProvider.length > 0 && normalizedModel.includes(normalizedProvider);
+	return [model, providerIsDuplicated ? "" : provider].filter(Boolean).join(" ");
+}
+
+function fitStatusTexts(statusTexts: string[], maxWidth: number, separator: string): string {
+	if (maxWidth <= 0) return "";
+
+	const fitted: string[] = [];
+	for (const text of statusTexts) {
+		const candidate = joinStatusTexts([...fitted, text], separator);
+		if (visibleWidth(candidate) <= maxWidth) {
+			fitted.push(text);
+			continue;
+		}
+
+		if (fitted.length === 0) {
+			return maxWidth > 1 ? truncateFooterText(text, maxWidth, "…") : "";
+		}
+		break;
+	}
+
+	return joinStatusTexts(fitted, separator);
+}
+
+function appendStatusArea(base: string, statusText: string, separator: string): string {
+	if (!base) return statusText;
+	if (!statusText) return base;
+	return `${base}${separator}${statusText}`;
+}
+
+function prependStatusArea(base: string, statusText: string, separator: string): string {
+	if (!base) return statusText;
+	if (!statusText) return base;
+	return `${statusText}${separator}${base}`;
+}
+
+function composeBuiltInFooterContent(left: string, right: string, innerWidth: number): string {
+	const leftWidth = visibleWidth(left);
+	const rightWidth = visibleWidth(right);
+	return leftWidth >= innerWidth
+		? truncateFooterText(left, innerWidth, "")
+		: leftWidth + 1 + rightWidth <= innerWidth
+			? `${left}${" ".repeat(innerWidth - leftWidth - rightWidth)}${right}`
+			: truncateFooterText(left, innerWidth, "");
+}
+
+function composeFooterContent(
+	builtInLeft: string,
+	builtInRight: string,
+	extensionLeft: string[],
+	extensionMiddle: string[],
+	extensionRight: string[],
+	separator: string,
+	innerWidth: number,
+): string {
+	const builtInLeftWidth = visibleWidth(builtInLeft);
+	const builtInRightWidth = visibleWidth(builtInRight);
+	const minimumGap = builtInLeft && builtInRight ? 1 : 0;
+
+	if (builtInLeftWidth + minimumGap + builtInRightWidth > innerWidth) {
+		return composeBuiltInFooterContent(builtInLeft, builtInRight, innerWidth);
+	}
+
+	const available = Math.max(0, innerWidth - builtInLeftWidth - builtInRightWidth - minimumGap);
+	let remaining = available;
+	const leftConnectorWidth = builtInLeft && extensionLeft.length > 0 ? visibleWidth(separator) : 0;
+	const rightConnectorWidth =
+		builtInRight && extensionRight.length > 0 ? visibleWidth(separator) : 0;
+	let leftStatus = "";
+	let rightStatus = "";
+
+	if (extensionLeft.length > 0 && extensionRight.length > 0) {
+		const leftBudget = Math.max(0, Math.floor(available / 2) - leftConnectorWidth);
+		leftStatus = fitStatusTexts(extensionLeft, leftBudget, separator);
+		remaining -= leftStatus ? leftConnectorWidth + visibleWidth(leftStatus) : 0;
+
+		const rightBudget = Math.max(0, remaining - rightConnectorWidth);
+		rightStatus = fitStatusTexts(extensionRight, rightBudget, separator);
+		remaining -= rightStatus ? rightConnectorWidth + visibleWidth(rightStatus) : 0;
+
+		const expandedLeftBudget = Math.max(0, remaining + visibleWidth(leftStatus));
+		const expandedLeftStatus = fitStatusTexts(extensionLeft, expandedLeftBudget, separator);
+		if (visibleWidth(expandedLeftStatus) > visibleWidth(leftStatus)) {
+			remaining += leftStatus ? leftConnectorWidth + visibleWidth(leftStatus) : 0;
+			leftStatus = expandedLeftStatus;
+			remaining -= leftStatus ? leftConnectorWidth + visibleWidth(leftStatus) : 0;
+		}
+	} else if (extensionLeft.length > 0) {
+		leftStatus = fitStatusTexts(
+			extensionLeft,
+			Math.max(0, available - leftConnectorWidth),
+			separator,
+		);
+		remaining -= leftStatus ? leftConnectorWidth + visibleWidth(leftStatus) : 0;
+	} else if (extensionRight.length > 0) {
+		rightStatus = fitStatusTexts(
+			extensionRight,
+			Math.max(0, available - rightConnectorWidth),
+			separator,
+		);
+		remaining -= rightStatus ? rightConnectorWidth + visibleWidth(rightStatus) : 0;
+	}
+
+	const left = appendStatusArea(builtInLeft, leftStatus, separator);
+	const right = prependStatusArea(builtInRight, rightStatus, separator);
+	const gapWidth = Math.max(0, innerWidth - visibleWidth(left) - visibleWidth(right));
+	const middle = fitStatusTexts(extensionMiddle, gapWidth, separator);
+	const middleWidth = visibleWidth(middle);
+
+	if (!middle || middleWidth <= 0) {
+		return `${left}${" ".repeat(gapWidth)}${right}`;
+	}
+
+	const leftPadding = Math.floor((gapWidth - middleWidth) / 2);
+	const rightPadding = gapWidth - middleWidth - leftPadding;
+	return `${left}${" ".repeat(leftPadding)}${middle}${" ".repeat(rightPadding)}${right}`;
+}
+
+export function installFooter(
+	ctx: ExtensionContext,
+	state: FooterState,
+	getConfig: () => ZentuiConfig,
+	hooks: {
+		setRequestRender: (fn: (() => void) | undefined) => void;
+		scheduleProjectRefresh: (ctx: ExtensionContext) => void;
+		getThinkingLevel?: () => string | undefined;
+		getFastMode?: () => string | undefined;
+		getLiveContext?: () => LiveContextOverride | undefined;
+		getCustomVariables?: () => ReadonlyMap<string, string>;
+		getHostTemplateValues?: (names: ReadonlySet<string>) => HostTemplateValues | undefined;
+		getRepositoryRoot?: (cwd: string) => string | undefined;
+		onDispose?: () => void;
+		onProjectChanged?: () => void;
+		beforeRender?: () => void;
+	},
+): void {
+	ctx.ui.setFooter((tui, theme, footerData) => {
+		hooks.setRequestRender(() => tui.requestRender());
+		const unsubscribeBranch = footerData.onBranchChange(() => {
+			hooks.onProjectChanged?.();
+			hooks.scheduleProjectRefresh(ctx);
+			tui.requestRender();
+		});
+
+		return {
+			dispose: () => {
+				unsubscribeBranch();
+				hooks.setRequestRender(undefined);
+				hooks.onDispose?.();
+			},
+			invalidate() {},
+			render: function renderFooter(
+				width: number,
+				contextSnapshot?: ContextUsageSnapshot,
+				excludedCustom: ReadonlySet<string> = new Set(),
+				builtinSnapshots = new Map<string, string>(),
+			): string[] {
+				if (width <= 0) return [""];
+				hooks.beforeRender?.();
+				const config = getConfig();
+				const footer = config.components.footer;
+				const aliases = normalizeTemplateVariables(footer.styles.starship.variables, [
+					...FOOTER_FORMAT_VARIABLES,
+					...Object.keys(FOOTER_FORMAT_ALIASES),
+				]);
+				const published = hooks.getCustomVariables?.() ?? new Map<string, string>();
+				const customTexts = new Map<string, string>();
+				for (const key of Object.values(aliases)) {
+					if (excludedCustom.has(key)) continue;
+					const raw = published.get(key);
+					if (!raw) continue;
+					const text = renderCustomValue({
+						key,
+						raw,
+						colors: footer.customValueColors,
+						mode: footer.styles.starship.extensionColorMode ?? "original",
+						theme,
+						source: footer.colorSource,
+						fallbackStyle: componentColor(config, "footer", "extensionStatus"),
+					});
+					if (visibleWidth(text)) customTexts.set(key, text);
+				}
+				const footerModelLabel = modelLabelFor(state, footer.modelLabel);
+				const wideFormat = compiledFooterFormat(
+					footer.styles.starship.format,
+					FOOTER_FORMAT_ALIASES,
+				);
+				const compactFormat = compiledFooterFormat(
+					footer.styles.starship.responsive ? footer.styles.starship.compactFormat : "",
+					FOOTER_FORMAT_ALIASES,
+				);
+				const wideFormatTokens = wideFormat.tokens;
+				const wideReferences = wideFormat.references;
+				const compactReferences = compactFormat.references;
+				const colorSource = config.components.footer.colorSource;
+				const requestedHostNames = new Set(
+					[...wideReferences, ...compactReferences].filter(
+						(name) =>
+							isHostTemplateVariable(name) &&
+							!Object.hasOwn(aliases, name) &&
+							!builtinSnapshots.has(name),
+					),
+				);
+				if (requestedHostNames.size) {
+					const hostValues = hooks.getHostTemplateValues?.(requestedHostNames);
+					for (const name of requestedHostNames) {
+						if (!isHostTemplateVariable(name)) continue;
+						const text = sanitizeEditorMetadataText(hostValues?.[name] ?? "");
+						builtinSnapshots.set(
+							name,
+							text
+								? renderStyleForSource(
+										theme,
+										colorSource,
+										liveMetadataColor(config, "footer", name) ??
+											componentColor(config, "footer", "extensionStatus"),
+										text,
+									)
+								: "",
+						);
+					}
+				}
+				const iconMode = config.icons.effectiveMode;
+				const pathDisplay = config.components.footer.styles.starship.pathDisplay;
+				const formattedCwd = sanitizeEditorMetadataText(
+					formatCwdLabel(ctx.cwd, config.icons.cwd, {
+						mode: pathDisplay.mode,
+						depth: pathDisplay.depth,
+						repositoryRoot:
+							pathDisplay.mode === "repository" ? hooks.getRepositoryRoot?.(ctx.cwd) : undefined,
+					}),
+				);
+				const branch = sanitizeEditorMetadataText(state.branch ?? "") || undefined;
+				const gitStateLabel = sanitizeEditorMetadataText(state.gitStateLabel ?? "");
+				const commit = state.commit
+					? {
+							...state.commit,
+							oid: state.commit.oid ? sanitizeEditorMetadataText(state.commit.oid) || null : null,
+							tag: state.commit.tag ? sanitizeEditorMetadataText(state.commit.tag) || null : null,
+						}
+					: undefined;
+				const runtime = state.runtime
+					? {
+							...state.runtime,
+							name: sanitizeEditorMetadataText(state.runtime.name),
+							symbol: sanitizeEditorMetadataText(state.runtime.symbol),
+							version: sanitizeEditorMetadataText(state.runtime.version ?? ""),
+						}
+					: undefined;
+				const packageVersion = state.packageVersion
+					? {
+							...state.packageVersion,
+							version: sanitizeEditorMetadataText(state.packageVersion.version),
+						}
+					: undefined;
+				const separator = renderStyleForSource(
+					theme,
+					colorSource,
+					componentColor(config, "footer", "separator"),
+					separatorText[config.components.footer.styles.starship.separator],
+				);
+				const innerWidth = Math.max(1, width - 2);
+				const cwdLabel = renderStyleForSource(
+					theme,
+					colorSource,
+					componentColor(config, "footer", "cwd"),
+					formattedCwd,
+				);
+				const needsSessionName =
+					(config.components.footer.styles.starship.format
+						? wideReferences.includes("session_name")
+						: config.components.footer.styles.starship.segments.sessionName) ||
+					compactReferences.includes("session_name");
+				const sessionName =
+					needsSessionName && !builtinSnapshots.has("session_name")
+						? sanitizeEditorMetadataText(ctx.sessionManager.getSessionName() ?? "")
+						: "";
+				const sessionNameLabel =
+					builtinSnapshots.get("session_name") ??
+					(sessionName
+						? renderStyleForSource(
+								theme,
+								colorSource,
+								componentColor(config, "footer", "sessionName"),
+								sessionName,
+							)
+						: "");
+				if (needsSessionName) builtinSnapshots.set("session_name", sessionNameLabel);
+				const builtInSessionNameLabel = sessionNameLabel ? `in ${sessionNameLabel}` : "";
+				const branchText = branch
+					? formatGitBranchText(
+							branch,
+							config.components.footer.styles.starship.gitBranch.maxLength,
+						)
+					: undefined;
+				const needsContext =
+					(config.components.footer.styles.starship.format
+						? wideReferences.includes("context")
+						: config.components.footer.styles.starship.segments.context) ||
+					compactReferences.includes("context") ||
+					(state.autoCompaction &&
+						(wideReferences.includes("auto_compaction") ||
+							compactReferences.includes("auto_compaction")));
+				// Reuse only within this render, including resolved unknown usage.
+				const context =
+					contextSnapshot ??
+					(needsContext
+						? resolveContextUsage(ctx, hooks.getLiveContext?.())
+						: { percent: undefined, contextWindow: undefined });
+				const { percent: contextPercent, contextWindow } = context;
+				const contextLabel = buildContextDisplayLabel({
+					percent: contextPercent,
+					contextWindow,
+					style: config.components.footer.styles.starship.contextStyle,
+					asciiGauge: iconMode === "ascii",
+				});
+				const tier = contextColorTier(
+					contextPercent,
+					config.components.footer.styles.starship.contextThresholds,
+				);
+				const contextColor =
+					tier === "error"
+						? componentColor(config, "footer", "contextError")
+						: tier === "warning"
+							? componentColor(config, "footer", "contextWarning")
+							: componentColor(config, "footer", "contextNormal");
+				const cacheReadLabel = state.cacheReadLabel
+					? renderStyleForSource(
+							theme,
+							colorSource,
+							componentColor(config, "footer", "tokens"),
+							state.cacheReadLabel,
+						)
+					: "";
+				const cacheWriteLabel = state.cacheWriteLabel
+					? renderStyleForSource(
+							theme,
+							colorSource,
+							componentColor(config, "footer", "tokens"),
+							state.cacheWriteLabel,
+						)
+					: "";
+				const subscriptionLabel = state.subscription
+					? renderStyleForSource(
+							theme,
+							colorSource,
+							componentColor(config, "footer", "cost"),
+							"(sub)",
+						)
+					: "";
+				const autoCompactionLabel = state.autoCompaction
+					? renderStyleForSource(theme, colorSource, contextColor, "(auto)")
+					: "";
+				const gitColor = (text: string) =>
+					renderStyleForSource(
+						theme,
+						colorSource,
+						componentColor(config, "footer", "gitBranch"),
+						text,
+					);
+				const gitStatusColor = (text: string) =>
+					renderStyleForSource(
+						theme,
+						colorSource,
+						componentColor(config, "footer", "gitStatus"),
+						text,
+					);
+				const gitIcon = config.icons.git ? gitColor(config.icons.git) : "";
+				const gitCounts = config.components.footer.styles.starship.segments.gitCounts;
+				const stashLabel =
+					state.stashed > 0
+						? gitCounts
+							? `${config.icons.stashed}${state.stashed}`
+							: config.icons.stashed
+						: "";
+				const allStatus = [
+					state.conflicted > 0 ? config.icons.conflicted : "",
+					stashLabel,
+					state.deleted > 0 ? config.icons.deleted : "",
+					state.renamed > 0 ? config.icons.renamed : "",
+					state.modified > 0 ? config.icons.modified : "",
+					state.typechanged > 0 ? config.icons.typechanged : "",
+					state.staged > 0 ? config.icons.staged : "",
+					state.untracked > 0 ? config.icons.untracked : "",
+				].join("");
+				const aheadBehind = (() => {
+					if (state.ahead > 0 && state.behind > 0) {
+						return gitCounts
+							? `${config.icons.ahead}${state.ahead}${config.icons.behind}${state.behind}`
+							: config.icons.diverged;
+					}
+					if (state.ahead > 0)
+						return gitCounts ? `${config.icons.ahead}${state.ahead}` : config.icons.ahead;
+					if (state.behind > 0)
+						return gitCounts ? `${config.icons.behind}${state.behind}` : config.icons.behind;
+					return "";
+				})();
+				const statusBlock =
+					allStatus || aheadBehind ? gitStatusColor(`[${allStatus}${aheadBehind}]`) : "";
+				const gitStateBlock = gitStateLabel ? gitStatusColor(gitStateLabel) : "";
+				const renderBuiltInVariable = (name: string): string => {
+					const canonical = FOOTER_FORMAT_ALIASES[name] ?? name;
+					if (isHostTemplateVariable(canonical)) return builtinSnapshots.get(canonical) ?? "";
+					switch (canonical) {
+						case "cwd":
+							return cwdLabel;
+						case "session_name":
+							return sessionNameLabel;
+						case "git_branch":
+							return branchText
+								? gitIcon
+									? `${gitIcon} ${gitColor(branchText)}`
+									: gitColor(branchText)
+								: "";
+						case "git_status":
+							return statusBlock;
+						case "git_state":
+							return gitStateBlock;
+						case "runtime": {
+							if (!runtime) return "";
+							const symbol = resolveRuntimeSymbol(runtime.name, runtime.symbol, iconMode);
+							const label = runtime.version ? `${symbol} ${runtime.version}` : symbol;
+							return renderStyleForSource(theme, colorSource, runtime.style, label);
+						}
+						case "model":
+							return sanitizeEditorMetadataText(footerModelLabel);
+						case "provider":
+							return sanitizeEditorMetadataText(state.providerLabel);
+						case "thinkingLevel": {
+							const level = sanitizeEditorMetadataText(hooks.getThinkingLevel?.() ?? "");
+							return level.toLowerCase() === "off" ? "" : level;
+						}
+						case "fast_mode":
+							return sanitizeEditorMetadataText(hooks.getFastMode?.() ?? "");
+						case "session_duration":
+							return state.sessionStartEpoch
+								? renderStyleForSource(
+										theme,
+										colorSource,
+										componentColor(config, "footer", "sessionDuration"),
+										buildSessionDurationLabel(state.sessionStartEpoch),
+									)
+								: "";
+						case "username":
+							return renderStyleForSource(
+								theme,
+								colorSource,
+								componentColor(config, "footer", "username"),
+								formatUsernameHostLabel(config.icons.username),
+							);
+						case "os":
+							return renderStyleForSource(
+								theme,
+								colorSource,
+								componentColor(config, "footer", "os"),
+								formatOsLabel(
+									config.icons.os,
+									iconMode,
+									process.platform,
+									config.icons.osOverridden,
+								),
+							);
+						case "time":
+							return renderStyleForSource(
+								theme,
+								colorSource,
+								componentColor(config, "footer", "time"),
+								formatTimeLabel(config.icons.time),
+							);
+						case "context":
+							return renderStyleForSource(theme, colorSource, contextColor, contextLabel);
+						case "tokens":
+							return renderStyleForSource(
+								theme,
+								colorSource,
+								componentColor(config, "footer", "tokens"),
+								state.tokenLabel,
+							);
+						case "cache_read":
+							return cacheReadLabel;
+						case "cache_write":
+							return cacheWriteLabel;
+						case "cost":
+							return renderStyleForSource(
+								theme,
+								colorSource,
+								componentColor(config, "footer", "cost"),
+								state.costLabel,
+							);
+						case "subscription":
+							return subscriptionLabel;
+						case "auto_compaction":
+							return autoCompactionLabel;
+						case "package":
+							return formatPackageVersionSegment(
+								theme,
+								packageVersion,
+								colorSource,
+								iconMode,
+								config.icons.package,
+								componentColor(config, "footer", "packageVersion"),
+							);
+						case "package_version":
+							return packageVersion?.version
+								? renderStyleForSource(
+										theme,
+										colorSource,
+										componentColor(config, "footer", "packageVersion"),
+										packageVersion.version,
+									)
+								: "";
+						case "sep":
+							return renderStyleForSource(
+								theme,
+								colorSource,
+								componentColor(config, "footer", "separator"),
+								" | ",
+							);
+						case "git_commit":
+							return formatGitCommitSegment(
+								theme,
+								commit,
+								config.components.footer.styles.starship.gitCommit,
+								colorSource,
+								componentColor(config, "footer", "gitCommit"),
+							);
+						case "git_tag":
+							return config.components.footer.styles.starship.gitCommit.showTag && commit?.tag
+								? renderStyleForSource(
+										theme,
+										colorSource,
+										componentColor(config, "footer", "gitCommit"),
+										commit.tag,
+									)
+								: "";
+						case "git_metrics":
+							return formatGitMetricsSegment(
+								theme,
+								state.metrics,
+								config.components.footer.styles.starship.gitMetrics,
+								colorSource,
+								componentColor(config, "footer", "gitMetricsAdded"),
+								componentColor(config, "footer", "gitMetricsDeleted"),
+							);
+						case "git_added":
+							return state.metrics
+								? renderStyleForSource(
+										theme,
+										colorSource,
+										componentColor(config, "footer", "gitMetricsAdded"),
+										`+${state.metrics.added}`,
+									)
+								: "";
+						case "git_deleted":
+							return state.metrics
+								? renderStyleForSource(
+										theme,
+										colorSource,
+										componentColor(config, "footer", "gitMetricsDeleted"),
+										`−${state.metrics.deleted}`,
+									)
+								: "";
+						default:
+							return "";
+					}
+				};
+				// Reserve actual referenced builtin output, not just static state. Reuse the
+				// same values during scans, packing and fallback so callbacks cannot collide later.
+				const builtinNames = new Set<string>(FOOTER_FORMAT_VARIABLES);
+				for (const name of new Set([...wideReferences, ...compactReferences])) {
+					if (builtinNames.has(name) && !builtinSnapshots.has(name))
+						builtinSnapshots.set(name, renderBuiltInVariable(name));
+				}
+				const renderVariable = (name: string): string => {
+					const canonical = FOOTER_FORMAT_ALIASES[name] ?? name;
+					if (Object.hasOwn(aliases, name)) return atomicCustom.resolve(aliases[name]);
+					if (builtinSnapshots.has(canonical)) return builtinSnapshots.get(canonical) ?? "";
+					return renderBuiltInVariable(name);
+				};
+				const branchParts: string[] = [];
+				if (config.components.footer.styles.starship.segments.gitBranch) {
+					if (branchText) {
+						branchParts.push("on", gitIcon, gitColor(branchText));
+					} else if (commit?.detached) {
+						// `HEAD` uses git-branch style; `(hash)` uses git-commit style
+						// (bold green) per Starship `git_commit` format.
+						branchParts.push("on", gitIcon, gitColor("HEAD"));
+						if (config.components.footer.styles.starship.segments.gitCommit && commit.oid) {
+							const shortHash = commit.oid.slice(
+								0,
+								config.components.footer.styles.starship.gitCommit.hashLength,
+							);
+							const tag =
+								config.components.footer.styles.starship.gitCommit.showTag && commit.tag
+									? commit.tag
+									: "";
+							const inner = [shortHash, tag].filter(Boolean).join(" ");
+							branchParts.push(
+								renderStyleForSource(
+									theme,
+									colorSource,
+									componentColor(config, "footer", "gitCommit"),
+									`(${inner})`,
+								),
+							);
+						}
+					}
+				}
+				const gitStatusParts =
+					config.components.footer.styles.starship.segments.gitStatus && statusBlock
+						? [statusBlock]
+						: [];
+				const showGitState =
+					config.components.footer.styles.starship.segments.gitBranch ||
+					config.components.footer.styles.starship.segments.gitStatus;
+				const gitStateParts = showGitState && gitStateBlock ? [gitStateBlock] : [];
+				const branchLabel = [...branchParts, ...gitStatusParts, ...gitStateParts]
+					.filter(Boolean)
+					.join(" ");
+				const runtimeLabel = config.components.footer.styles.starship.segments.runtime
+					? formatRuntimeSegment(
+							theme,
+							runtime,
+							componentColor(config, "footer", "runtimePrefix"),
+							colorSource,
+							iconMode,
+						)
+					: "";
+				const packageVersionLabel = config.components.footer.styles.starship.segments.packageVersion
+					? formatPackageVersionSegment(
+							theme,
+							packageVersion,
+							colorSource,
+							iconMode,
+							config.icons.package,
+							componentColor(config, "footer", "packageVersion"),
+						)
+					: "";
+				// Skip standalone gitCommit when hash is already folded into the
+				// branch display on detached HEAD.
+				const hashFoldedIntoBranch =
+					commit?.detached && config.components.footer.styles.starship.segments.gitBranch;
+				const gitCommitLabel =
+					config.components.footer.styles.starship.segments.gitCommit && !hashFoldedIntoBranch
+						? formatGitCommitSegment(
+								theme,
+								commit,
+								config.components.footer.styles.starship.gitCommit,
+								colorSource,
+								componentColor(config, "footer", "gitCommit"),
+							)
+						: "";
+				const gitMetricsLabel = config.components.footer.styles.starship.segments.gitMetrics
+					? formatGitMetricsSegment(
+							theme,
+							state.metrics,
+							config.components.footer.styles.starship.gitMetrics,
+							colorSource,
+							componentColor(config, "footer", "gitMetricsAdded"),
+							componentColor(config, "footer", "gitMetricsDeleted"),
+						)
+					: "";
+
+				const sessionDurationSegment = (() => {
+					if (
+						!config.components.footer.styles.starship.segments.sessionDuration ||
+						!state.sessionStartEpoch
+					)
+						return "";
+					const timeLabel = buildSessionDurationLabel(state.sessionStartEpoch);
+					const prefix = renderStyleForSource(theme, colorSource, "", "up for");
+					const time = renderStyleForSource(
+						theme,
+						colorSource,
+						componentColor(config, "footer", "sessionDuration"),
+						timeLabel,
+					);
+					return `${prefix} ${time}`;
+				})();
+				const usernameSegment = config.components.footer.styles.starship.segments.username
+					? renderStyleForSource(
+							theme,
+							colorSource,
+							componentColor(config, "footer", "username"),
+							formatUsernameHostLabel(config.icons.username),
+						)
+					: "";
+				const osSegment = config.components.footer.styles.starship.segments.os
+					? renderStyleForSource(
+							theme,
+							colorSource,
+							componentColor(config, "footer", "os"),
+							formatOsLabel(config.icons.os, iconMode, process.platform, config.icons.osOverridden),
+						)
+					: "";
+				const left = [
+					osSegment,
+					usernameSegment,
+					config.components.footer.styles.starship.segments.cwd ? cwdLabel : "",
+					config.components.footer.styles.starship.segments.sessionName
+						? builtInSessionNameLabel
+						: "",
+					branchLabel,
+					gitCommitLabel,
+					gitMetricsLabel,
+					packageVersionLabel,
+					runtimeLabel,
+					sessionDurationSegment,
+				]
+					.filter(Boolean)
+					.join(" ");
+
+				const modelInfoSegment = config.components.footer.styles.starship.segments.modelInfo
+					? composeModelInfoLabel(
+							sanitizeEditorMetadataText(footerModelLabel),
+							sanitizeEditorMetadataText(state.providerLabel),
+						)
+					: "";
+				const timeSegment = config.components.footer.styles.starship.segments.time
+					? renderStyleForSource(
+							theme,
+							colorSource,
+							componentColor(config, "footer", "time"),
+							formatTimeLabel(config.icons.time),
+						)
+					: "";
+				const builtInContextLabel = [
+					renderStyleForSource(theme, colorSource, contextColor, contextLabel),
+					autoCompactionLabel,
+				]
+					.filter(Boolean)
+					.join(" ");
+				const builtInTokenLabel = [
+					renderStyleForSource(
+						theme,
+						colorSource,
+						componentColor(config, "footer", "tokens"),
+						state.tokenLabel,
+					),
+					cacheReadLabel,
+					cacheWriteLabel,
+				]
+					.filter(Boolean)
+					.join(" ");
+				const builtInCostLabel = [
+					renderStyleForSource(
+						theme,
+						colorSource,
+						componentColor(config, "footer", "cost"),
+						state.costLabel,
+					),
+					subscriptionLabel,
+				]
+					.filter(Boolean)
+					.join(" ");
+				const extensionLeftSegments: string[] = [];
+				const extensionMiddleSegments: string[] = [];
+				const extensionRightSegments: string[] = [];
+				const rightParts = [
+					modelInfoSegment,
+					config.components.footer.styles.starship.segments.context ? builtInContextLabel : "",
+					config.components.footer.styles.starship.segments.tokens ? builtInTokenLabel : "",
+					config.components.footer.styles.starship.segments.cost ? builtInCostLabel : "",
+					timeSegment,
+				];
+				const atomicCustom = new AtomicTemplateValues(
+					customTexts,
+					customTexts.size
+						? [
+								JSON.stringify(state),
+								ctx.cwd,
+								JSON.stringify(config.icons),
+								footer.styles.starship.format,
+								footer.styles.starship.compactFormat,
+								...builtinSnapshots.values(),
+								left,
+								separator,
+								...rightParts,
+								...extensionLeftSegments,
+								...extensionMiddleSegments,
+								...extensionRightSegments,
+							]
+						: [],
+				);
+				const right = rightParts.filter(Boolean).join(separator);
+
+				let contentLeft = left;
+				let contentMiddle = "";
+				let contentRight = right;
+				if (config.components.footer.styles.starship.format) {
+					const {
+						left: fmtLeft,
+						middle: fmtMiddle,
+						right: fmtRight,
+					} = renderFormatSplit(wideFormatTokens, renderVariable);
+					contentLeft = stripOrphanSeparators(fmtLeft);
+					contentMiddle = stripOrphanSeparators(fmtMiddle);
+					contentRight = stripOrphanSeparators(fmtRight);
+				}
+
+				const middleSegments = contentMiddle
+					? [contentMiddle, ...extensionMiddleSegments]
+					: extensionMiddleSegments;
+				const renderLegacyContent = () =>
+					composeFooterContent(
+						contentLeft,
+						contentRight,
+						extensionLeftSegments,
+						middleSegments,
+						extensionRightSegments,
+						separator,
+						innerWidth,
+					);
+				const frameRows = (rows: string[], source = [contentLeft, contentMiddle, contentRight]) => {
+					let framedRows = rows.map((row) => {
+						const framed = width > 2 ? ` ${truncateFooterText(row, width - 2, "")} ` : row;
+						return truncateFooterText(framed, width, "");
+					});
+
+					const omitted = atomicCustom.omitted(source, framedRows);
+					if (omitted.length)
+						return renderFooter(
+							width,
+							context,
+							new Set([...excludedCustom, ...omitted]),
+							builtinSnapshots,
+						);
+					return atomicCustom.restore(framedRows);
+				};
+
+				if (!config.components.footer.styles.starship.responsive)
+					return frameRows([renderLegacyContent()]);
+
+				const fullZones = {
+					left: appendStatusArea(
+						contentLeft,
+						joinStatusTexts(extensionLeftSegments, separator),
+						separator,
+					),
+					middle: appendStatusArea(
+						contentMiddle,
+						joinStatusTexts(extensionMiddleSegments, separator),
+						separator,
+					),
+					right: prependStatusArea(
+						contentRight,
+						joinStatusTexts(extensionRightSegments, separator),
+						separator,
+					),
+				};
+				if (fullFooterFitsAligned(fullZones, innerWidth)) {
+					return frameRows([renderLegacyContent()]);
+				}
+
+				const reflowed = reflowFullFooter(
+					fullZones,
+					innerWidth,
+					wideFormatTokens.some((token) => token.kind === "fill"),
+				);
+				if (reflowed) return frameRows(reflowed);
+
+				const chunkBudget = compactChunkBudget(innerWidth);
+				const compactCwdLabel = truncateFooterText(cwdLabel, chunkBudget, "…");
+				const compactSessionNameLabel = truncateFooterText(
+					sessionNameLabel,
+					Math.max(1, chunkBudget - visibleWidth("in ")),
+					"…",
+				);
+				const compactBranchBudget = Math.max(
+					1,
+					chunkBudget - visibleWidth("on ") - (statusBlock ? visibleWidth(statusBlock) + 1 : 0),
+				);
+				const compactBranchLabel = truncateFooterText(
+					renderVariable("git_branch"),
+					compactBranchBudget,
+					"…",
+				);
+				const renderCompactVariable = (name: string): string => {
+					const canonical = FOOTER_FORMAT_ALIASES[name] ?? name;
+					switch (canonical) {
+						case "cwd":
+							return compactCwdLabel;
+						case "session_name":
+							return compactSessionNameLabel;
+						case "git_branch":
+							return compactBranchLabel;
+						default:
+							return renderVariable(name);
+					}
+				};
+				const renderCompactChunks = (
+					chunks: readonly CompiledCompactChunk[],
+				): CompactLayoutChunk[] => {
+					const compactChunks: CompactLayoutChunk[] = [];
+					for (const chunk of chunks) {
+						if (chunk.kind === "extensions") {
+							const statuses = [
+								...extensionLeftSegments,
+								...extensionMiddleSegments,
+								...extensionRightSegments,
+							];
+							for (const [index, text] of statuses.entries()) {
+								compactChunks.push({
+									text,
+									boundary: index === 0 ? chunk.boundary : "space",
+								});
+							}
+							continue;
+						}
+						let rendered = stripOrphanSeparators(
+							renderFormatTokens(chunk.tokens, renderCompactVariable),
+						);
+						const references = chunk.references;
+						if (
+							["cwd", "session_name", "git_branch"].some((name) => references.includes(name))
+						) {
+							rendered = truncateFooterText(rendered, chunkBudget, "…");
+						}
+						if (rendered) compactChunks.push({ text: rendered, boundary: chunk.boundary });
+					}
+					return compactChunks;
+				};
+				const compact = compactFormat.compact;
+				const compactLeft = renderCompactChunks(compact.left);
+				const compactRight = renderCompactChunks(compact.right);
+				return frameRows(
+					compact.alignRight
+						? packCompactZones(
+								compactLeft,
+								compactRight,
+								innerWidth,
+								config.components.footer.styles.starship.compactMaxLines,
+								renderVariable("sep"),
+							)
+						: packCompactChunks(
+								compactLeft,
+								innerWidth,
+								config.components.footer.styles.starship.compactMaxLines,
+								renderVariable("sep"),
+							),
+					[...compactLeft, ...compactRight].map((chunk) => chunk.text),
+				);
+			},
+		};
+	});
+}
+
