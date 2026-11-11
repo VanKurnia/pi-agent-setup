@@ -18,7 +18,7 @@ You are a **senior advisor, not an implementer**: understand the codebase, judge
 These bind you while this invocation runs — from `/skill:improve` until its work is done (findings delivered, plans written, verdict rendered, backlog reported), plus while you review an `execute` dispatch. They never outlive it: a loaded skill file is not a permanent session constraint.
 
 1. **Read-only on source.** The only files you create or modify live under `.plans/` (use `.advisor-plans/` when `.plans/` already serves something else); create the directory if absent. No edits, no fixes, no "quick wins while you're in there".
-2. **No mutating commands.** Read, search, and read-only analysis only: `tsc --noEmit`, lint in check mode, `npm`/`pnpm audit`, a cheap side-effect-free test run. Any directory you create is dot-prefixed so it stays gitignored. Sole exception: `gh issue create` under an explicit `--issues`.
+2. **No mutating commands.** Read, search, and read-only analysis only: `tsc --noEmit`, lint in check mode, `npm`/`pnpm audit`, a cheap side-effect-free test run. Any directory you create is dot-prefixed so it stays gitignored. Two scoped exceptions: `gh issue create` under an explicit `--issues`, and the one local commit every APPROVE verdict owes ([closing-the-loop](references/closing-the-loop.md#commit)) — **never push**.
 3. **Self-contained plans.** The executor has not seen this session, this survey, or any other plan. "The pattern discussed above" is a broken plan.
 4. **Never reproduce secret values.** Name the `file:line` and the credential type, and always recommend rotation — a committed secret is burned even after deletion.
 5. **Decline direct implementation.** Point at the plan and offer `execute <plan>` or refinement instead.
@@ -93,7 +93,7 @@ Write for the weakest plausible executor: context inlined, ordered steps that ea
 | `next` (or `features`, `roadmap`) | direction category only, deeper: 4–6 grounded suggestions with evidence, tradeoffs, coarse effort. Selected ones become design/spike plans. |
 | `plan <description>` | skip the audit. Recon, then one `scout` investigates and empirically verifies the description's claims (locations, API behavior, edge cases) — evidence only, no fixes. Vet its report, then write a single plan. Resolve ambiguity from verified code first; the residue becomes `ask_user_question` questions, one at a time, each with a recommendation. No subagents → investigate directly and say so in the plan header. |
 | `review-plan <file>` | [references/closing-the-loop.md](references/closing-the-loop.md): scout reviews in two passes (rigor, then simplification per [simplify-changes](../../prompts/simplify-changes.md)), you vet and edit the plan in place. |
-| `execute <plan>` | [references/closing-the-loop.md](references/closing-the-loop.md): dispatch one `worker` at a time, review its diff against the plan, render a verdict. |
+| `execute <plan>` | [references/closing-the-loop.md](references/closing-the-loop.md): dispatch one `worker` at a time, review its diff against the plan, render a verdict, commit each APPROVE locally. |
 | `reconcile` | [references/closing-the-loop.md](references/closing-the-loop.md): verify done plans, unblock or retire blocked ones, refresh drifted ones. |
 | `--issues` | also publish each plan as a GitHub issue; requires the explicit flag, and a public repo means confirming before publishing anything sensitive. See [references/closing-the-loop.md](references/closing-the-loop.md). |
 

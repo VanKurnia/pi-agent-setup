@@ -44,7 +44,7 @@ A typical first run, start to finish:
 1. Open your agent in the repo and run `/skill:improve` (or `/skill:improve quick` to keep it cheap).
 2. It maps the repo, audits it, and comes back with a findings table. Reply with the ones you want planned — "plan 1, 3 and 5".
 3. Plans land in `.plans/` (see note below) — one file each, plus an index with the recommended order. Read them; they're meant to be reviewed.
-4. Hand a plan to any agent ("implement .plans/001-*.md"), or let the skill run it: `/skill:improve execute 001`. It dispatches a cheaper model to implement the plan, then reviews the diff against the plan and reports back with a verdict. Whether and how to merge the changes is your call.
+4. Hand a plan to any agent ("implement .plans/001-*.md"), or let the skill run it: `/skill:improve execute 001`. It dispatches a cheaper model to implement the plan, then reviews the diff against the plan and reports back with a verdict — an approved plan is committed on your current local branch. Pushing stays your call.
 5. Next session, run `/skill:improve reconcile` to clean up the backlog: verify what landed, refresh what drifted, unblock what got stuck.
 
 > **Path note:** this README's upstream examples use `plans/`; this installed copy writes to `.plans/` (SKILL.md Phase 4). Same layout, dot-prefixed so the directory stays out of the way.
@@ -96,7 +96,7 @@ Each plan also stamps the git commit it was written against, so executors run a 
 
 Plans aren't fire-and-forget:
 
-- **`execute <plan>`** dispatches one executor subagent at a time, in dependency order, hands it the plan, then reviews the result like a tech lead — re-runs every done criterion, checks scope compliance, reads the diff against intent. Verdict: approve (applying changes stays your call), send back for revision (max 2 rounds), or block and refine the plan.
+- **`execute <plan>`** dispatches one executor subagent at a time, in dependency order, hands it the plan, then reviews the result like a tech lead — re-runs every done criterion, checks scope compliance, reads the diff against intent. Verdict: approve (committed locally, pushing stays your call), send back for revision (max 2 rounds), or block and refine the plan.
 - **`reconcile`** processes what happened since: verifies DONE plans still hold, investigates BLOCKED ones and rewrites around the obstacle, refreshes drifted plans, retires findings that got fixed independently.
 - **`--issues`** publishes plans as GitHub issues — same self-contained body, so any agent or human can pick them up where work already lives.
 
@@ -104,8 +104,8 @@ Plans aren't fire-and-forget:
 
 These bind the skill only while it is active — once its work is done and the conversation moves on, they lift.
 
-- Never modifies source code itself. The only writes go to `.plans/`; executors perform code edits in the shared working tree, and applying changes is always yours.
-- Never runs commands that mutate your working tree — read, search, and read-only analysis only.
+- Never modifies source code itself. The only writes go to `.plans/`; executors perform code edits in the shared working tree, and one local commit per approved plan is the only git write it makes.
+- Never runs commands that mutate your working tree beyond that local commit — read, search, and read-only analysis only. Never pushes.
 - Never reproduces secret values. Locations and credential types only, rotation always recommended.
 - Asked to implement? It declines and points at the plan (or offers `execute`).
 

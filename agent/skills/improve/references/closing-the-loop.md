@@ -2,7 +2,7 @@
 
 The advisor's job does not end at the plan. Read this file for `review-plan`, `execute`, `reconcile` and `--issues`.
 
-The founding rule survives while the skill is active: **the advisor never edits source code.** In `execute` a `worker` subagent edits; the advisor dispatches, reviews and renders a verdict, like a tech lead who reviews rather than authors.
+The founding rule survives while the skill is active: **the advisor never edits source code.** In `execute` a `worker` subagent edits; the advisor dispatches, reviews, renders a verdict, and commits what it approved, like a tech lead who reviews and merges rather than authors.
 
 ---
 
@@ -12,7 +12,7 @@ Dispatch a `scout` (never review the plan yourself first) with the plan file's a
 
 **Pass 1 — rigor and executability.** Is every excerpt, path and convention inlined, with no reference to chat history? Does every step end in a machine-checkable command and expected result? Do the drift-check SHA and in-scope paths match the Scope section? Are the STOP conditions specific to this plan's risks rather than boilerplate?
 
-**Pass 2 — simplification and anti-bloat.** Apply [simplify-changes](../../prompts/simplify-changes.md) as normative: remove or fix any planned change that violates it (speculative indirection, duplication of existing workspace utilities, speculative flexibility, defensive code in trusted paths, restating/tracking comments), and flag significant removals for the approval gate it defines. Name simplify constraints in the plan only where a step must follow them.
+**Pass 2 — simplification and anti-bloat.** Apply [simplify-changes](../../../prompts/simplify-changes.md) as normative: remove or fix any planned change that violates it (speculative indirection, duplication of existing workspace utilities, speculative flexibility, defensive code in trusted paths, restating/tracking comments), and flag significant removals for the approval gate it defines. Name simplify constraints in the plan only where a step must follow them.
 
 ---
 
@@ -62,11 +62,22 @@ Review against the spec, never fixing anything yourself:
 
 | Verdict | When | Action |
 |---|---|---|
-| **APPROVE** | Criteria pass, scope clean, quality holds | Mark DONE in the index. Show the user a diff summary and anything from NOTES — **the user decides whether and how to apply it.** |
+| **APPROVE** | Criteria pass, scope clean, quality holds | Commit it ([Commit](#commit)), mark DONE with the SHA. Show the user the diff summary and anything from NOTES. |
 | **REVISE** | Fixable gaps | New `worker` dispatch with the report plus specific feedback ("criterion 3 fails: X; `api.ts:90` swallows the error — use the Result pattern per the plan"). Max 2 rounds, then BLOCK. |
 | **BLOCK** | STOP hit, scope violated beyond repair, or rounds exhausted | Mark BLOCKED with the reason, refine or rewrite the plan with what was learned, and tell the user what changed. |
 
 Edits land in your own working tree — there is no sandbox. Running verification is reviewing, not implementing: your hands still never edit source outside `.plans/`.
+
+### Commit
+
+Every approved plan execution ends in exactly one local commit, on the branch already checked out. REVISE and BLOCK commit nothing.
+
+1. `git add -- <the plan's in-scope paths>`. Never `git add -A`: nothing outside scope rides along, and `.plans/` is dot-ignored anyway.
+2. `git diff --cached --stat` must match the diff you approved. A stray path means unstage it and report instead of committing.
+3. `git commit -m "<type>(<scope>): <what the plan did>"` — Conventional Commits in the repo's own log language (`git log --oneline -10`), body carrying `plan: .plans/NNN-<slug>.md` plus anything from NOTES worth keeping.
+4. `git rev-parse --short HEAD` goes in the index Status block.
+
+**Local only.** Never push, never `--amend` an earlier plan's commit, never `--no-verify` past a failing hook, never commit a tree you did not review. A rejected commit or failing hook is a BLOCK reported to the user, not something to work around.
 
 ---
 

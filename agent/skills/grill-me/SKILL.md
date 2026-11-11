@@ -1,6 +1,6 @@
 ---
 name: grill-me
-description: Interview the user relentlessly about a plan or design, resolving each branch of the decision tree. Use when the user wants to stress-test a plan, get grilled on their design, or mentions "grill me".
+description: Interview the user relentlessly about a plan or design, resolving each branch of the decision tree. Use when the user is in a planning phase, stress-test a plan, get grilled on their design, or mentions "grill me".
 ---
 
 Interview the user until every decision branch is resolved. Walk the tree one branch at a time, settling a decision before the ones that depend on it.
