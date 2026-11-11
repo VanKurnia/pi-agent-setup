@@ -110,6 +110,25 @@ export function writePendingState(sessionId: string, state: PendingOMState): voi
     renameSync(tmpPath, filePath);
 }
 
+/**
+ * Forget one session's memory. Both stores go: `readPendingState` recovers from
+ * the backup, and a leftover tmp file would be renamed into place by the next
+ * write. Best effort — a missing file is the desired end state.
+ */
+export function clearSessionMemory(sessionId: string): void {
+    for (const filePath of [
+        getPendingFilePath(sessionId),
+        getPendingBackupPath(sessionId),
+        `${getPendingFilePath(sessionId)}.tmp`,
+    ]) {
+        try {
+            unlinkSync(filePath);
+        } catch {
+            // Already gone, or locked by a worker still writing it.
+        }
+    }
+}
+
 // ── Summarization for Compaction ───────────────────────────────────────────
 
 /** Token estimate for plain memory text (chars / 4), used by every pool bound. */

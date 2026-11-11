@@ -16,6 +16,7 @@ import {
     ANSI_WHITE,
     buildOmCompactionSummary,
     cleanupOrphanedPendingFiles,
+    clearSessionMemory,
     notifyWorkerAction,
     readPendingState,
     registerConsolidationHooks,
@@ -25,7 +26,7 @@ export default function (pi: ExtensionAPI): void {
     // Publish the snapshot provider for cross-extension consumers (subagents'
     // delegation snapshot). Global-backed: the module registry does not cross
     // extension boundaries under the loader's per-extension jiti instances.
-    setBlackholeSnapshotApi({ compileVccSummary, buildOmCompactionSummary });
+    setBlackholeSnapshotApi({ compileVccSummary, buildOmCompactionSummary, clearSessionMemory });
 
     // ── 1. Background Workers (Observational Memory) ──
     registerConsolidationHooks(pi);

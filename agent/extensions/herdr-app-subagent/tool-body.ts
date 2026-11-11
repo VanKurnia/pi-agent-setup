@@ -8,12 +8,15 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
     HerdrError,
+    awaitTerminalGone,
     callerId,
     closeTerminal,
     getTerminal,
     herdrProtocolProblem,
+    killTerminal,
     listTerminals,
     readAgentTail,
+    removeTerminal,
     runTerminal,
     sendTask,
     terminalSessionFile,
@@ -28,7 +31,9 @@ import {
     buildChildHeader,
     cachedAssistantText,
     childSessionFilename,
+    clearChildMemory,
     createDelegationSnapshot,
+    deleteChildSessionFiles,
     findAgentSessionFile,
     isSafeAgentName,
     lockFileFor,
@@ -104,6 +109,10 @@ function timedOut(terminal: string, sessionFile: string | undefined, usedMs: num
     );
 }
 
+// A graceful hangup lets a child finish its turn; the transcript must also stop
+// changing before it is deleted, or the next append recreates it headerless.
+const KILL_WAIT_MS = 15_000;
+
 export type WaitVerdict = "done" | "waiting" | "blocked" | "exited" | "not-started";
 
 /**
@@ -124,7 +133,7 @@ export function classifyWait(outcome: WaitOutcome, turnBefore: number): WaitVerd
 
 /** Body of the `subagent` tool. Lazy-loaded: the dispatch machinery stays off the boot path. */
 export async function runSubagentTool(
-    params: { agent: string; task: string },
+    params: { agent: string; task: string; fresh?: boolean },
     signal: AbortSignal | undefined,
     ctx: ExtensionContext,
 ): Promise<AgentToolResult<unknown>> {
@@ -176,12 +185,14 @@ export async function runSubagentTool(
               }
             : undefined;
     const parent = linked !== undefined ? parentKey(linked.parentFile) : undefined;
+    const isFresh = params.fresh === true;
+    const childId = agentSessionId(agent.name, cwd, parent);
     const lockPath =
         linked !== undefined ? lockFileFor(os.tmpdir(), agent.name, cwd, parent) : undefined;
     // A child is identified in the app by who started it: the core records
     // `parent` itself, and these labels make a dispatch traceable.
     const labels = { "subagent.parent": caller, "subagent.agent": agent.name };
-    const name = agentNameFor(agent.name);
+    const name = agentNameFor(agent.name, caller);
     let terminal: string | undefined;
     let sessionFile: string | undefined;
     let sessionDir: string | undefined;
@@ -220,7 +231,7 @@ export async function runSubagentTool(
     const lookupSessionFile = (onNames?: (names: string[]) => void) =>
         linked === undefined
             ? undefined
-            : findAgentSessionFile(linked.groupDir, agent.name, cwd, undefined, parent, onNames);
+            : findAgentSessionFile(linked.groupDir, agent.name, cwd, parent, onNames);
     /** Only what this dispatch appended to the session file, never an older turn. */
     const readOurTurn = (): { text: string; session: string } | undefined => {
         if (sessionFile === undefined) return undefined;
@@ -235,9 +246,9 @@ export async function runSubagentTool(
         const text = cachedAssistantText(sessionFile, tail);
         return text === undefined ? undefined : { text, session: sessionFile };
     };
-    // The snapshot reads only frozen parent state, so build it
-    // outside the lock while discovery runs ahead.
-    const snapshot = await createDelegationSnapshot(ctx);
+    // The snapshot reads only frozen parent state, so it is built before the
+    // lock is taken and never holds up a concurrent dispatch.
+    const task = attachDelegationSnapshot(params.task, await createDelegationSnapshot(ctx));
     try {
         const toolsFlag = agent.tools.length > 0 ? ` --tools ${agent.tools.join(",")}` : "";
         const systemFlags = buildAppendSystemPromptFlags({
@@ -250,18 +261,19 @@ export async function runSubagentTool(
         const trustFlag = buildTrustFlag(ctx.isProjectTrusted());
         // The task travels as the last argv element: the child is a real
         // program, so nothing has to be typed into it after boot.
-        const launch = async (fresh: boolean): Promise<string> => {
+        const launch = async (newSession: boolean): Promise<string> => {
             const argv: string[] = ["pi-bolt"];
             if (linked !== undefined && sessionFile !== undefined) {
                 argv.push("--session-dir", linked.sessionsRoot, "--session", sessionFile);
-                if (fresh) argv.push("--name", name);
+                // A session file created by this dispatch has no name yet.
+                if (newSession) argv.push("--name", name);
             } else if (sessionDir !== undefined) {
                 argv.push("--session-dir", sessionDir);
             }
             argv.push(
                 ...argvFromFlags(toolsFlag + modelFlag + thinkingFlag + systemFlags + trustFlag),
             );
-            argv.push(`Task:\n${attachDelegationSnapshot(params.task, snapshot)}`);
+            argv.push(`Task:\n${task}`);
             try {
                 return await runTerminal({ argv, cwd, name, labels });
             } catch (err) {
@@ -277,6 +289,36 @@ export async function runSubagentTool(
             return errorResult(`subagent ${agent.name} is already starting; retry shortly.`);
         }
         try {
+            // Fresh wins over reuse: reap first, so the lookup below cannot hand
+            // the task to the child this dispatch is replacing.
+            if (isFresh) {
+                if (signal?.aborted) {
+                    return errorResult(
+                        `subagent ${agent.name} was cancelled before its fresh session started.`,
+                    );
+                }
+                for (const child of await listTerminals(labels)) {
+                    if (child.cwd !== cwd) continue;
+                    await killTerminal(child.address);
+                    if (!(await awaitTerminalGone(child.address, KILL_WAIT_MS))) {
+                        return errorResult(
+                            `subagent ${agent.name} could not be ended; terminal ${child.address} is still running.`,
+                        );
+                    }
+                    await removeTerminal(child.address);
+                }
+                if (linked !== undefined) {
+                    deleteChildSessionFiles(linked.groupDir, agent.name, cwd, parent);
+                    clearChildMemory(childId);
+                    // A survivor would be picked up by the creation branch below
+                    // and turn this dispatch into the continue it was asked to replace.
+                    if (lookupSessionFile() !== undefined) {
+                        return errorResult(
+                            `subagent ${agent.name}: the previous session file under ${linked.groupDir} could not be deleted, so it would resume. Nothing was launched.`,
+                        );
+                    }
+                }
+            }
             if (linked !== undefined) {
                 const reusable = await findReusableChild();
                 if (reusable !== undefined) {
@@ -287,10 +329,7 @@ export async function runSubagentTool(
                     if (sessionFile !== undefined) sizeBefore = fs.statSync(sessionFile).size;
                     await pruneIdleSiblings(reusable);
                     turnBefore = (await getTerminal(reusable)).turn;
-                    await sendTask(
-                        reusable,
-                        `Task:\n${attachDelegationSnapshot(params.task, snapshot)}`,
-                    );
+                    await sendTask(reusable, `Task:\n${task}`);
                     terminal = reusable;
                     reused = true;
                 }
@@ -300,17 +339,19 @@ export async function runSubagentTool(
                 let file = lookupSessionFile((names) =>
                     sweepLegacySessionFiles(linked.groupDir, agent.name, names),
                 );
-                let fresh = false;
+                let createdSession = false;
                 if (file === undefined) {
-                    const id = agentSessionId(agent.name, cwd, parent);
-                    const candidate = path.join(linked.groupDir, childSessionFilename(id, stamp));
+                    const candidate = path.join(
+                        linked.groupDir,
+                        childSessionFilename(childId, stamp),
+                    );
                     try {
                         fs.writeFileSync(
                             candidate,
-                            buildChildHeader(id, cwd, linked.parentFile, stamp),
+                            buildChildHeader(childId, cwd, linked.parentFile, stamp),
                             { flag: "wx" },
                         );
-                        fresh = true;
+                        createdSession = true;
                         file = candidate;
                     } catch (err) {
                         if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err;
@@ -321,7 +362,7 @@ export async function runSubagentTool(
                 }
                 sessionFile = file;
                 sizeBefore = fs.statSync(sessionFile).size;
-                terminal = await launch(fresh);
+                terminal = await launch(createdSession);
                 turnBefore = (await getTerminal(terminal)).turn;
                 await pruneIdleSiblings(terminal);
             } else if (linked === undefined) {
@@ -358,6 +399,7 @@ export async function runSubagentTool(
                     terminal,
                     session: late.session,
                     reused,
+                    fresh: isFresh,
                     late: true,
                 },
             };
@@ -439,6 +481,7 @@ export async function runSubagentTool(
                 terminal,
                 session: ours.session,
                 reused,
+                fresh: isFresh,
                 ...(linked === undefined ? { unlinked: "ephemeral parent" } : {}),
             },
         };

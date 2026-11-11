@@ -337,20 +337,49 @@ export function labelTerminal(terminal: string, labels: Record<string, string>):
     return callHerdr("terminal.label", { terminal, labels }).then(() => undefined);
 }
 
-/**
- * End a child and forget it: kill stops the program, rm drops the record.
- * Both are best effort — a child that already exited, or one the core no
- * longer knows, is not an error worth failing a dispatch over.
- */
-export async function closeTerminal(terminal: string): Promise<void> {
+/** End a program. A record the core no longer knows is not an error. */
+export async function killTerminal(terminal: string): Promise<void> {
     try {
         await callHerdr("terminal.kill", { terminal, caller: callerId() });
     } catch (err) {
         if (!(err instanceof HerdrError && err.code === "not_found")) throw err;
     }
+}
+
+/**
+ * Wait until the program is gone: `state` turns `finished`, or the record is
+ * already gone. A transcript must not be deleted while its writer lives, so the
+ * caller needs this fact before unlinking.
+ */
+export async function awaitTerminalGone(terminal: string, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+        try {
+            if ((await getTerminal(terminal)).state === "finished") return true;
+        } catch (err) {
+            if (err instanceof HerdrError && err.code === "not_found") return true;
+            throw err;
+        }
+        if (Date.now() >= deadline) return false;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+}
+
+/** Drop the record of a finished terminal. Requires the program to be gone. */
+export async function removeTerminal(terminal: string): Promise<void> {
     try {
         await callHerdr("terminal.rm", { terminal, caller: callerId() });
     } catch (err) {
         if (!(err instanceof HerdrError && err.code === "not_found")) throw err;
     }
+}
+
+/**
+ * End a child and forget it, without waiting to observe the program's end.
+ * Best effort — a child that already exited, or one the core no longer knows,
+ * is not an error worth failing a dispatch over.
+ */
+export async function closeTerminal(terminal: string): Promise<void> {
+    await killTerminal(terminal);
+    await removeTerminal(terminal);
 }

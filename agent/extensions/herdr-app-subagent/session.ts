@@ -128,14 +128,15 @@ export function tabNameFor(agentName: string, cwd: string, parent?: string): str
     return paneNameFor(agentName, cwd, parent);
 }
 
-// Herdr agent names: [a-z][a-z0-9_-]{0,31}. The name is a display label for
-// `herdr agent list`, not an identity: dispatch targets the pane, and a second
-// live child of the same agent keeps the name (its rename is refused and
-// ignored). The slug is still folded and truncated because the registry has its
-// own alphabet and length limit.
-export function agentNameFor(agentName: string): string {
-    const slug = agentName.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
-    return `herdr-${slug.slice(0, 32 - "herdr-".length)}`;
+// Herdr agent names: lowercased, [a-z0-9_-], at most 32 chars, and unique among
+// live terminals across the whole core. An agent slug alone therefore collides
+// with the same agent in another project, so the owning terminal is part of the
+// name. It names the owner, not the child, so it stays stable across dispatches.
+export function agentNameFor(agentName: string, owner: string): string {
+    const fold = (value: string): string => value.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    // Addresses are short; capping the owner leaves the slug most of the budget.
+    const suffix = `-${fold(owner).slice(0, 8)}`;
+    return `herdr-${fold(agentName).slice(0, 32 - "herdr-".length - suffix.length)}${suffix}`;
 }
 
 export function agentSessionId(agentName: string, cwd: string, parent?: string): string {
@@ -160,6 +161,11 @@ export function isSafeAgentName(agentName: string): boolean {
     return agentName.length > 0 && SAFE_NAME.test(agentName);
 }
 
+// The keyed file name, shared by the lookup and the delete so both agree.
+function agentSessionSuffix(agentName: string, cwd: string, parent?: string): string {
+    return `_${agentSessionId(agentName, cwd, parent)}.jsonl`;
+}
+
 // Stable per-agent per-project session file lookup inside a project session group dir.
 // Filenames follow pi's `<timestamp>_<id>.jsonl` scheme with a stable id,
 // so existence is a glob for `*_herdr-<agent>-<key>.jsonl`; latest mtime wins.
@@ -167,15 +173,15 @@ export function findAgentSessionFile(
     groupDir: string,
     agentName: string,
     cwd: string,
+    parent?: string,
+    onNames?: (names: string[]) => void,
     fs: {
         readdirSync(dir: string): string[];
         statSync(path: string): { mtimeMs: number };
     } = defaultFs,
-    parent?: string,
-    onNames?: (names: string[]) => void,
 ): string | undefined {
     if (!isSafeAgentName(agentName)) return undefined;
-    const suffix = `_${agentSessionId(agentName, cwd, parent)}.jsonl`;
+    const suffix = agentSessionSuffix(agentName, cwd, parent);
     let names: string[];
     try {
         names = fs.readdirSync(groupDir);
@@ -208,6 +214,22 @@ function isLegacySessionFile(agentName: string, name: string): boolean {
     return isSafeAgentName(agentName) && name.endsWith(`_herdr-${agentName}.jsonl`);
 }
 
+// One unlink loop for both sweeps: a file that refuses to go stays where it is,
+// so the caller sees the survivor instead of an exception.
+function unlinkIn(groupDir: string, names: string[], matches: (name: string) => boolean): number {
+    let removed = 0;
+    for (const name of names) {
+        if (!matches(name)) continue;
+        try {
+            unlinkSync(`${groupDir}/${name}`);
+            removed++;
+        } catch {
+            // Locked by a still-running child, or already gone.
+        }
+    }
+    return removed;
+}
+
 // Sweep pre-upgrade session files out of an already-read directory
 // listing: one readdir shared with the keyed lookup, not two scans.
 export function sweepLegacySessionFiles(
@@ -215,14 +237,33 @@ export function sweepLegacySessionFiles(
     agentName: string,
     names: string[],
 ): void {
-    for (const name of names) {
-        if (!isLegacySessionFile(agentName, name)) continue;
-        try {
-            unlinkSync(`${groupDir}/${name}`);
-        } catch {
-            // Locked by a still-running pre-upgrade child, or already gone.
-        }
+    unlinkIn(groupDir, names, (name) => isLegacySessionFile(agentName, name));
+}
+
+/**
+ * Delete every transcript of this agent, folder and parent. A fresh child must
+ * not be able to resume one, so this removes all matches rather than the newest.
+ */
+export function deleteChildSessionFiles(
+    groupDir: string,
+    agentName: string,
+    cwd: string,
+    parent?: string,
+): number {
+    if (!isSafeAgentName(agentName)) return 0;
+    let names: string[];
+    try {
+        names = readdirSync(groupDir);
+    } catch {
+        return 0;
     }
+    const suffix = agentSessionSuffix(agentName, cwd, parent);
+    return unlinkIn(groupDir, names, (name) => name.endsWith(suffix));
+}
+
+/** Drop blackhole's memory for this session id; no provider means nothing writes it. */
+export function clearChildMemory(sessionId: string): void {
+    getBlackholeSnapshotApi()?.clearSessionMemory(sessionId);
 }
 
 // One-line session header for a fresh fork-linked child. parentSession is

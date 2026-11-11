@@ -1,7 +1,8 @@
 /**
  * Cross-extension contract for blackhole's snapshot provider.
  *
- * Consumers: `agent/extensions/herdr-subagents/session.ts` (+ legacy `agent/extensions/subagents/src/run.ts`) (parent delegation snapshot).
+ * Consumers: `agent/extensions/herdr-subagents/session.ts` (+ legacy `agent/extensions/subagents/src/run.ts`) (parent delegation snapshot),
+ * and the fresh-session reap (`herdr-app-subagent/session.ts#clearChildMemory`).
  * Provider:  `agent/extensions/blackhole/index.ts` (registered in the factory).
  *
  * Backed by globalThis on purpose: pi's extension loader builds one jiti instance
@@ -20,6 +21,8 @@ export interface BlackholeSnapshotApi {
         maxChars?: number;
     }): string;
     buildOmCompactionSummary(sessionId: string): string;
+    /** Drop the OM store for one session id (main, backup and in-write tmp). */
+    clearSessionMemory(sessionId: string): void;
 }
 
 const KEY = "__pi_blackhole_snapshot_api";
