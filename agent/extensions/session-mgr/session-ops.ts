@@ -20,9 +20,9 @@ import { randomUUID } from "node:crypto";
 import {
     CURRENT_SESSION_VERSION,
     getAgentDir,
+    SessionManager,
     type ExtensionCommandContext,
     type SessionHeader,
-    type SessionInfoEntry,
 } from "@earendil-works/pi-coding-agent";
 import { promptForName, showPicker } from "../shared/picker.ts";
 import { normalizeDir, shortenHome } from "../shared/text-format.ts";
@@ -108,46 +108,20 @@ export async function handleRclone(args: string, ctx: ExtensionCommandContext): 
         return;
     }
 
-    let raw: string;
+    let clone: SessionManager;
     try {
-        raw = readFileSync(sourceFile, "utf8");
+        clone = SessionManager.forkFrom(sourceFile, ctx.cwd);
     } catch {
-        ctx.ui.notify(`Could not read current session file: ${sourceFile}`, "error");
+        ctx.ui.notify("Current session file cannot be cloned — refusing to clone.", "error");
         return;
     }
-    const lines = raw.split("\n");
-    const header = parseSessionHeader(lines[0]);
-    if (!header) {
-        ctx.ui.notify("Current session file has an invalid header — refusing to clone.", "error");
+    const newId = clone.getSessionId();
+    const destFile = clone.getSessionFile();
+    if (!destFile) {
+        ctx.ui.notify("Could not write cloned session file — refusing to clone.", "error");
         return;
     }
-
-    const newId = randomUUID();
-    const now = new Date().toISOString();
-    const cloneHeader = { ...header, id: newId, timestamp: now, parentSession: sourceFile };
-    const nameEntry: SessionInfoEntry = {
-        type: "session_info",
-        id: randomUUID().slice(0, 8),
-        parentId: ctx.sessionManager.getLeafId(),
-        timestamp: now,
-        name,
-    };
-    const bodyLines = lines.slice(1).filter((line) => line.trim().length > 0);
-    const content = [JSON.stringify(cloneHeader), ...bodyLines, JSON.stringify(nameEntry), ""].join(
-        "\n",
-    );
-
-    const destFile = join(ctx.sessionManager.getSessionDir(), `${fileStamp(now)}_${newId}.jsonl`);
-    if (existsSync(destFile)) {
-        ctx.ui.notify("A session file with the new id already exists — try again.", "error");
-        return;
-    }
-    try {
-        writeFileSync(destFile, content, "utf8");
-    } catch {
-        ctx.ui.notify(`Could not write cloned session file: ${destFile}`, "error");
-        return;
-    }
+    clone.appendSessionInfo(name);
     try {
         await ctx.switchSession(destFile, {
             withSession: async (newCtx) => {

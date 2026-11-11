@@ -1,5 +1,5 @@
 ---
-name: optimize-update
+name: pi-optimize-update
 description: Audit the active extensions in ~/.pi/agent/extensions against newer pi releases and propose updates that raise code quality or performance.
 disable-model-invocation: true
 metadata:
