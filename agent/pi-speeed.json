@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "label": "token/s",
+  "workingPrefix": "Working...",
+  "icon": "󱐋",
+  "renderIntervalMs": 250,
+  "speedAnimationMs": 1800,
+  "slidingWindowMs": 1000,
+  "minReliableDurationMs": 1000,
+  "maxDisplayTokS": 500,
+  "useProviderTokens": true,
+  "countStrategy": "estimate"
+}

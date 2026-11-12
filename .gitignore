@@ -8,7 +8,6 @@ agent/models.json
 agent/9router-config.json
 
 # Pi runtime state (created when this repo is used as ~/.pi/agent)
-.pi/
 agent/sessions/
 agent/bin/
 agent/cache/
@@ -48,6 +47,7 @@ TODO.md
 
 # Ignore all directories starting with a dot
 .*/
+!.pi/
 
 # Shared plan scratch (tracked, unlike .plans/ which stays local)
 !.todo/
@@ -66,7 +66,6 @@ tsconfig.devscope.json
 pi-x-ide/
 
 # pi-speeed extension generated data
-agent/pi-speeed.json
 agent/pi-speeed-stats.json
 pi-session-*.html
 
