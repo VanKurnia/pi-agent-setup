@@ -163,4 +163,4 @@ and assert every line's `visibleWidth` equals the box width and that no line con
   `hidden` output modes, `enableNativeUserMessageBox: true`) — cause unknown (modal/preset). Check the
   live config before debugging renderer behavior; it silently changes what you are looking at.
   (historical: there is no `config.json` any more — card sizing is the frozen `TOOL_DISPLAY_CONFIG`
-  in `src/index.ts`.)
+  in `index.ts`.)

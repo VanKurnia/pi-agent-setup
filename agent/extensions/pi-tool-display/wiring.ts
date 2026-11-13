@@ -15,7 +15,7 @@ import {
     RUNNING_TITLE_GLYPH,
     renderBoxedToolCall,
     renderBoxedToolResult,
-} from "./pistyle/shared/index.ts";
+} from "./pistyle-shared.ts";
 import {
     BoxedToolContext,
     renderBoxedToolForCall as renderBoxedDispatchCall,
@@ -34,7 +34,7 @@ import {
     stateElapsedMs,
     isResultSeen,
     getToolsRenderConfig,
-} from "./pistyle/index.ts";
+} from "./pistyle.ts";
 import {
     TOOL_DISPLAY_CONFIG,
     isRecord,
@@ -73,7 +73,7 @@ import {
 
 /**
  * Bridge between this extension and the vendored pi-style boxed renderers
- * (src/pistyle/). It normalizes the extension's config, the theme, and Pi's
+ * (pistyle.ts / pistyle-shared.ts). It normalizes the extension's config, the theme, and Pi's
  * untyped renderer arguments, so the ported renderers keep only the deltas
  * recorded in FORK.md.
  */

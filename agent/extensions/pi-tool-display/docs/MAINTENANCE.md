@@ -22,7 +22,7 @@ smoke script + a manual render pass.
 **pi-tool-display (upstream fork point: `0.5.0`)**
 
 - Only the MCP decoration is still derived from upstream (the `tool-decoration` section of
-  `src/wiring.ts`: tool metadata, the `pi-tool-display.api.v1` global, the `pi.registerTool`
+  `wiring.ts`: tool metadata, the `pi-tool-display.api.v1` global, the `pi.registerTool`
   interceptor). Compare that section against a fresh `npm pack pi-tool-display@<newer>` and
   cherry-pick deliberately; record each delta in `FORK.md`.
 - Never reinstall the npm package: `agent/settings.json` packages and `agent/npm/package.json` must
@@ -40,11 +40,11 @@ smoke script + a manual render pass.
   the bash call expansion, the ANSI-safe line clamp, the git/gh status plumbing, the removed
   quick-edit routes and the lazily built word table. Re-applying only the first two silently reverts
   the rest.
-- The port lands inside `src/pistyle/index.ts` and `src/pistyle/shared/index.ts`; the fork's own
-  bridge sections in `src/wiring.ts` are version-independent and must **not** be regenerated.
-- Keep the port surface to the `features/tools/boxed/*` sections of `src/pistyle/index.ts` and the
+- The port lands inside `pistyle.ts` and `pistyle-shared.ts`; the fork's own
+  bridge sections in `wiring.ts` are version-independent and must **not** be regenerated.
+- Keep the port surface to the `features/tools/boxed/*` sections of `pistyle.ts` and the
   `shared/{ansi,box,elapsed,render-budget,split-diff,theme-extras}` sections of
-  `src/pistyle/shared/index.ts`. Do not start pulling in `pi/`, `app/`, `domain/`,
+  `pistyle-shared.ts`. Do not start pulling in `pi/`, `app/`, `domain/`,
   `features/messages`, `features/editor`, `features/status-line` — those surfaces belong to
   `pi-zentui` in this setup.
 
@@ -62,7 +62,7 @@ smoke script + a manual render pass.
    commands get their cards in either tool, while native PowerShell cmdlets never classify and stay
    in the boxed shell. The `git_*` tool family renders as fallback cards.
 4. **Card sizing is source-only.** There is no config file any more; `TOOL_DISPLAY_CONFIG` in
-   `src/index.ts` is the only knob, and changing it needs a `/reload`.
+   `index.ts` is the only knob, and changing it needs a `/reload`.
 
 ## Do not touch (owned elsewhere)
 
@@ -77,9 +77,9 @@ smoke script + a manual render pass.
 
 ## Reviewer checklist for a change here
 
-1. Does the change stay inside the non-vendored files (`src/index.ts`, `src/wiring.ts`), or is it a
+1. Does the change stay inside the non-vendored files (`index.ts`, `wiring.ts`), or is it a
    documented fork delta in `FORK.md`?
 2. Does it add any per-render I/O, allocation or timer? (It should not.)
 3. Does it use only theme tokens that exist in pi's theme schema **and** `tokyo-night.json`?
 4. Is every deliberate delta from upstream recorded in `FORK.md`?
-5. Does it touch `src/pistyle/**` without a re-port reason? (Vendored code should stay pristine.)
+5. Does it touch `pistyle.ts` / `pistyle-shared.ts` without a re-port reason? (Vendored code should stay pristine.)

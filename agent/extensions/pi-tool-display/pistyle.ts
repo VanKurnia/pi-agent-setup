@@ -41,7 +41,7 @@ import {
     formatToolName,
     formatToolParamLines,
     selectRenderLines,
-} from "./shared/index.ts";
+} from "./pistyle-shared.ts";
 import { Component } from "@earendil-works/pi-tui";
 import { getLanguageFromPath, highlightCode } from "@earendil-works/pi-coding-agent";
 

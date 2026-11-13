@@ -11,14 +11,14 @@ owning the editor, footer, user messages and selector borders.
 | compact (removed) | —           | upstream `pi-tool-display` rows (no box); deleted 2026-09-30            |
 | pi-style cards    | always      | vendored pi-style boxed cards for **every** tool; the only presentation |
 
-A few tools bypass the dispatcher and get fork-owned cards routed from `src/wiring.ts`, next to its
+A few tools bypass the dispatcher and get fork-owned cards routed from `wiring.ts`, next to its
 pi-style bridge: `subagent` (`isSubagentTool`), db-viewer's query tools (`isDbQueryTool`) and the OCR
 tools (`isOcrTool`). A tool that needs its own presentation gets a card route there — one line per
 direction — rather than a passthrough list.
 
-Card sizing is a frozen constant, not a setting: edit `TOOL_DISPLAY_CONFIG` in `src/index.ts` and
+Card sizing is a frozen constant, not a setting: edit `TOOL_DISPLAY_CONFIG` in `index.ts` and
 `/reload`. To disable the extension, toggle it off in `/extensions` (the workspace `ext-mgr` renames
-the manifest entry `src/index.ts` → `src/index.ts.disabled`); renaming it by hand does the same, since
+the manifest entry `index.ts` → `index.ts.disabled`); renaming it by hand does the same, since
 pi's loader then finds nothing to load.
 
 ## Doc map

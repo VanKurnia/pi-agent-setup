@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **2026-11-11 — flat layout, the `src/` level is gone.** `src/index.ts`, `src/wiring.ts`,
+  `src/pistyle/index.ts` and `src/pistyle/shared/index.ts` now sit in the extension root as
+  `index.ts`, `wiring.ts`, `pistyle.ts` and `pistyle-shared.ts`; `package.json` → `pi.extensions`
+  points at `./index.ts`. Every other active extension in this repo is flat, and pi reserves the
+  `src/` layout for a package with runtime dependencies — this fork has none and imports only
+  `node:*` plus host-mapped `@earendil-works/*`. Module contents did not change: the four relative
+  import sites resolve to the same files. `EXTENSION_ROOT` dropped its `".."` step so
+  `PI_TOOL_DISPLAY_DEBUG=1` still logs to `pi-tool-display/debug/debug.log`. Verified with
+  `tsc --noEmit` (exit 0) and `.script/smoke-tool-display.mjs` (13 renderer paths, 0 failed).
+
 - **2026-11-06 — the shell card follows the tool that ran.** `bash` and `powershell` now render the
   same boxed card with their own title and prompt (`Bash` → `$ `, `PowerShell` → `PS> `, continuation
   `> ` / `>> `) instead of aliasing `powershell` into the bash card, so a Windows session no longer

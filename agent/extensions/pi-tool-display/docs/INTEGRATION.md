@@ -96,7 +96,7 @@ The seam that actually covers _every_ tool. Wraps
 - install returns `false` if the methods are missing (pi internals moved) → the extension then relies
   on the registered renderers only; restore happens on reload
 
-Wired in `src/index.ts` right after `registerToolDisplayOverrides(...)`.
+Wired in `index.ts` right after `registerToolDisplayOverrides(...)`.
 
 ## 6. Config flag
 

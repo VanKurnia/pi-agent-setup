@@ -18,10 +18,10 @@
     "write",
     "+codemode"
   ],
-  "lastChangelogVersion": "1.5.0",
+  "lastChangelogVersion": "1.5.2",
   "enableInstallTelemetry": false,
   "treeFilterMode": "user-only",
-  "quietStartup": "header",
+  "quietStartup": false,
   "terminal": {
     "showTerminalProgress": false,
     "images": "iterm2"

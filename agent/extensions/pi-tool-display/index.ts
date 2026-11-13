@@ -260,7 +260,7 @@ export function isMcpToolCandidate(tool: unknown): boolean {
 
 // from: debug-logger.ts
 
-const EXTENSION_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const EXTENSION_ROOT = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DEBUG_DIR = join(EXTENSION_ROOT, "debug");
 const DEFAULT_DEBUG_LOG_FILE = join(DEFAULT_DEBUG_DIR, "debug.log");
 const DEBUG_ENV_VAR = "PI_TOOL_DISPLAY_DEBUG";

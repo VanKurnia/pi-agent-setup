@@ -2,38 +2,38 @@
 
 ## Layout
 
-Four modules, no lazy imports. `package.json`'s `pi.extensions` points at `./src/index.ts`; that file
-imports `./wiring.js`, which imports the two vendored pi-style files.
+Four modules in the extension root, no subdirectories, no lazy imports. `package.json`'s
+`pi.extensions` points at `./index.ts`; that file imports `./wiring.ts`, which imports the two vendored
+pi-style files.
 
 ```
 agent/extensions/pi-tool-display/
-  package.json                 pi extension manifest: pi.extensions = ["./src/index.ts"]
+  package.json                 pi extension manifest: pi.extensions = ["./index.ts"]
+  index.ts                     entry: lifecycle, frozen TOOL_DISPLAY_CONFIG, tool metadata,
+                               debug logger, cleanup registry
+  wiring.ts                    renderer-resolver registration, pi-style bridge, tool/MCP
+                               decoration, thinking labels, user-message box, and the
+                               db-query/OCR/subagent cards
+  pistyle.ts                   vendored pi-style 0.2.11: every boxed renderer + the dispatcher
+  pistyle-shared.ts            vendored pi-style 0.2.11: box, ANSI, diff, render budget,
+                               theme extras
   FORK.md                      changelog of every delta vs upstream 0.5.0
   CHANGELOG.md                 release notes
   docs/                        this documentation
-  src/
-    index.ts                   entry: lifecycle, frozen TOOL_DISPLAY_CONFIG, tool metadata,
-                               debug logger, cleanup registry
-    wiring.ts                  renderer-resolver registration, pi-style bridge, tool/MCP
-                               decoration, thinking labels, user-message box, and the
-                               db-query/OCR/subagent cards
-    pistyle/index.ts           vendored pi-style 0.2.11: every boxed renderer + the dispatcher
-    pistyle/shared/index.ts    vendored pi-style 0.2.11: box, ANSI, diff, render budget,
-                               theme extras
 ```
 
 Inside the merged files, `// from: <module>` markers name the original modules:
 
-| File                          | Sections                                                                                                                                                                                                                          |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/pistyle/index.ts`        | `command-shape`, `output-tree`, `session-config`, `shared`, `gh`, `git`, `bash`, `batch`, `edit`, `fallback`, `find`, `grep`, `ls`, `read`, `write`, `index` (dispatcher)                                                         |
-| `src/pistyle/shared/index.ts` | `ansi`, `elapsed`, `render-budget`, `theme-extras`, `box`, `split-diff`                                                                                                                                                           |
-| `src/wiring.ts`               | `thinking-label`, `tool-decoration`, the six `user-message-box*` sections, `db-query-card`, `ocr-card`, `subagent-card`, plus the two bridge sections that carry the pi-style config/theme mapping and the renderer-patch history |
-| `src/index.ts`                | `ansi-utils`, `types`, `tool-metadata`, `debug-logger`, `disposable`, `index.ts (entry helper)`                                                                                                                                   |
+| File                | Sections                                                                                                                                                                                                                          |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pistyle.ts`        | `command-shape`, `output-tree`, `session-config`, `shared`, `gh`, `git`, `bash`, `batch`, `edit`, `fallback`, `find`, `grep`, `ls`, `read`, `write`, `index` (dispatcher)                                                         |
+| `pistyle-shared.ts` | `ansi`, `elapsed`, `render-budget`, `theme-extras`, `box`, `split-diff`                                                                                                                                                           |
+| `wiring.ts`         | `thinking-label`, `tool-decoration`, the six `user-message-box*` sections, `db-query-card`, `ocr-card`, `subagent-card`, plus the two bridge sections that carry the pi-style config/theme mapping and the renderer-patch history |
+| `index.ts`          | `ansi-utils`, `types`, `tool-metadata`, `debug-logger`, `disposable`, `index.ts (entry helper)`                                                                                                                                   |
 
-`src/pistyle/**` carries the fork deltas listed in `FORK.md`: the six dead declarations removed for
+`pistyle.ts` and `pistyle-shared.ts` carry the fork deltas listed in `FORK.md`: the six dead declarations removed for
 this repo's `noUnusedLocals`, the card background pinned to the tokyo-night base (`#1a1b26`,
-`TOOL_CARD_BG_HEX` / `applyCardBackground` in the `box` section of `shared/index.ts`; the `split-diff`
+`TOOL_CARD_BG_HEX` / `applyCardBackground` in the `box` section of `pistyle-shared.ts`; the `split-diff`
 section blends diff rows from the same base) instead of pi's status-driven fill, the status-colored
 frames and running glyphs, and the git/gh status plumbing. Everything else is pi-style source
 unmodified, and a re-port has to re-apply that list (`MAINTENANCE.md`).
@@ -44,7 +44,7 @@ unmodified, and a re-port has to re-apply that list (`MAINTENANCE.md`).
 pi renders a tool block
         │
         ▼
-pi.registerToolRenderer(resolver)         ← registerPistyleToolRenderer (src/wiring.ts)
+pi.registerToolRenderer(resolver)         ← registerPistyleToolRenderer (wiring.ts)
         │  resolver returns { renderShell: "self", renderCall, renderResult }
         │  both renderers are wrapped by withOutputPad(context.outputPad)
         ▼
@@ -60,7 +60,7 @@ renderPistyleToolCall / renderPistyleToolResult
         └── everything else              → pi-style boxed fallback card
                     │
                     ▼
-        src/pistyle/index.ts  (box frame, title in top border,
+        pistyle.ts  (box frame, title in top border,
                                footer in bottom border, registries)
 ```
 
@@ -70,7 +70,7 @@ There is no second rendering mode: a tool with no dedicated card gets the boxed 
 
 ## subagent card (fork addition)
 
-`subagent` routes to the subagent card in `src/wiring.ts`. Its own renderer (per-agent progress
+`subagent` routes to the subagent card in `wiring.ts`. Its own renderer (per-agent progress
 rows) is bypassed by the resolver, and the fallback card printed only the call args plus the literal
 content string `(running...)` — the whole progress payload in `details.results` was dropped, so a
 running subagent told the user nothing about what it was doing.
@@ -90,14 +90,14 @@ running subagent told the user nothing about what it was doing.
 - Budget: collapsed lines are capped by a card-local `COLLAPSED_RUN_LINES` (24), **not**
   `previewLines` (8) — with the shared preview budget a two-agent run truncated before the output
   section and the card advertised `… more lines omitted` instead of showing the run.
-- A tool that needs its own presentation gets a card route in `src/wiring.ts` (one line per
+- A tool that needs its own presentation gets a card route in `wiring.ts` (one line per
   direction), next to the db-viewer and OCR cards.
 
-Routing lives in `src/wiring.ts` next to the pi-style bridge, for the same re-port reason.
+Routing lives in `wiring.ts` next to the pi-style bridge, for the same re-port reason.
 
 ## db-viewer query card (fork addition)
 
-`query_sqlite` / `query_mysql` (db-viewer) route to the db-query card in `src/wiring.ts` instead of
+`query_sqlite` / `query_mysql` (db-viewer) route to the db-query card in `wiring.ts` instead of
 the fallback card. Two reasons: the fallback _call_ card prints every argument — including the
 credentials inside `connectionString` — and db-viewer's own `renderResult` (a markdown box table) is
 bypassed by the resolver, so the table look would be lost.
@@ -111,8 +111,8 @@ bypassed by the resolver, so the table look would be lost.
   footer instead of the word count. The body is a plain line-builder: the Markdown renders per paint,
   the same cost db-viewer's own renderer pays today.
 
-Routing lives in `src/wiring.ts`, not in the vendored dispatcher registry: a pi-style re-port
-replaces `src/pistyle/index.ts` wholesale, and the bridge section is documented as
+Routing lives in `wiring.ts`, not in the vendored dispatcher registry: a pi-style re-port
+replaces `pistyle.ts` wholesale, and the bridge section is documented as
 re-port-independent (`MAINTENANCE.md`).
 
 ## Expansion
@@ -164,7 +164,7 @@ Decorated means "went through the `pi.registerTool` interceptor", which only see
 after this extension loaded.
 
 One prototype patch does survive — the native user-message box. `patchNativeUserMessagePrototype`
-(in `src/wiring.ts`) rewrites `UserMessageComponent`'s render to draw the fork's border, is gated by
+(in `wiring.ts`) rewrites `UserMessageComponent`'s render to draw the fork's border, is gated by
 `enableNativeUserMessageBox`, and is restored on reload.
 
 ## State and lifecycle
@@ -178,7 +178,7 @@ One prototype patch does survive — the native user-message box. `patchNativeUs
 
 ## Config surface added by this fork
 
-There is no config file and no command any more: `TOOL_DISPLAY_CONFIG` in `src/index.ts` is a frozen
+There is no config file and no command any more: `TOOL_DISPLAY_CONFIG` in `index.ts` is a frozen
 constant (`previewLines: 8`, `expandedPreviewMaxLines: 4000`, `collapseAfterTurn: false`,
 `enableNativeUserMessageBox: true`). `applyPistyleRenderConfig()` pushes it into pi-style once per
 registration:

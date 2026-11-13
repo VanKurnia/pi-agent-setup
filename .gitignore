@@ -65,10 +65,6 @@ tsconfig.devscope.json
 # IDE workspace
 pi-x-ide/
 
-# pi-speeed extension generated data
-agent/pi-speeed-stats.json
-pi-session-*.html
-
 # Agent trust & Obsidian config
 agent/trust.json
 agent/obsidian-config.json
