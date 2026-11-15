@@ -102,16 +102,17 @@ else
 fi
 
 # 9router-config.json
-if [[ ! -f "$PI_ROOT/agent/9router-config.json" ]]; then
-  cat > "$PI_ROOT/agent/9router-config.json" <<'EOF'
+mkdir -p "$PI_ROOT/agent/ext-config"
+if [[ ! -f "$PI_ROOT/agent/ext-config/9router-config.json" ]]; then
+  cat > "$PI_ROOT/agent/ext-config/9router-config.json" <<'EOF'
 {
   "baseUrl": "http://localhost:20128",
   "apiKey": "YOUR_9ROUTER_KEY_HERE"
 }
 EOF
-  ok "Created agent/9router-config.json (edit with your 9router URL/key)"
+  ok "Created agent/ext-config/9router-config.json (edit with your 9router URL/key)"
 else
-  ok "agent/9router-config.json exists"
+  ok "agent/ext-config/9router-config.json exists"
 fi
 
 # auth.json
@@ -148,17 +149,17 @@ else
 fi
 
 # zentui.json
-if [[ ! -f "$PI_ROOT/agent/zentui.json" && -f "$PI_ROOT/zentui.json" ]]; then
-  cp "$PI_ROOT/zentui.json" "$PI_ROOT/agent/zentui.json"
-  ok "Copied zentui.json to agent/"
+if [[ ! -f "$PI_ROOT/agent/ext-config/zentui.json" && -f "$PI_ROOT/zentui.json" ]]; then
+  cp "$PI_ROOT/zentui.json" "$PI_ROOT/agent/ext-config/zentui.json"
+  ok "Copied zentui.json to agent/ext-config/"
 fi
 
 # db-config.json (local machine config - tracked example only)
-if [[ ! -f "$PI_ROOT/agent/db-config.json" && -f "$PI_ROOT/agent/db-config.example.json" ]]; then
-  cp "$PI_ROOT/agent/db-config.example.json" "$PI_ROOT/agent/db-config.json"
-  ok "Created agent/db-config.json from example - edit with your connections"
+if [[ ! -f "$PI_ROOT/agent/ext-config/db-config.json" && -f "$PI_ROOT/agent/ext-config/db-config.example.json" ]]; then
+  cp "$PI_ROOT/agent/ext-config/db-config.example.json" "$PI_ROOT/agent/ext-config/db-config.json"
+  ok "Created agent/ext-config/db-config.json from example - edit with your connections"
 else
-  ok "agent/db-config.json exists"
+  ok "agent/ext-config/db-config.json exists"
 fi
 
 # Post-install patches — shared helpers, non-fatal, must run after every install
@@ -189,7 +190,7 @@ say "Install complete!"
 echo
 echo "Next steps:"
 echo "  1. Edit $PI_ROOT/.env with your API keys"
-echo "  2. Edit $PI_ROOT/agent/9router-config.json if using remote 9router"
+echo "  2. Edit $PI_ROOT/agent/ext-config/9router-config.json if using remote 9router"
 echo "  3. Start 9router (if local): 9router"
 echo "  4. Run: pi"
 echo

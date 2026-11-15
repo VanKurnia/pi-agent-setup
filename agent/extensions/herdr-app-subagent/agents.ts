@@ -193,7 +193,7 @@ function sanitizeSettings(raw: unknown): SubagentsSettings {
 }
 
 export function settingsPath(agentDir: string): string {
-    return path.join(agentDir, "subagents.json");
+    return path.join(agentDir, "ext-config", "subagents.json");
 }
 
 // A missing or malformed file yields {}; callers fall back to agent defaults.

@@ -1,8 +1,8 @@
 /** Shared database configuration reader and markdown table formatter. */
 
 import { readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { resolve } from "node:path";
+import { ensureExtConfigDir, extConfigPath } from "./ext-config.ts";
 import { normalizeDir } from "./text-format.ts";
 
 export interface DbConnection {
@@ -22,7 +22,7 @@ export type DbRow = Record<string, unknown>;
 let _cachedConfig: { config: DbConfig | null; mtimeMs: number } | null = null;
 
 export function readDbConfig(): DbConfig | null {
-    const configPath = join(getAgentDir(), "db-config.json");
+    const configPath = extConfigPath("db-config.json");
     let mtimeMs: number;
     try {
         mtimeMs = statSync(configPath).mtimeMs;
@@ -48,7 +48,8 @@ export function readDbConfig(): DbConfig | null {
  * Single-user local write: no file-locking by design.
  */
 export function writeDbConfig(config: DbConfig): void {
-    const configPath = join(getAgentDir(), "db-config.json");
+    ensureExtConfigDir();
+    const configPath = extConfigPath("db-config.json");
     writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
     _cachedConfig = null;
 }

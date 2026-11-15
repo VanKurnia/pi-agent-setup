@@ -23,6 +23,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { ensureExtConfigDir, extConfigPath } from "../shared/ext-config.ts";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { showPicker } from "../shared/picker.ts";
 import { normalizeDir, shortenHome } from "../shared/text-format.ts";
@@ -51,7 +52,7 @@ const DEFAULT_SETTINGS: Required<CleanupSettings> = {
 };
 
 function getSettingsPath(): string {
-    return join(getAgentDir(), SETTINGS_FILE_NAME);
+    return extConfigPath(SETTINGS_FILE_NAME);
 }
 
 const MAX_THRESHOLD_DAYS = 3650;
@@ -94,10 +95,7 @@ export function loadCleanupSettings(): Required<CleanupSettings> {
 export function saveCleanupSettings(settings: Required<CleanupSettings>): void {
     try {
         const settingsPath = getSettingsPath();
-        const dir = dirname(settingsPath);
-        if (!existsSync(dir)) {
-            mkdirSync(dir, { recursive: true });
-        }
+        ensureExtConfigDir();
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
     } catch (error) {
         console.error("Failed to save session-mgr settings:", error);

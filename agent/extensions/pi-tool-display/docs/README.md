@@ -36,5 +36,5 @@ pi's loader then finds nothing to load.
     - `cd ~/.pi && npx tsc --noEmit` → 4 errors, all in `agent/extensions/skills-hint.ts`; **zero** errors mentioning `pi-tool-display`.
     - `npx vp lint agent/extensions/pi-tool-display/` → exit 0.
     - `npx vp fmt --check agent/extensions/pi-tool-display/` → exit 0.
-3. Never touch `agent/zentui.json`, `agent/settings.json` packages, or `agent/npm/*` as part of this
+3. Never touch `agent/ext-config/zentui.json`, `agent/settings.json` packages, or `agent/npm/*` as part of this
    extension's work (see the do-not-touch list in `MAINTENANCE.md`).

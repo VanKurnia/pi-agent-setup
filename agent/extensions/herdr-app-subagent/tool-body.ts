@@ -169,7 +169,7 @@ export async function runSubagentTool(
             `Unsafe agent name: ${agent.name}. Agent names must match [A-Za-z0-9._-].`,
         );
     }
-    // Model/thinking follow agent/subagents.json (read-only sharing with
+    // Model/thinking follow agent/ext-config/subagents.json (read-only sharing with
     // the old backend); continued sessions adopt the current config.
     const { modelFlag, thinkingFlag } = resolveAgentFlags(
         agent,

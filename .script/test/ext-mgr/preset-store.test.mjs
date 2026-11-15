@@ -42,7 +42,7 @@ try {
     assert.deepEqual(snap.extensions, { "project/x/index.ts": "enabled" });
     assert.equal(snap.cwd, cwd);
     await m.writePresetFile({ version: 1, presets: { work: snap } });
-    assert.equal(existsSync(join(dir, "ext-presets.json")), true, "preset file in temp dir");
+    assert.equal(existsSync(join(dir, "ext-config", "ext-presets.json")), true, "preset file in temp dir");
     const reread = await m.readPresetFile();
     assert.deepEqual(reread.presets.work.plugins, [{ source: "npm:foo", autoload: false }]);
     console.log("ok - round-trip verbatim");
@@ -68,7 +68,7 @@ try {
     assert.ok(foreign.skippedExt.includes("project/x/index.ts"));
     console.log("ok - apply plan");
 
-    await writeFile(join(dir, "ext-presets.json"), "{nope", "utf8");
+    await writeFile(join(dir, "ext-config", "ext-presets.json"), "{nope", "utf8");
     assert.deepEqual(await m.readPresetFile(), { version: 1, presets: {} });
     console.log("ok - corrupt reads empty");
 } finally {

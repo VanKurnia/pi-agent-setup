@@ -16,6 +16,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { SelectItem } from "@earendil-works/pi-tui";
 import { promptForName, showPicker } from "../shared/picker.ts";
+import { ensureExtConfigDir, extConfigPath } from "../shared/ext-config.ts";
 
 // =============================================================================
 // Constants & Types
@@ -628,7 +629,7 @@ interface PresetFile {
 }
 
 export function presetStorePath(): string {
-    return join(getAgentDir(), "ext-presets.json");
+    return extConfigPath("ext-presets.json");
 }
 
 export async function readPresetFile(): Promise<PresetFile> {
@@ -653,6 +654,7 @@ export async function readPresetFile(): Promise<PresetFile> {
 }
 
 export async function writePresetFile(data: PresetFile): Promise<void> {
+    ensureExtConfigDir();
     await atomicWriteJson(presetStorePath(), { version: 1, presets: data.presets }, ".ext-presets");
 }
 

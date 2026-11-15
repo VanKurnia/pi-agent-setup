@@ -5,7 +5,7 @@ auth.json
 .env.*
 !.env.example
 agent/models.json
-agent/9router-config.json
+agent/ext-config/9router-config.json
 
 # Pi runtime state (created when this repo is used as ~/.pi/agent)
 agent/sessions/
@@ -13,8 +13,7 @@ agent/bin/
 agent/cache/
 agent/install/
 agent/auth.json
-agent/pi-blackhole/*
-!agent/pi-blackhole/pi-blackhole-config.json
+agent/pi-blackhole/
 agent/fff/
 agent/thinking-fold.json
 git/
@@ -65,10 +64,9 @@ tsconfig.devscope.json
 # IDE workspace
 pi-x-ide/
 
-# Agent trust & Obsidian config
+# Agent trust & extension config
 agent/trust.json
-agent/obsidian-config.json
-agent/subagents.json
+agent/ext-config/subagents.json
 
 # Boot audit runtime data
 agent/boot-audit.json
@@ -83,9 +81,9 @@ agent/extensions/rtk.ts
 agent/extensions/browser-tools/declarations.d.ts
 agent/models-store.json
 /.pi/todos/
-# Local machine database config (tracked example: agent/db-config.example.json)
-agent/db-config.json
+# Local machine database config (tracked example: agent/ext-config/db-config.example.json)
+agent/ext-config/db-config.json
 # Husky user hooks are tracked (.husky/_ internals stay ignored)
 !.husky/
 .husky/_/
-agent/session-mgr-settings.json
+agent/ext-config/session-mgr-settings.json

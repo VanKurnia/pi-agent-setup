@@ -134,11 +134,13 @@ test("cleanup keeps the config and the stores of a live session", () => {
     cleanupFiles();
     writeSessionFile(LIVE_SESSION);
     writePendingState(LIVE_SESSION, stateA);
+    mkdirSync(join(agentDir, "ext-config"), { recursive: true });
     writeFileSync(configPath, "{}", "utf8");
 
     cleanupOrphanedPendingFiles();
     assert.equal(existsSync(livePath), true, "live session store must survive cleanup");
     assert.equal(existsSync(configPath), true, "config file must survive cleanup");
+    assert.equal(existsSync(join(agentDir, "pi-blackhole", "pi-blackhole-config.json")), false);
 });
 
 test("cleanup keeps the stores of a session that is still starting", () => {

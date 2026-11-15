@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { ensureExtConfigDir, extConfigPath } from "../shared/ext-config.ts";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 
 export interface ConfiguredModel {
@@ -62,7 +63,7 @@ export function getBlackholeDataDir(): string {
 }
 
 export function getBlackholeConfigPath(): string {
-    return join(getBlackholeDataDir(), "pi-blackhole-config.json");
+    return extConfigPath("pi-blackhole-config.json");
 }
 
 export function loadBlackholeConfig(): BlackholeConfig {
@@ -97,7 +98,7 @@ export function setBlackholeConfigValue(key: keyof BlackholeConfig, value: unkno
     try {
         if (value === undefined) delete raw[key];
         else raw[key] = value;
-        mkdirSync(dirname(configPath), { recursive: true });
+        ensureExtConfigDir();
         writeFileSync(configPath, JSON.stringify(raw, null, 2), "utf8");
         return true;
     } catch {

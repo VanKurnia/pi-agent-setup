@@ -19,10 +19,10 @@ assert.equal(
     "PI_CODING_AGENT_DIR ignored; refusing to write anywhere else",
 );
 
-const CONFIG = join(agentDir, "pi-blackhole", "pi-blackhole-config.json");
+const CONFIG = join(agentDir, "ext-config", "pi-blackhole-config.json");
 const readConfig = () => JSON.parse(readFileSync(CONFIG, "utf8"));
 const writeConfig = (value) => {
-    mkdirSync(join(agentDir, "pi-blackhole"), { recursive: true });
+    mkdirSync(join(agentDir, "ext-config"), { recursive: true });
     writeFileSync(CONFIG, JSON.stringify(value, null, 2), "utf8");
 };
 

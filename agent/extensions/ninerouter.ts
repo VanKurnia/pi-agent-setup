@@ -23,11 +23,9 @@
  * wins, so the tools keep working even when route discovery fails.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { extConfigPath } from "./shared/ext-config.ts";
 import { truncateChars } from "./shared/text-format.ts";
 
 // ---------------------------------------------------------------------------
@@ -68,21 +66,12 @@ let _cachedConfigPath: string | null = null;
 let _cachedConfigMtimeMs = -1;
 
 function loadConfigFile(): Partial<Record<string, unknown>> {
-    const candidates = [join(getAgentDir(), "9router-config.json")];
-    // Literal pre-getAgentDir location, still read when the agent dir is
-    // overridden (PI_CODING_AGENT_DIR) or the config dir is rebranded.
-    const legacy = join(homedir(), ".pi", "agent", "9router-config.json");
-    if (!candidates.includes(legacy)) candidates.push(legacy);
+    const configPath = extConfigPath("9router-config.json");
     let found: string | null = null;
-    for (const path of candidates) {
-        try {
-            if (existsSync(path)) {
-                found = path;
-                break;
-            }
-        } catch {
-            continue;
-        }
+    try {
+        if (existsSync(configPath)) found = configPath;
+    } catch {
+        // fall through to env/defaults
     }
     if (!found) {
         _cachedConfigFile = {};

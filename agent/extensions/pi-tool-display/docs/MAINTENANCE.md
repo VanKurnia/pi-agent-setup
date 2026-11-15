@@ -66,11 +66,11 @@ smoke script + a manual render pass.
 
 ## Do not touch (owned elsewhere)
 
-- `agent/zentui.json` — zentui owns the editor, footer, user messages and selector borders. The whole
+- `agent/ext-config/zentui.json` — zentui owns the editor, footer, user messages and selector borders. The whole
   point of this fork is that pi-style's tool cards do not disturb it.
 - `agent/themes/**`, `agent/settings.json` (packages/theme), `agent/npm/**` — not part of this
   extension's work.
-- `agent/db-config.json`, `agent/auth.json`, `.env*`, `agent/models.json`, `agent/9router-config.json`
+- `agent/ext-config/db-config.json`, `agent/auth.json`, `.env*`, `agent/models.json`, `agent/ext-config/9router-config.json`
   — secrets/config; never read values into logs or docs.
 - Other extensions' directories (`filechanges`, `bash-guard`, …) — the 4 `tsc` errors in
   `agent/extensions/skills-hint.ts` are a known, out-of-scope baseline.

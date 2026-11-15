@@ -3,19 +3,14 @@
  * Merged to cut boot cost: jiti pays ~19ms per module regardless of size.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import {
-    ExtensionContext,
-    ThemeColor,
-    ExtensionAPI,
-    getAgentDir,
-} from "@earendil-works/pi-coding-agent";
+import { ExtensionContext, ThemeColor, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { ensureExtConfigDir, extConfigPath } from "../shared/ext-config.ts";
 
 // ============================================================
 // from: ..\..\pi-speeed\src\config.ts
 // ============================================================
 
-export const CONFIG_PATH = join(getAgentDir(), "pi-speeed.json");
+export const CONFIG_PATH = extConfigPath("pi-speeed.json");
 export type CountStrategy = "estimate" | "direct";
 export type Config = {
     enabled: boolean;
@@ -95,6 +90,7 @@ export function loadConfig(): Config {
     }
 }
 export function saveConfig(config: Config) {
+    ensureExtConfigDir();
     writeFileSync(CONFIG_PATH, `${JSON.stringify(normalizeConfig(config), null, 2)}\n`);
 }
 

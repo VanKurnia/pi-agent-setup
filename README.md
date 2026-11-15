@@ -263,7 +263,7 @@ Pi auto-detects Git Bash. Only set a custom path for non-standard installations:
 
 ### Subagent Models
 
-Configure per-agent models via `/herdr-subagent:settings` inside pi. Settings are stored in `agent/subagents.json`:
+Configure per-agent models via `/herdr-subagent:settings` inside pi. Settings are stored in `agent/ext-config/subagents.json`:
 
 ```json
 {

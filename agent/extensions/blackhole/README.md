@@ -31,7 +31,7 @@ unreadable.
 
 ## Configuration
 
-`agent/pi-blackhole/pi-blackhole-config.json` (2-space JSON) overrides `DEFAULT_CONFIG` in
+`agent/ext-config/pi-blackhole-config.json` (2-space JSON) overrides `DEFAULT_CONFIG` in
 `config.ts`. Every key below is read by code; unknown keys in the file are ignored.
 
 | Key                                                                 | Default       | Effect                                                                   |
@@ -139,6 +139,6 @@ node .script/test/subagent/snapshot.test.mjs        # cross-extension snapshot s
 node .script/test/subagent/recall.test.mjs          # recall contract pins
 ```
 
-Note: `agent/pi-blackhole/pi-blackhole-config.json` is 2-space while the repo Prettier config uses
+Note: `agent/ext-config/pi-blackhole-config.json` is 2-space while the repo Prettier config uses
 `tabWidth: 4`; `prettier --check` on that file fails for pre-existing reasons and it is intentionally
 left unformatted.

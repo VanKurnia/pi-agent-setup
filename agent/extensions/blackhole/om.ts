@@ -22,7 +22,6 @@ import {
     type MessageRenderer,
 } from "@earendil-works/pi-coding-agent";
 import {
-    getBlackholeConfigPath,
     getBlackholeDataDir,
     isModelTarget,
     loadBlackholeConfig,
@@ -821,14 +820,13 @@ export function cleanupOrphanedPendingFiles(keepSessionId?: string): {
         }
     }
 
-    const configPath = getBlackholeConfigPath();
     let removed = 0;
     let preserved = 0;
 
     for (const file of readdirSync(dataDir)) {
         if (!file.endsWith(".json") && !file.endsWith(".json.tmp")) continue;
         const fullPath = join(dataDir, file);
-        if (fullPath === configPath || activeSessionIds.has(sessionIdFromStoreFilename(file))) {
+        if (activeSessionIds.has(sessionIdFromStoreFilename(file))) {
             preserved++;
             continue;
         }

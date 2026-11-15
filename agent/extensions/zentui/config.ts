@@ -3,8 +3,7 @@ import { randomUUID } from "node:crypto";
 import { stripVTControlCharacters } from "node:util";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { ensureExtConfigDir, extConfigPath } from "../shared/ext-config.ts";
 
 type ThemeLike = {
     fg(color: string, text: string): string;
@@ -1483,7 +1482,7 @@ export const FOOTER_FORMAT_ALIASES: Record<string, string> = {
     separator: "sep",
 };
 
-export const configPath = join(getAgentDir(), "zentui.json");
+export const configPath = extConfigPath("zentui.json");
 
 const defaultFooterSegments: FooterSegmentsConfig = {
     cwd: true,
@@ -1622,6 +1621,7 @@ export function loadConfig(): PolishedTuiConfig {
 export function ensureConfigExists(): void {
     if (existsSync(configPath)) return;
     try {
+        ensureExtConfigDir();
         writeFileSync(configPath, `${JSON.stringify(defaultConfig, null, 2)}\n`, "utf8");
     } catch {
         // A read-only agent directory keeps the in-memory defaults.

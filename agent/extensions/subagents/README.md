@@ -2,7 +2,7 @@
 
 A pi extension that registers a single `subagent` tool with two agents:
 
-`~/.pi/agent/subagents.json` is the single source of truth for per-agent model and thinking level — edit it via `/subagents:settings`. If the file is missing, the first `subagent` invocation creates it, seeded with the active session model. Agent `.md` frontmatter may declare a fallback `model:`; once `subagents.json` has an entry for an agent, that entry wins (the file is seeded with the active session model on first use).
+`~/.pi/agent/ext-config/subagents.json` is the single source of truth for per-agent model and thinking level — edit it via `/subagents:settings`. If the file is missing, the first `subagent` invocation creates it, seeded with the active session model. Agent `.md` frontmatter may declare a fallback `model:`; once `subagents.json` has an entry for an agent, that entry wins (the file is seeded with the active session model on first use).
 
 | Agent      | Tools                                                                                                                             | Model                     | Purpose                                        |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ---------------------------------------------- |
@@ -36,7 +36,7 @@ The tool also supports `chain` (sequential steps with `{previous}` substitution)
 
 ## Config
 
-`~/.pi/agent/subagents.json` (created on first use, editable via `/subagents:settings`):
+`~/.pi/agent/ext-config/subagents.json` (created on first use, editable via `/subagents:settings`):
 
 ```json
 {
