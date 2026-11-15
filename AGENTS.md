@@ -27,6 +27,7 @@
 10. Lintas extension: `import type` saja; runtime lewat `agent/extensions/shared/` atau API global-backed (loader beri instance modul per-extension); jangan import runtime dari ext ter-disable.
 11. Gate I/O mahal di call time, bukan boot (contoh `herdrProtocolProblem()` → pesan upgrade, bukan unknown-method). Aksi advisory (toast, pane tail, rename) wajib `try/catch`.
 12. Klaim hemat boot tanpa angka = dilarang; ukur dengan `.script/bench-extensions.mjs`.
+13. Config JSON extension tinggal di `agent/ext-config/`, diakses via `extConfigPath()` dan writer wajib `ensureExtConfigDir()`; data runtime tetap di direktori extension sendiri, root `agent/` khusus file milik pi.
 
 ## Git Rules
 1. Jangan pernah push atau lakukan operasi git apapun kecuali diminta atau atas izin eksplisit dari user.
