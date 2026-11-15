@@ -261,6 +261,36 @@ Pi auto-detects Git Bash. Only set a custom path for non-standard installations:
 }
 ```
 
+### Extension config
+
+Every config file an extension owns lives in `agent/ext-config/`. `agent/settings.json`,
+`agent/auth.json`, `agent/models.json` and `agent/trust.json` stay in `agent/` because pi
+owns them.
+
+| File | Owner |
+|---|---|
+| `zentui.json` | zentui — editor, footer, user messages, selector borders |
+| `pi-speeed.json` | pi-speeed — tok/s working line |
+| `pi-blackhole-config.json` | blackhole — compaction and worker models |
+| `subagents.json` | herdr-app-subagent — per-agent model and thinking level |
+| `ext-presets.json` | ext-mgr — saved extension/plugin presets |
+| `db-config.json` | db-viewer — database connections |
+| `session-mgr-settings.json` | session-mgr — session cleanup threshold |
+| `9router-config.json` | ninerouter — route and API key, created on demand |
+
+**Coming from an older checkout**, where these sat in `agent/` (blackhole's config in
+`agent/pi-blackhole/`): `install.sh` and `update.sh` migrate them for you. After a manual
+`git pull`, run the same step yourself:
+
+```bash
+node .script/migrate-ext-config.mjs ~/.pi
+```
+
+It moves a file only when the destination is missing, never overwrites, and leaves both
+copies in place with a warning when they collide — compare them and delete the old one
+yourself. Nothing reads the old paths any more, so a file left behind is silently ignored
+rather than reported.
+
 ### Subagent Models
 
 Configure per-agent models via `/herdr-subagent:settings` inside pi. Settings are stored in `agent/ext-config/subagents.json`:

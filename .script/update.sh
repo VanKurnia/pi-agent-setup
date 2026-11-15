@@ -119,6 +119,16 @@ if [[ -n "$(ls -A "$PRESERVE" 2>/dev/null)" ]]; then
 fi
 rm -rf "$PRESERVE"
 
+# ── 4b. Migrate extension configs restored at their pre-ext-config paths ──
+# Step 1 staged git-ignored user data, which lands back at the old layout; the extensions
+# only read agent/ext-config/ now. Non-fatal: a missing script must not undo the update.
+if [[ -f "$PI_DIR/.script/migrate-ext-config.mjs" ]]; then
+  node "$PI_DIR/.script/migrate-ext-config.mjs" "$PI_DIR" \
+    || warn "ext-config migration failed (non-fatal — run .script/migrate-ext-config.mjs manually)"
+else
+  warn ".script/migrate-ext-config.mjs missing in fresh clone (skipped)"
+fi
+
 # ── 5. Sync settings.json packages from agent/npm/package.json ──
 SETTINGS="$PI_DIR/agent/settings.json"
 NPM_PKG_JSON="$PI_DIR/agent/npm/package.json"

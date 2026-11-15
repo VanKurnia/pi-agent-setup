@@ -68,6 +68,16 @@ elif [[ -d "$PI_ROOT/extensions" && -d "$PI_ROOT/agent/extensions" && -n "$(ls -
   warn "If you have custom extensions in extensions/, move them manually."
 fi
 
+# ── Migration: extension JSON configs to agent/ext-config/ ────
+# Older checkouts kept these in the agent dir root, and blackhole's config inside its
+# runtime store. The script moves a file only when the destination is missing, so it is
+# safe to run on every install.
+if [[ -f "$PI_ROOT/.script/migrate-ext-config.mjs" ]]; then
+  node "$PI_ROOT/.script/migrate-ext-config.mjs" "$PI_ROOT"
+else
+  warn ".script/migrate-ext-config.mjs missing (skipped)"
+fi
+
 # Install every project dir (npm ci where locked, npm install elsewhere).
 # Disabled extensions are skipped — run .script/npm-ci-all.sh after enabling one.
 # Non-fatal: config bootstrap below must run even if one manifest fails.
