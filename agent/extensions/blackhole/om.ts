@@ -802,16 +802,20 @@ export function cleanupOrphanedPendingFiles(keepSessionId?: string): {
             const current = stack.pop()!;
             try {
                 for (const entry of readdirSync(current, { withFileTypes: true })) {
+                    // Retired transcripts live in dot-directories (session-mgr's trash), so
+                    // nothing under one can keep a store alive.
+                    if (entry.name.startsWith(".")) continue;
                     const fullPath = join(current, entry.name);
                     if (entry.isDirectory()) {
                         stack.push(fullPath);
-                    } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
-                        try {
-                            const sessionId = readSessionId(fullPath);
-                            if (sessionId) activeSessionIds.add(sessionId);
-                        } catch {
-                            // Unreadable/corrupted session file — skip
-                        }
+                        continue;
+                    }
+                    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+                    try {
+                        const sessionId = readSessionId(fullPath);
+                        if (sessionId) activeSessionIds.add(sessionId);
+                    } catch {
+                        // Unreadable/corrupted session file — skip
                     }
                 }
             } catch {

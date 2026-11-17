@@ -33,6 +33,8 @@ const unrelatedPath = `${mainPath.replace(/-pending\.json$/, "")}-other.json`;
 const LIVE_SESSION = `pending-live-${Math.random().toString(16).slice(2, 10)}`;
 const livePath = getPendingFilePath(LIVE_SESSION);
 const STARTING_SESSION = `pending-start-${Math.random().toString(16).slice(2, 10)}`;
+const TRASHED_SESSION = `pending-trashed-${Math.random().toString(16).slice(2, 10)}`;
+const trashedPath = getPendingFilePath(TRASHED_SESSION);
 const configPath = getBlackholeConfigPath();
 
 const stateA = {
@@ -48,17 +50,17 @@ const stateB = {
 };
 
 const cleanupFiles = () => {
-    for (const p of [mainPath, backupPath, tmpPath, unrelatedPath, livePath]) {
+    for (const p of [mainPath, backupPath, tmpPath, unrelatedPath, livePath, trashedPath]) {
         rmSync(p, { force: true });
     }
 };
 
 /** A session file declaring `id`, as the prune scan reads them (header line). */
-const writeSessionFile = (id) => {
-    const sessionsDir = join(agentDir, "sessions", "proj");
-    mkdirSync(sessionsDir, { recursive: true });
+const writeSessionFile = (id, subdir = "proj") => {
+    const dir = join(agentDir, "sessions", subdir);
+    mkdirSync(dir, { recursive: true });
     writeFileSync(
-        join(sessionsDir, `${id}.jsonl`),
+        join(dir, `${id}.jsonl`),
         `${JSON.stringify({ type: "session", version: 3, id })}\n`,
         "utf8",
     );
@@ -153,6 +155,15 @@ test("cleanup keeps the stores of a session that is still starting", () => {
 
     cleanupOrphanedPendingFiles();
     assert.equal(existsSync(startingPath), false, "orphan must be reaped once unkept");
+});
+
+test("cleanup reaps the store of a session whose transcript sits in the trash graveyard", () => {
+    cleanupFiles();
+    writeSessionFile(TRASHED_SESSION, join(".trash", "proj"));
+    writePendingState(TRASHED_SESSION, stateA);
+
+    cleanupOrphanedPendingFiles();
+    assert.equal(existsSync(trashedPath), false, "trashed session store must be reaped");
 });
 
 await runCases(cases, `\nblackhole pending-state durability (ROOT=${ROOT})`);
