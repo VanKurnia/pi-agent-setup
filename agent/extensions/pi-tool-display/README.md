@@ -30,12 +30,12 @@ The module graph is deliberately **flat** — four files in the extension root, 
 costs roughly **19 ms per module** regardless of size, so splitting 500 KB of code across 50 files
 cost more than the code itself. The merges below traded file count for bytes; the bytes are the same.
 
-| File                | KB  | Contents                                                                                                                                    |
-| ------------------- | --- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pistyle.ts`        | 257 | every boxed tool renderer (read/write/edit/find/grep/ls/bash/powershell/git/gh/batch/fallback) and the dispatcher                           |
-| `pistyle-shared.ts` | 112 | box drawing, ANSI, diff, render budget, theme extras                                                                                        |
-| `wiring.ts`         | 93  | renderer resolver registration, the pi-style bridge, MCP decoration, thinking labels, user-message box, and the db-query/OCR/subagent cards |
-| `index.ts`          | 13  | the extension entry point: lifecycle, `TOOL_DISPLAY_CONFIG`, tool metadata, debug logger, cleanup registry                                  |
+| File                | KB  | Contents                                                                                                                  |
+| ------------------- | --- | ------------------------------------------------------------------------------------------------------------------------- |
+| `pistyle.ts`        | 257 | every boxed tool renderer (read/write/edit/find/grep/ls/bash/powershell/git/gh/batch/fallback) and the dispatcher         |
+| `pistyle-shared.ts` | 112 | box drawing, ANSI, diff, render budget, theme extras                                                                      |
+| `wiring.ts`         | 73  | renderer resolver registration, the pi-style bridge, MCP decoration, thinking labels, and the db-query/OCR/subagent cards |
+| `index.ts`          | 10  | the extension entry point: lifecycle, `TOOL_DISPLAY_CONFIG`, tool metadata, debug logger, cleanup registry                |
 
 Nothing is loaded lazily.
 

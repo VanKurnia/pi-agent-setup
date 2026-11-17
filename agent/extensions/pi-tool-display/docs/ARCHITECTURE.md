@@ -12,8 +12,7 @@ agent/extensions/pi-tool-display/
   index.ts                     entry: lifecycle, frozen TOOL_DISPLAY_CONFIG, tool metadata,
                                debug logger, cleanup registry
   wiring.ts                    renderer-resolver registration, pi-style bridge, tool/MCP
-                               decoration, thinking labels, user-message box, and the
-                               db-query/OCR/subagent cards
+                               decoration, thinking labels, and the db-query/OCR/subagent cards
   pistyle.ts                   vendored pi-style 0.2.11: every boxed renderer + the dispatcher
   pistyle-shared.ts            vendored pi-style 0.2.11: box, ANSI, diff, render budget,
                                theme extras
@@ -24,12 +23,12 @@ agent/extensions/pi-tool-display/
 
 Inside the merged files, `// from: <module>` markers name the original modules:
 
-| File                | Sections                                                                                                                                                                                                                          |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pistyle.ts`        | `command-shape`, `output-tree`, `session-config`, `shared`, `gh`, `git`, `bash`, `batch`, `edit`, `fallback`, `find`, `grep`, `ls`, `read`, `write`, `index` (dispatcher)                                                         |
-| `pistyle-shared.ts` | `ansi`, `elapsed`, `render-budget`, `theme-extras`, `box`, `split-diff`                                                                                                                                                           |
-| `wiring.ts`         | `thinking-label`, `tool-decoration`, the six `user-message-box*` sections, `db-query-card`, `ocr-card`, `subagent-card`, plus the two bridge sections that carry the pi-style config/theme mapping and the renderer-patch history |
-| `index.ts`          | `ansi-utils`, `types`, `tool-metadata`, `debug-logger`, `disposable`, `index.ts (entry helper)`                                                                                                                                   |
+| File                | Sections                                                                                                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pistyle.ts`        | `command-shape`, `output-tree`, `session-config`, `shared`, `gh`, `git`, `bash`, `batch`, `edit`, `fallback`, `find`, `grep`, `ls`, `read`, `write`, `index` (dispatcher)                   |
+| `pistyle-shared.ts` | `ansi`, `elapsed`, `render-budget`, `theme-extras`, `box`, `split-diff`                                                                                                                     |
+| `wiring.ts`         | `thinking-label`, `tool-decoration`, `db-query-card`, `ocr-card`, `subagent-card`, plus the two bridge sections that carry the pi-style config/theme mapping and the renderer-patch history |
+| `index.ts`          | `ansi-utils`, `types`, `tool-metadata`, `debug-logger`, `disposable`, `index.ts (entry helper)`                                                                                             |
 
 `pistyle.ts` and `pistyle-shared.ts` carry the fork deltas listed in `FORK.md`: the six dead declarations removed for
 this repo's `noUnusedLocals`, the card background pinned to the tokyo-night base (`#1a1b26`,
@@ -163,9 +162,9 @@ tool already carries through the boxed path, so decorated and undecorated tools 
 Decorated means "went through the `pi.registerTool` interceptor", which only sees tools registered
 after this extension loaded.
 
-One prototype patch does survive — the native user-message box. `patchNativeUserMessagePrototype`
-(in `wiring.ts`) rewrites `UserMessageComponent`'s render to draw the fork's border, is gated by
-`enableNativeUserMessageBox`, and is restored on reload.
+No prototype patch remains. The native user-message box was deleted on 2026-11-17: zentui owns the
+user prompt (`components.userMessages` in `agent/ext-config/zentui.json`), and every tool renderer
+here goes through `pi.registerToolRenderer`.
 
 ## State and lifecycle
 
@@ -179,8 +178,8 @@ One prototype patch does survive — the native user-message box. `patchNativeUs
 ## Config surface added by this fork
 
 There is no config file and no command any more: `TOOL_DISPLAY_CONFIG` in `index.ts` is a frozen
-constant (`previewLines: 8`, `expandedPreviewMaxLines: 4000`, `collapseAfterTurn: false`,
-`enableNativeUserMessageBox: true`). `applyPistyleRenderConfig()` pushes it into pi-style once per
+constant (`previewLines: 8`, `expandedPreviewMaxLines: 4000`, `collapseAfterTurn: false`).
+`applyPistyleRenderConfig()` pushes it into pi-style once per
 registration:
 
 | pi-style field                | source                                        |

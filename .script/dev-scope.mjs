@@ -27,6 +27,8 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const OUTPUT = join(REPO_ROOT, "tsconfig.devscope.json");
 const DISABLED_SUFFIX = ".disabled";
 const ROOTS = ["agent/extensions", ".pi/extensions"];
+/** Trees that are never loaded, whatever their entry file is called. */
+const OFF_ROOTS = ["agent/archived-ext"];
 const FALLBACK_ENTRIES = ["index.ts", "index.js"];
 /** Always-excluded build/vendor trees; see the extends note above. */
 const BASE_EXCLUDES = ["**/node_modules", "**/dist", "**/build"];
@@ -72,7 +74,11 @@ const disabled = ROOTS.flatMap((root) => {
         .filter(Boolean);
 }).sort();
 
-const contents = `${JSON.stringify({ exclude: [...BASE_EXCLUDES, ...disabled] }, null, 2)}\n`;
+const contents = `${JSON.stringify(
+    { exclude: [...BASE_EXCLUDES, ...OFF_ROOTS.map((root) => `${root}/**`), ...disabled] },
+    null,
+    2,
+)}\n`;
 
 // Write only on change, so a steady scope never invalidates tool caches.
 const current = existsSync(OUTPUT) ? readFileSync(OUTPUT, "utf8") : null;

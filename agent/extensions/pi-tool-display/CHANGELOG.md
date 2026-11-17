@@ -72,6 +72,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **2026-11-17 — the native user-message box.** `wiring.ts` no longer patches `UserMessageComponent`:
+  zentui owns the user prompt (`components.userMessages` in `agent/ext-config/zentui.json`), and its
+  patched render replaced this fork's box, leaving the box installed but unreachable. Removed with
+  it: the `user-message-box*` sections, `registerNativeUserMessageBox`, the `ansi-utils` section only
+  that box used, and `TOOL_DISPLAY_CONFIG.enableNativeUserMessageBox`. The extension now registers no
+  prototype patch at all.
 - Compact render path. `pistyle-tool-patch.ts` bypassed every renderer this extension registered
   whenever `boxedToolCalls` was on, so the path was unreachable in practice while carrying ~190 KB.
   Deleted `src/tool-overrides.ts`, `bash-display.ts`, `diff-renderer.ts`, `diff-presentation.ts`,
