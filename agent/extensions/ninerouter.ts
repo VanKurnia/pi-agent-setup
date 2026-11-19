@@ -208,9 +208,13 @@ interface WebRoute {
 let cachedRoutes: WebRoute[] = [];
 let cachedFor = "";
 
-async function getRoutes(config: NinerouterConfig, signal?: AbortSignal): Promise<WebRoute[]> {
+export async function getRoutes(
+    config: NinerouterConfig,
+    signal?: AbortSignal,
+): Promise<WebRoute[]> {
     const identity = `${config.baseUrl}::${config.apiKey ?? ""}`;
-    if (cachedFor === identity && cachedRoutes.length > 0) return cachedRoutes;
+    const reusable = cachedFor === identity;
+    if (reusable && cachedRoutes.length > 0) return cachedRoutes;
     try {
         const payload = (await fetchJson(
             `${config.baseUrl}/v1/models/web`,
@@ -224,15 +228,25 @@ async function getRoutes(config: NinerouterConfig, signal?: AbortSignal): Promis
             cachedRoutes = routes;
             cachedFor = identity;
         }
-        return routes.length > 0 ? routes : cachedRoutes;
+        if (routes.length > 0) return routes;
+        // An empty discovery is an answer for *this* identity only; another
+        // router's cached ids would be served as if they were ours.
+        return reusable ? cachedRoutes : [];
     } catch (err) {
-        // Discovery failed (network/auth) — fall back to cached routes, but
-        // say so: otherwise callers misread this as "no route configured".
+        // Discovery failed (network/auth) — fall back to cached routes for the same
+        // identity, but say so: otherwise callers misread this as "no route configured".
         console.warn(
-            `[ninerouter] Route discovery failed: ${(err as Error)?.message ?? String(err)}; using cached routes.`,
+            `[ninerouter] Route discovery failed: ${(err as Error)?.message ?? String(err)}; ` +
+                `${reusable ? "using cached routes." : "no cached routes for this router."}`,
         );
-        return cachedRoutes;
+        return reusable ? cachedRoutes : [];
     }
+}
+
+/** Test helper: forget which router the cached routes belong to. */
+export function __resetRouteCacheForTests(): void {
+    cachedRoutes = [];
+    cachedFor = "";
 }
 
 /** Strip combo-unaware `/search` / `/fetch` suffixes (matches npm package).

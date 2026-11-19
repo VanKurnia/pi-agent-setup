@@ -8,6 +8,7 @@ import {
     readSync,
     readdirSync,
     renameSync,
+    statSync,
     unlinkSync,
     writeFileSync,
 } from "node:fs";
@@ -52,6 +53,9 @@ export interface PendingOMState {
 }
 
 // ── Storage ─────────────────────────────────────────────────────────────────
+
+/** Live sessions keep their memory this long after their last write. */
+const STORE_MAX_AGE_DAYS = 14;
 
 export function getPendingFilePath(sessionId: string): string {
     return join(getBlackholeDataDir(), `${sessionId}-pending.json`);
@@ -796,6 +800,7 @@ export function cleanupOrphanedPendingFiles(keepSessionId?: string): {
     // The starting session may not have its file on disk yet.
     if (keepSessionId) activeSessionIds.add(keepSessionId);
 
+    const transcripts: string[] = [];
     if (existsSync(sessionsDir)) {
         const stack: string[] = [sessionsDir];
         while (stack.length > 0) {
@@ -811,12 +816,12 @@ export function cleanupOrphanedPendingFiles(keepSessionId?: string): {
                         continue;
                     }
                     if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
-                    try {
-                        const sessionId = readSessionId(fullPath);
-                        if (sessionId) activeSessionIds.add(sessionId);
-                    } catch {
-                        // Unreadable/corrupted session file — skip
-                    }
+                    transcripts.push(fullPath);
+                    // pi names a transcript `<timestamp>_<sessionId>.jsonl`, and its
+                    // timestamp carries no underscore, so the id runs to the end.
+                    const stem = entry.name.slice(0, -".jsonl".length);
+                    const underscore = stem.indexOf("_");
+                    if (underscore !== -1) activeSessionIds.add(stem.slice(underscore + 1));
                 }
             } catch {
                 // Directory inaccessible — skip
@@ -827,18 +832,67 @@ export function cleanupOrphanedPendingFiles(keepSessionId?: string): {
     let removed = 0;
     let preserved = 0;
 
+    const filesById = new Map<string, string[]>();
     for (const file of readdirSync(dataDir)) {
         if (!file.endsWith(".json") && !file.endsWith(".json.tmp")) continue;
-        const fullPath = join(dataDir, file);
-        if (activeSessionIds.has(sessionIdFromStoreFilename(file))) {
-            preserved++;
-            continue;
+        const id = sessionIdFromStoreFilename(file);
+        const list = filesById.get(id);
+        if (list) list.push(file);
+        else filesById.set(id, [file]);
+    }
+
+    // A header is authoritative, and it is the only source of an id for a transcript
+    // whose name carries none. Reading every header costs a file open each, so it is
+    // paid only when a store id matched no filename — the only case where a deletion
+    // would rest on a missing id.
+    const unmatched = [...filesById.keys()].some((id) => !activeSessionIds.has(id));
+    if (unmatched) {
+        for (const transcript of transcripts) {
+            try {
+                const sessionId = readSessionId(transcript);
+                if (sessionId) activeSessionIds.add(sessionId);
+            } catch {
+                // Unreadable/corrupted session file — skip
+            }
         }
-        try {
-            unlinkSync(fullPath);
-            removed++;
-        } catch {
-            preserved++;
+    }
+
+    const maxAgeMs = STORE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+    for (const [id, files] of filesById) {
+        const mainFile = files.find((file) => file.endsWith("-pending.json"));
+        const staleFile = files.find((file) => file.endsWith("-pending.stale.json"));
+        // The main store's contents only matter while a backup exists: a live store
+        // is judged by age, and an unreachable one is deleted whatever it holds.
+        // Undefined covers both "missing" and "corrupt", equally unrecoverable.
+        const mainState =
+            staleFile && mainFile ? readStateFile(join(dataDir, mainFile)) : undefined;
+        const active = activeSessionIds.has(id);
+
+        const keep = (file: string): boolean => {
+            // No live transcript anywhere (the trash graveyard is skipped by the walk).
+            if (!active) return false;
+            // A backup earns its disk only while the main store cannot be parsed.
+            if (file === staleFile) return mainState === undefined;
+            // A corrupt main is evidence; with a backup it is the only way back.
+            if (file === mainFile && mainState === undefined && staleFile) return true;
+            try {
+                return Date.now() - statSync(join(dataDir, file)).mtimeMs < maxAgeMs;
+            } catch {
+                return true;
+            }
+        };
+
+        for (const file of files) {
+            if (keep(file)) {
+                preserved++;
+                continue;
+            }
+            try {
+                unlinkSync(join(dataDir, file));
+                removed++;
+            } catch {
+                preserved++;
+            }
         }
     }
 

@@ -62,6 +62,8 @@ export interface BaseFetchResult {
     browser: string;
     os: string;
     contentType?: string;
+    /** Set when the page extracted far less than it holds (JS shell, partial wall). */
+    warning?: string;
 }
 
 export interface ContentFetchResult extends BaseFetchResult {
@@ -89,6 +91,7 @@ export type FetchErrorCode =
     | "processing_error"
     | "download_error"
     | "no_content"
+    | "blocked_page"
     | "too_many_redirects"
     | "aborted";
 

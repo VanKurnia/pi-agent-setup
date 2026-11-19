@@ -1,3 +1,16 @@
+/**
+ * Drop the text that can lie about a statement's keywords: comments, string
+ * literals and quoted identifiers. Structure is preserved, so the scans below
+ * see the same token order a parser would.
+ */
+function stripSqlNoise(sql: string): string {
+    return sql
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/--[^\n]*/g, " ")
+        .replace(/'[^']*'/g, "''")
+        .replace(/"[^"]*"/g, '""');
+}
+
 /** Strict allowlist: only permit SQL statements whose first keyword is read-only. */
 export function isQuerySafe(sql: string): { safe: boolean; reason?: string } {
     if (typeof sql !== "string") {
@@ -8,10 +21,14 @@ export function isQuerySafe(sql: string): { safe: boolean; reason?: string } {
         return { safe: false, reason: "Query is empty" };
     }
 
+    // Every scan below reads the stripped form: a trailing `-- select` must not
+    // make a mutating statement look like a read.
+    const scanned = stripSqlNoise(trimmed);
+
     // Extract the first non-whitespace word/token. This is harder to bypass
     // than a keyword-inside-string blacklist. We match the first identifier
     // or keyword-like token.
-    const firstWordMatch = trimmed.match(/^\s*(\w+)/);
+    const firstWordMatch = scanned.match(/^\s*(\w+)/);
     if (!firstWordMatch) {
         return { safe: false, reason: "Could not parse query start" };
     }
@@ -36,13 +53,18 @@ export function isQuerySafe(sql: string): { safe: boolean; reason?: string } {
         };
     }
 
+    // `PRAGMA name = value` mutates; introspection pragmas take no assignment.
+    if (firstWord === "pragma" && scanned.includes("=")) {
+        return { safe: false, reason: "PRAGMA with an assignment mutates the database." };
+    }
+
     // For CTEs starting with WITH, verify the overall statement terminates
     // with a read-only clause. A "WITH ... DELETE" or "WITH ... INSERT" is
     // mutation disguised as a read query.
     if (firstWord === "with") {
         // Find ALL keyword occurrences and check the LAST one (at end of statement).
         // We use a global match to find every keyword-like token, then take the last.
-        const allKeywords = trimmed.match(
+        const allKeywords = scanned.match(
             /\b(WITH|SELECT|UPDATE|DELETE|INSERT|CREATE|DROP|ALTER|TRUNCATE|REPLACE|MERGE|CALL|EXECUTE|IMPORT|LOAD)\b/gi,
         );
         if (allKeywords && allKeywords.length > 0) {

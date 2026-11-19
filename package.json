@@ -15,6 +15,11 @@
         "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
         "prepare": "husky && node .script/dev-scope.mjs --quiet"
     },
+    "dependencies": {
+        "defuddle": "^0.19.2",
+        "linkedom": "^0.18.13",
+        "wreq-js": "^2.3.1"
+    },
     "devDependencies": {
         "@earendil-works/pi-agent-core": "1.5.1",
         "@earendil-works/pi-ai": "1.5.1",

@@ -131,6 +131,36 @@ export function classifyWait(outcome: WaitOutcome, turnBefore: number): WaitVerd
     return "waiting";
 }
 
+/**
+ * The dispatch error message. It names the terminal that was left running so the
+ * next call can reuse it instead of paying for another child (see the catch in
+ * `runSubagentTool`).
+ */
+export function formatSubagentFailure(input: {
+    terminal?: string;
+    sessionFile?: string;
+    message: string;
+}): string {
+    const where = input.terminal ? ` terminal ${input.terminal}` : "";
+    const sess = input.sessionFile ? ` (session ${input.sessionFile})` : "";
+    return (
+        `herdr subagent failed: ${input.message}${where}${sess}. ` +
+        `The child was left running — retry to reuse it, or pass fresh:true to discard it.`
+    );
+}
+
+/**
+ * Windows caps a process command line at ~32,767 UTF-16 chars; leave room for
+ * the inherited environment and the other flags.
+ */
+const TASK_ARGV_BUDGET = 24_000;
+
+/** Whether the task still fits on the command line, quotes and separators included. */
+export function argvFitsTask(argv: readonly string[], task: string): boolean {
+    const overhead = argv.reduce((n, arg) => n + arg.length + 3, 0); // quotes + space
+    return overhead + task.length + "Task:\n".length <= TASK_ARGV_BUDGET;
+}
+
 /** Body of the `subagent` tool. Lazy-loaded: the dispatch machinery stays off the boot path. */
 export async function runSubagentTool(
     params: { agent: string; task: string; fresh?: boolean },
@@ -259,8 +289,9 @@ export async function runSubagentTool(
             tmpDir: os.tmpdir(),
         });
         const trustFlag = buildTrustFlag(ctx.isProjectTrusted());
-        // The task travels as the last argv element: the child is a real
-        // program, so nothing has to be typed into it after boot.
+        // The task travels as the last argv element when it fits: the child is a
+        // real program, so nothing has to be typed into it after boot. A task too
+        // large for the command line is sent once the terminal exists.
         const launch = async (newSession: boolean): Promise<string> => {
             const argv: string[] = ["pi-bolt"];
             if (linked !== undefined && sessionFile !== undefined) {
@@ -273,14 +304,20 @@ export async function runSubagentTool(
             argv.push(
                 ...argvFromFlags(toolsFlag + modelFlag + thinkingFlag + systemFlags + trustFlag),
             );
-            argv.push(`Task:\n${task}`);
+            const inlineTask = argvFitsTask(argv, task);
+            if (inlineTask) argv.push(`Task:\n${task}`);
+            const start = async (terminalName?: string): Promise<string> => {
+                const id = await runTerminal({ argv, cwd, labels, name: terminalName });
+                if (!inlineTask) await sendTask(id, `Task:\n${task}`);
+                return id;
+            };
             try {
-                return await runTerminal({ argv, cwd, name, labels });
+                return await start(name);
             } catch (err) {
                 // A second live child of the same agent already holds the
                 // name; the dispatch is anonymous rather than refused.
                 if (err instanceof HerdrError && /name/i.test(`${err.code} ${err.message}`)) {
-                    return runTerminal({ argv, cwd, labels });
+                    return start();
                 }
                 throw err;
             }
@@ -486,14 +523,10 @@ export async function runSubagentTool(
             },
         };
     } catch (err) {
-        if (terminal !== undefined) {
-            try {
-                await closeTerminal(terminal);
-            } catch {
-                // Already gone; nothing to clean up.
-            }
-        }
         const message = err instanceof Error ? err.message : String(err);
-        return errorResult(`herdr subagent failed: ${message}`);
+        // The child may already hold the answer. Never reclaim on an unexpected
+        // error: the next dispatch reuses it (findReusableChild), and `fresh: true`
+        // is the explicit way to discard one.
+        return errorResult(formatSubagentFailure({ terminal, sessionFile, message }));
     }
 }

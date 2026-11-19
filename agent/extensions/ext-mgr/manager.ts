@@ -541,13 +541,42 @@ function setPackageEnabled(entry: PackageSetting, enabled: boolean): PackageSett
     return Object.keys(next).length === 1 ? next.source : next;
 }
 
-async function readPackages(settingsPath: string): Promise<PackageSetting[]> {
+type ReadPackagesResult = { ok: true; packages: PackageSetting[] } | { ok: false; error: string };
+
+export async function readPackages(settingsPath: string): Promise<ReadPackagesResult> {
+    let raw: string;
     try {
-        const parsed = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>;
-        return Array.isArray(parsed.packages) ? (parsed.packages as PackageSetting[]) : [];
-    } catch {
-        return [];
+        raw = await readFile(settingsPath, "utf8");
+    } catch (error) {
+        return {
+            ok: false,
+            error: `Cannot read ${settingsPath}: ${error instanceof Error ? error.message : String(error)}`,
+        };
     }
+    try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        return {
+            ok: true,
+            packages: Array.isArray(parsed.packages) ? (parsed.packages as PackageSetting[]) : [],
+        };
+    } catch (error) {
+        return {
+            ok: false,
+            error: `${settingsPath} is not valid JSON (${(error as Error).message}). Fix the file before toggling extensions.`,
+        };
+    }
+}
+
+async function packagesOrNotify(
+    ctx: ExtensionCommandContext,
+    settingsPath: string,
+): Promise<PackageSetting[] | undefined> {
+    const result = await readPackages(settingsPath);
+    if (!result.ok) {
+        ctx.ui.notify(result.error, "error");
+        return undefined;
+    }
+    return result.packages;
 }
 
 async function writePackages(settingsPath: string, packages: PackageSetting[]): Promise<void> {
@@ -868,7 +897,8 @@ async function showExtensionPicker(ctx: ExtensionCommandContext): Promise<boolea
 
 async function showPluginPicker(ctx: ExtensionCommandContext): Promise<boolean> {
     const path = settingsPath();
-    const packages = await readPackages(path);
+    const packages = await packagesOrNotify(ctx, path);
+    if (packages === undefined) return false;
     if (packages.length === 0) {
         ctx.ui.notify(`No packages configured in ${path}.`, "info");
         return false;
@@ -901,7 +931,8 @@ async function showPluginPicker(ctx: ExtensionCommandContext): Promise<boolean> 
 async function applyPreset(ctx: ExtensionCommandContext, name: string): Promise<boolean> {
     const entries = await discoverExtensions(ctx.cwd);
     const path = settingsPath();
-    const packages = await readPackages(path);
+    const packages = await packagesOrNotify(ctx, path);
+    if (packages === undefined) return false;
     const stored = await readPresetFile();
     const snapshot = stored.presets[name];
     if (!snapshot) {
@@ -990,7 +1021,8 @@ async function showPresetPicker(ctx: ExtensionCommandContext): Promise<boolean> 
             if (!overwrite) return false;
         }
         const entries = await discoverExtensions(ctx.cwd);
-        const packages = await readPackages(settingsPath());
+        const packages = await packagesOrNotify(ctx, settingsPath());
+        if (packages === undefined) return false;
         const snapshot = buildPresetSnapshot(entries, ctx.cwd, packages);
         current.presets[answer] = snapshot;
         await writePresetFile(current);
@@ -1022,7 +1054,8 @@ async function showPresetPicker(ctx: ExtensionCommandContext): Promise<boolean> 
         return false;
     }
     const entries = await discoverExtensions(ctx.cwd);
-    const packages = await readPackages(settingsPath());
+    const packages = await packagesOrNotify(ctx, settingsPath());
+    if (packages === undefined) return false;
     const current = await readPresetFile();
     if (!current.presets[picked]) {
         ctx.ui.notify(`Preset "${picked}" not found`, "error");
@@ -1037,7 +1070,10 @@ async function showPresetPicker(ctx: ExtensionCommandContext): Promise<boolean> 
 async function showManager(ctx: ExtensionCommandContext): Promise<void> {
     for (;;) {
         const localCount = (await discoverExtensions(ctx.cwd)).length;
-        const pluginCount = (await readPackages(settingsPath())).length;
+        const pluginRead = await readPackages(settingsPath());
+        const pluginLabel = pluginRead.ok
+            ? `${pluginRead.packages.length} configured`
+            : "unreadable";
         const presetCount = Object.keys((await readPresetFile()).presets).length;
 
         const picked = await showPicker(ctx, "Extensions manager", MENU_HINT, (theme) => [
@@ -1048,7 +1084,7 @@ async function showManager(ctx: ExtensionCommandContext): Promise<void> {
             },
             {
                 value: "plugins",
-                label: `${theme.bold("Plugins")} ${theme.fg("dim", `${pluginCount} configured`)}`,
+                label: `${theme.bold("Plugins")} ${theme.fg("dim", pluginLabel)}`,
                 description: "packages in agent/settings.json — on/off via extensions: []",
             },
             {
@@ -1071,13 +1107,17 @@ async function showManager(ctx: ExtensionCommandContext): Promise<void> {
 
 async function formatListing(ctx: ExtensionCommandContext): Promise<string> {
     const entries = await discoverExtensions(ctx.cwd);
-    const packages = await readPackages(settingsPath());
+    const read = await readPackages(settingsPath());
+    const packages = read.ok ? read.packages : [];
+    const pluginLine = read.ok
+        ? `Plugins (${packages.length} configured in agent/settings.json):`
+        : `Plugins (unreadable — ${read.error})`;
 
     return [
         `Extensions (${entries.length} local):`,
         ...(entries.length > 0 ? entries.map(formatEntry) : ["  none"]),
         "",
-        `Plugins (${packages.length} configured in agent/settings.json):`,
+        pluginLine,
         ...(packages.length > 0 ? packages.map(formatPlugin) : ["  none"]),
     ].join("\n");
 }
@@ -1142,7 +1182,8 @@ export async function handleExtensionsCommand(
                 return;
             }
             const entries = await discoverExtensions(ctx.cwd);
-            const packages = await readPackages(settingsPath());
+            const packages = await packagesOrNotify(ctx, settingsPath());
+            if (packages === undefined) return;
             stored.presets[name] = buildPresetSnapshot(entries, ctx.cwd, packages);
             await writePresetFile(stored);
             ctx.ui.notify(`Preset "${name}" saved.`, "info");

@@ -1,4 +1,12 @@
-import { closeSync, openSync, readdirSync, statSync, unlinkSync, writeSync } from "node:fs";
+import {
+    closeSync,
+    openSync,
+    readdirSync,
+    readFileSync,
+    statSync,
+    unlinkSync,
+    writeSync,
+} from "node:fs";
 import { getBlackholeSnapshotApi, type BlackholeSnapshotApi } from "../shared/blackhole-api.ts";
 
 interface SessionEntry {
@@ -298,6 +306,16 @@ export function lockFileFor(
     return `${tmpdir}/herdr-subagent-${agentName}-${safeCwd}${parent ? `-${parent}` : ""}.lock`;
 }
 
+/** Whether `pid` names a live process. `EPERM` means it exists but is someone else's. */
+export function isProcessAlive(pid: number): boolean {
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (err) {
+        return (err as NodeJS.ErrnoException)?.code === "EPERM";
+    }
+}
+
 // Exclusive-create lock for the check-decide-launch sequence (one pane per
 // agent). Returns false when another invocation holds a fresh lock.
 export function acquireLock(
@@ -306,6 +324,7 @@ export function acquireLock(
         openSync(path: string, flags: string): number;
         writeSync(fd: number, text: string): void;
         closeSync(fd: number): void;
+        readFileSync(path: string, encoding: "utf8"): string;
         statSync(path: string): { mtimeMs: number };
         unlinkSync(path: string): void;
     } = defaultFs,
@@ -321,11 +340,21 @@ export function acquireLock(
     } catch (err) {
         if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err;
     }
+    // A live holder is never stale, however long it has held the lock.
+    let stale: boolean;
     try {
-        if (Date.now() - fs.statSync(lockPath).mtimeMs < LOCK_STALE_MS) return false;
+        const { pid } = JSON.parse(fs.readFileSync(lockPath, "utf8")) as { pid?: number };
+        stale = !(typeof pid === "number" && isProcessAlive(pid));
     } catch {
-        return false;
+        // No pid to judge by: fall back to the clock, and treat a lock that
+        // vanished outright as not ours to steal.
+        try {
+            stale = Date.now() - fs.statSync(lockPath).mtimeMs >= LOCK_STALE_MS;
+        } catch {
+            return false;
+        }
     }
+    if (!stale) return false;
     try {
         fs.unlinkSync(lockPath);
     } catch {
@@ -401,6 +430,7 @@ const defaultFs = {
     writeSync: (fd: number, text: string): void => {
         writeSync(fd, text);
     },
+    readFileSync: (path: string, encoding: "utf8"): string => readFileSync(path, encoding),
     closeSync: (fd: number): void => {
         closeSync(fd);
     },

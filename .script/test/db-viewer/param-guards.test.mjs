@@ -16,6 +16,23 @@ const cases = [
     ["", false, "empty returns safe:false"],
     ["DROP TABLE x", false, "write returns safe:false"],
     ["SELECT 1", true, "valid select returns safe:true"],
+    [
+        "WITH t AS (SELECT 1) UPDATE users SET admin = 1 -- select",
+        false,
+        "a trailing line comment cannot hide a CTE ending in UPDATE",
+    ],
+    [
+        "WITH c AS (SELECT 1) DELETE FROM users -- select",
+        false,
+        "a trailing line comment cannot hide a CTE ending in DELETE",
+    ],
+    [
+        "WITH x AS (SELECT 1) SELECT * FROM x -- update",
+        true,
+        "a comment naming a write keyword must not false-reject a read",
+    ],
+    ["SELECT 1 /* delete */", true, "a block comment cannot make a read look like a write"],
+    ["PRAGMA user_version = 42", false, "an assigning PRAGMA mutates and is rejected"],
 ];
 
 let n = 0;

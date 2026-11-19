@@ -164,6 +164,8 @@ export function buildUserFacingFetchErrorSummary(error: FetchError): string {
             return "The file could not be saved locally.";
         case "no_content":
             return "No readable content could be extracted from the page.";
+        case "blocked_page":
+            return "The page was a bot check or refusal, not content.";
         case "processing_error":
             return "The response could not be processed.";
         case "network_error": {
@@ -274,6 +276,11 @@ export function markdownToText(markdown: string): string {
         .replace(/`([^`]+)`/g, "$1");
 }
 
+/** The content as plain text, whatever the requested format is. */
+function toPlainText(content: string, format: OutputFormat): string {
+    return format === "text" ? markdownToText(content) : content;
+}
+
 export function truncateContent(content: string, maxChars: number): string {
     const head = truncateChars(content, maxChars);
     return head === content ? content : `${head}\n\n[... truncated]`;
@@ -295,6 +302,7 @@ export function buildCompactMetadataHeader(result: FetchResult): string {
         ["Author", result.author],
         ["Published", result.published],
         ["Content-Type", result.contentType],
+        ["Warning", result.warning],
     ]);
 }
 
@@ -319,6 +327,7 @@ export function buildMetadataHeader(result: FetchResult): string {
         ["Language", result.language],
         ["Words", result.wordCount],
         ["Browser", `${result.browser}/${result.os}`],
+        ["Warning", result.warning],
     ]);
 }
 
@@ -331,7 +340,7 @@ export function buildFetchResponseText(
         : buildCompactMetadataHeader(result);
 
     if (isFileFetchResult(result)) {
-        return header;
+        return `${header}\n\nBinary or attachment: no page text was extracted. The full file is saved on disk (see File path).`;
     }
 
     return header ? `${header}\n\n${result.content}` : result.content;
@@ -438,6 +447,119 @@ const HTML_CONTENT_TYPES = ["text/html", "application/xhtml+xml", "text/plain", 
 const MAX_CLIENT_SIDE_REDIRECTS = 5;
 const MAX_ALTERNATE_LINK_FALLBACKS = 3;
 const MIN_EXTRACTED_WORDS_BEFORE_ALTERNATE_FALLBACK = 30;
+
+// ── Content-quality guards ─────────────────────────────────────────────
+// A short page is either a bot check or an unrendered JavaScript shell.
+// Returning either as if it were the document is worse than failing, so
+// classify it instead of trusting the extractor.
+
+const MAX_BOT_CHECK_CHARS = 2_000;
+const MIN_SHELL_VISIBLE_CHARS = 1_500;
+const CROWDED_WITH_LINKS = 0.6;
+
+const BOT_CHECK_MARKERS = [
+    "verify you are human",
+    "verifying you are human",
+    "checking your browser",
+    "verifying your browser",
+    "quick browser check",
+    "security checkpoint",
+    "performing security verification",
+    "enable javascript and cookies to continue",
+    "attention required! | cloudflare",
+    "access denied",
+    "are you a robot",
+    "captcha",
+    "unusual traffic",
+    "pardon our interruption",
+    "click the button below to continue",
+    "continue shopping",
+    "something went wrong. wait a moment",
+    "request unsuccessful",
+];
+
+const JS_ASK_MARKERS = [
+    "enable javascript",
+    "requires javascript",
+    "javascript is disabled",
+    "javascript is required",
+    "need to enable javascript",
+];
+
+const FRAMEWORK_MOUNT_MARKERS = [
+    'id="root"',
+    'id="app"',
+    'id="__next"',
+    'id="__nuxt"',
+    'id="svelte"',
+    'id="___gatsby"',
+    "data-reactroot",
+    "ng-app",
+    "ng-view",
+    "ng-version",
+    "<app-root",
+    'id="q-app"',
+    'id="elm"',
+];
+
+/** Cloud metadata endpoints are never a legitimate document target. */
+const CLOUD_METADATA_HOSTS = new Set([
+    "metadata.google.internal",
+    "metadata",
+    "instance-data",
+    "100.100.100.200",
+    "fd00:ec2::254",
+    "192.0.0.192",
+]);
+
+function isCloudMetadataTarget(url: URL): boolean {
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    return CLOUD_METADATA_HOSTS.has(host) || host.startsWith("169.254.");
+}
+
+function visibleCharCount(text: string): number {
+    return text.replace(/\s/g, "").length;
+}
+
+/** A short page whose text is a refusal, not content. */
+function looksLikeBotCheck(text: string): boolean {
+    if (text.length > MAX_BOT_CHECK_CHARS) return false;
+    const lower = text.toLowerCase();
+    return BOT_CHECK_MARKERS.some((marker) => lower.includes(marker));
+}
+
+/**
+ * True when the HTML does not hold the article: an unrendered JavaScript shell
+ * (little text on a page that loads scripts), or framework chrome where most of
+ * the visible text is navigation.
+ */
+function looksIncomplete(rawHtml: string, markdown: string): boolean {
+    const visible = visibleCharCount(markdown);
+    const head = rawHtml.slice(0, 200_000).toLowerCase();
+    const hasMountPoint = FRAMEWORK_MOUNT_MARKERS.some((marker) => head.includes(marker));
+
+    if (visible < MIN_SHELL_VISIBLE_CHARS) {
+        if (!head.includes("<script")) return false;
+        if (hasMountPoint || JS_ASK_MARKERS.some((marker) => head.includes(marker))) return true;
+        // Text under 1% of a sizeable page: the content is waiting in scripts.
+        return rawHtml.length > 20_000 && visible / rawHtml.length < 0.01;
+    }
+
+    if (visible >= 12_000 || !hasMountPoint) return false;
+
+    let inLinks = 0;
+    const withoutLinks = markdown.replace(/\[([^\]]*)\]\([^)]*\)/g, (_match, label: string) => {
+        inLinks += visibleCharCount(label);
+        return label;
+    });
+    const plain = visibleCharCount(withoutLinks);
+    return plain > 0 && inLinks / plain > CROWDED_WITH_LINKS;
+}
+
+/** Drop inline base64 images: token waste, never readable content. */
+function stripInlineDataImages(content: string): string {
+    return content.replace(/!\[[^\]]*\]\(\s*data:[^)]*\)/gi, "");
+}
 
 function normalizeContentType(contentType: string): string {
     return contentType.split(";")[0]?.trim().toLowerCase() ?? "";
@@ -1529,6 +1651,16 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
             };
         }
 
+        if (isCloudMetadataTarget(parsed)) {
+            return {
+                error: `Refusing to fetch the cloud metadata endpoint ${parsed.host}.`,
+                code: "invalid_url",
+                phase: "validation",
+                retryable: false,
+                url: opts.url,
+            };
+        }
+
         const fetchOptions: Record<string, unknown> = {
             browser,
             os,
@@ -1986,9 +2118,8 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
                 wordCount = estimateWordCount(fallbackText);
             }
 
-            const extractedTextWordCount = estimateWordCount(
-                format === "text" ? extractedContent : markdownToText(extractedContent),
-            );
+            let plainText = stripInlineDataImages(toPlainText(extractedContent, format));
+            const extractedTextWordCount = estimateWordCount(plainText);
             if (
                 Math.min(wordCount, extractedTextWordCount) <
                     MIN_EXTRACTED_WORDS_BEFORE_ALTERNATE_FALLBACK &&
@@ -1998,18 +2129,37 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
                 if (alternateResult) return alternateResult;
             }
 
+            // A bot check is a refusal, not the document.
+            if (looksLikeBotCheck(plainText)) {
+                return {
+                    error: `Blocked: ${finalUrl} answered HTTP ${response.status} with a bot check or refusal page instead of content.`,
+                    code: "blocked_page",
+                    phase: "processing",
+                    retryable: false,
+                    timeoutMs,
+                    url: opts.url,
+                    finalUrl,
+                    statusCode: response.status,
+                    statusText: response.statusText,
+                    mimeType: normalizeContentType(contentType) || undefined,
+                    contentLength: errorContext.contentLength,
+                };
+            }
+
+            // An unrendered shell still yields content, so say it is partial
+            // rather than letting it pass as the whole document.
+            const warning = looksIncomplete(rawBody, plainText)
+                ? `Only ${wordCount} words were extracted from a ${rawBody.length}-byte page: the text is probably rendered by client-side JavaScript, so this is not the whole document.`
+                : undefined;
+
             if (includeReplies === false && shouldStripReplies(extracted.site ?? "")) {
                 const strippedContent = stripExtractorComments(extractedContent, format);
                 if (strippedContent !== extractedContent) {
                     extractedContent = strippedContent;
-                    wordCount = estimateWordCount(
-                        format === "text" ? markdownToText(extractedContent) : extractedContent,
-                    );
+                    plainText = stripInlineDataImages(toPlainText(strippedContent, format));
+                    wordCount = estimateWordCount(plainText);
                 }
             }
-
-            const normalizedContent =
-                format === "text" ? markdownToText(extractedContent) : extractedContent;
 
             const result: FetchResult = {
                 kind: "content",
@@ -2021,9 +2171,10 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
                 site: extracted.site ?? "",
                 language: extracted.language ?? "",
                 wordCount,
-                content: truncateContent(normalizedContent, maxChars),
+                content: truncateContent(plainText, maxChars),
                 browser,
                 os,
+                warning,
             };
 
             emitStatus(hooks, "done");

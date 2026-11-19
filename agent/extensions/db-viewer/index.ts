@@ -1,7 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { DatabaseSync } from "node:sqlite";
-import { resolve } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { isAbsolute, relative, resolve } from "node:path";
 import { isQuerySafe } from "../shared/query-safe.ts";
 import {
     formatRowsToMarkdown,
@@ -77,6 +78,27 @@ function unknownConnectionError(driver: "sqlite" | "mysql"): string {
         `No ${driver} connections configured in db-config.json. ` +
         `Pass an explicit path/URI or add a connection entry.`
     );
+}
+
+/**
+ * Resolve a SQLite path to an existing file. A caller-supplied path must also
+ * stay inside the project; a configured connection may point anywhere. Never
+ * opens a path that does not exist, so no empty database gets created.
+ */
+function sqliteFile(rawPath: string, cwd: string, allowOutsideProject: boolean): string {
+    if (rawPath === ":memory:") return rawPath;
+    const resolved = resolve(cwd, rawPath);
+    if (!existsSync(resolved) || !statSync(resolved).isFile()) {
+        throw new Error(`sqlite database not found: ${resolved}`);
+    }
+    const rel = relative(resolve(cwd), resolved);
+    if (!allowOutsideProject && (rel.startsWith("..") || isAbsolute(rel))) {
+        throw new Error(
+            `sqlite database is outside the project: ${resolved}\n` +
+                `Configure it with the db_save tool (or a db-config.json entry) to allow it.`,
+        );
+    }
+    return resolved;
 }
 
 export default function dbViewerExtension(pi: ExtensionAPI) {
@@ -197,11 +219,15 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
                     details: {},
                 };
             }
-            const dbPath = "passthrough" in resolved ? resolved.passthrough : resolved.connection;
+            const dbPath =
+                "passthrough" in resolved
+                    ? sqliteFile(resolved.passthrough, ctx?.cwd ?? process.cwd(), false)
+                    : sqliteFile(resolved.connection, ctx?.cwd ?? process.cwd(), true);
 
             let db: DatabaseSync | null = null;
             try {
                 db = new DatabaseSync(dbPath);
+                db.exec("PRAGMA query_only = ON");
                 const statement = db.prepare(params.query);
                 const rows = statement.all();
                 const maxRows = resolveMaxRows(params.maxRows);
@@ -313,6 +339,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
             let connection;
             try {
                 connection = await createConnection(connectionString);
+                await connection.execute("SET SESSION TRANSACTION READ ONLY");
                 const [rows] = await connection.execute(params.query);
                 const rowsArray = Array.isArray(rows) ? rows : [rows];
                 const maxRows = resolveMaxRows(params.maxRows);
@@ -629,6 +656,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
             let db: DatabaseSync | null = null;
             try {
                 db = new DatabaseSync(dbPath);
+                db.exec("PRAGMA query_only = ON");
                 const tablesStatement = db.prepare(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
                 );
@@ -694,6 +722,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
             let connection;
             try {
                 connection = await createConnection(connectionString);
+                await connection.execute("SET SESSION TRANSACTION READ ONLY");
                 const [tablesRows] = await connection.execute("SHOW TABLES");
                 const tables = tablesRows as any[];
 

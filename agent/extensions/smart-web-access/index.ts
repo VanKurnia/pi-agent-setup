@@ -621,6 +621,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                     content: result.content,
                     wordCount: result.wordCount,
                     site: result.site || undefined,
+                    warning: result.warning,
                     author: result.author || undefined,
                     published: result.published || undefined,
                     filePath: isFile ? result.filePath : undefined,
