@@ -3,9 +3,10 @@
  *
  * Tracks files pi changes through the `edit`/`write` tools, writes them to the
  * session as custom entries, keeps an in-memory tracker, serves the legacy
- * subagent API and owns `/filechanges-accept` + `/filechanges-decline`. Those two
- * also ask the sub-agents this session started, through the frontend's `fanOut`
- * (each is another process with its own log). It renders **nothing**: the TUI
+ * subagent API and owns `/filechanges-accept` + `/filechanges-decline`. With the
+ * `tree` argument those two also ask the sub-agents this session started, through
+ * the frontend's `fanOut` (each is another process with its own log); without it
+ * they stay in this process. It renders **nothing**: the TUI
  * panel lives in `agent/extensions/filechanges/`,
  * the herdr sidebar in `agent/extensions/herdr-filechanges.ts`, and either one
  * can be enabled without the other.
@@ -537,6 +538,20 @@ export function installFileChangeCore(
         return outcome.failed.length > 0 || outcome.unready.length > 0 ? "warning" : "info";
     }
 
+    /** Same meaning for both commands: act on the whole tree, not this session alone. */
+    const TREE_ARGS = new Set(["tree", "all"]);
+
+    /**
+     * Where to look when this session has nothing logged: the sub-agents that do,
+     * as the tail of a notice.
+     */
+    async function elsewhere(command: "accept" | "decline"): Promise<string> {
+        const plan = await subagentPlan();
+        return plan.reachable.length === 0
+            ? ""
+            : ` ${plan.reachable.length} sub-agent(s) it started have changes: /filechanges-${command} tree.`;
+    }
+
     /**
      * The gate accept/decline share: what the command would touch and the
      * confirmation. Null when there is nothing to do or the person said no.
@@ -548,18 +563,24 @@ export function installFileChangeCore(
     ): Promise<{ plan: FanOutPlan; count: number } | null> {
         await ctx.waitForIdle();
 
-        const plan = await subagentPlan();
+        const args: string[] = (ctx as any).args ?? [];
+        // A sub-agent is another terminal, so reaching one is asked for, never
+        // assumed: a plain accept/decline stays inside this process.
+        const tree = args.some((arg) => TREE_ARGS.has(arg));
+        const plan = tree ? await subagentPlan() : { reachable: [], skipped: [] };
         const count = tracker.getTrackedSize();
         if (count === 0 && plan.reachable.length === 0) {
             if (ctx.hasUI) {
-                const nothing = subagentNote(plan, { failed: [], unready: [] });
-                ctx.ui.notify(`filechanges: nothing to ${command}.${nothing}`, "info");
+                const tail = tree
+                    ? subagentNote(plan, { failed: [], unready: [] })
+                    : await elsewhere(command);
+                ctx.ui.notify(`filechanges: nothing to ${command} in this session.${tail}`, "info");
             }
             return null;
         }
 
         const label = command === "accept" ? "Accept" : "Decline";
-        const force = (ctx as any).args?.includes("force") ?? false;
+        const force = args.includes("force");
         if (ctx.hasUI && !force) {
             const ok = await ctx.ui.confirm(`${label} pi changes?`, `${detail}${scope(plan)}.`);
             if (!ok) return null;
@@ -727,7 +748,8 @@ export function installFileChangeCore(
         state.owner = state.owner ?? pi;
 
         pi.registerCommand("filechanges-accept", {
-            description: "Accept pi-made changes (keeps files, clears log)",
+            description:
+                "Accept pi-made changes (keeps files, clears log); [tree] also in this session's sub-agents",
             handler: async (args, ctx) => {
                 (ctx as any).args = parseCommandArgs(args);
                 await accept(ctx);
@@ -735,7 +757,8 @@ export function installFileChangeCore(
         });
 
         pi.registerCommand("filechanges-decline", {
-            description: "Decline pi-made changes (reverts files, clears log)",
+            description:
+                "Decline pi-made changes (reverts files, clears log); [tree] also in this session's sub-agents",
             handler: async (args, ctx) => {
                 (ctx as any).args = parseCommandArgs(args);
                 await decline(ctx);

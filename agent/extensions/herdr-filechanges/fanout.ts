@@ -4,8 +4,9 @@
  * A sub-agent is another pi process in another terminal, with its own tracker
  * and its own log, so the command has to be typed into it. `hc` is herdr-core's
  * own client, which keeps that protocol out of this folder. Only direct children
- * are listed: each runs the same command on its own children, so a deep tree is
- * covered one level at a time, each level waiting for the one below it.
+ * are listed: each is sent the command with `tree`, so a deep tree is covered one
+ * level at a time, each level waiting for the one below it. The command's own
+ * `tree` argument is what asks for this — plain accept/decline never gets here.
  */
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
@@ -80,18 +81,24 @@ export const fanOut: FanOut = {
                 skipped.push({ address: child.address, why: "still working" });
             } else if (child.status === "blocked") {
                 skipped.push({ address: child.address, why: "waiting for you" });
-            } else if ((await logged(child.address)) === undefined) {
-                skipped.push({ address: child.address, why: "no change log" });
             } else {
-                reachable.push(child.address);
+                const files = await logged(child.address);
+                if (files === undefined) {
+                    skipped.push({ address: child.address, why: "no change log" });
+                } else if (files > 0) {
+                    // A child with an empty log has nothing to accept; typing into
+                    // it would only make that terminal say so.
+                    reachable.push(child.address);
+                }
             }
         }
         return { reachable, skipped };
     },
 
-    // `force` because this process can never answer a child's confirm prompt.
+    // `force` because this process can never answer a child's confirm prompt; `tree`
+    // so the child does the same for its own children instead of stopping there.
     send: async (address, command) => {
-        await hc(["send", address, `/filechanges-${command} force`]);
+        await hc(["send", address, `/filechanges-${command} force tree`]);
     },
 
     settled: async (address, timeoutMs) => {
