@@ -1593,7 +1593,7 @@ export function renderCompactBoxedToolCall(
         },
     };
 }
-type BoxedResultBody = Component | ((contentWidth: number) => string[]);
+type BoxedResultBody = Component | ((contentWidth: number) => readonly string[]);
 export function renderBoxedToolResult(
     theme: BoxTheme,
     body: BoxedResultBody,

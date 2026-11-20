@@ -474,7 +474,9 @@ function phaseAgentSummary(phase: HybridPhaseParam): string {
 }
 
 export function renderSubagentToolCall(args: Static<typeof SubagentParams>, theme: Theme): Text {
-    const scope: AgentScope = args.agentScope ?? "user";
+    // pi 1.6 builds StringEnum schemas with @earendil-works/pi-schema, which typebox Static
+    // cannot reduce, so the validated runtime value is narrowed here.
+    const scope = (args.agentScope as AgentScope | undefined) ?? "user";
     const scopeText = scope !== "user" ? theme.fg("warning", ` [${scope}]`) : "";
     const header = theme.fg("toolTitle", theme.bold("subagent"));
     const call = (mode: string, detail?: string) =>

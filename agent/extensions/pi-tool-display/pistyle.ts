@@ -4246,7 +4246,7 @@ function bashBodyComponent(preview: Component, emptyLines: string[] | undefined)
     if (!emptyLines) return preview;
     return {
         invalidate: () => preview.invalidate(),
-        render(width: number): string[] {
+        render(width: number): readonly string[] {
             const lines = preview.render(width);
             return lines.length > 0 ? lines : emptyLines;
         },
@@ -4625,7 +4625,7 @@ function parseBashTreeOutput(cls: BashTreeClass, output: string): ParsedBashTree
 }
 type FinalSemanticRenderCache = {
     key: string;
-    lines: string[];
+    lines: readonly string[];
 };
 interface BashTreeState {
     cls: BashSemanticClass;
@@ -4764,7 +4764,7 @@ function renderSemanticPanel(
     const state = semanticStates.get(toolCallId);
     return {
         invalidate() {},
-        render(width: number): string[] {
+        render(width: number): readonly string[] {
             if (!state) return [];
             const renderFresh = () => {
                 if (state.fallback) {

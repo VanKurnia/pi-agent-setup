@@ -5,6 +5,7 @@
 import {
     BoxTheme,
     setFullTheme,
+    stripAnsi,
     formatElapsedMetric,
     getTextOutput,
     formatBoxedRunningStatus,
@@ -259,9 +260,6 @@ function shouldPrefixThinkingForApi(api: unknown): boolean {
     // Other providers are assumed to emit them.
     return !normalizedApi.startsWith("openai-") || OPENAI_REASONING_APIS.has(normalizedApi);
 }
-function stripAnsi(text: string): string {
-    return text.replace(/\x1b\[[0-9;]*m/g, "");
-}
 function stripLeadingAnsiFragments(text: string): string {
     let current = text;
     while (true) {
@@ -274,7 +272,7 @@ function stripLeadingAnsiFragments(text: string): string {
 }
 function stripThinkingPresentationArtifacts(text: string): string {
     // Without an ESC byte stripAnsi is the identity and the loop below can only trim leading
-    // whitespace, so skip its full-length regex passes when neither anchored pattern matches.
+    // whitespace, so skip its full-length scan when neither anchored pattern matches.
     if (!text.includes("\u001b")) {
         const trimmed = text.trimStart();
         if (
@@ -988,7 +986,7 @@ function markdownRows(
     text: string,
     expanded: boolean,
     isError: boolean,
-): (width: number) => string[] {
+): (width: number) => readonly string[] {
     return (width) => {
         if (isError || !text.trim()) return new Text(text, 0, 0).render(width);
         const lines = new Markdown(text, 0, 0, getMarkdownTheme()).render(width);

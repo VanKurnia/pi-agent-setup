@@ -221,7 +221,10 @@ export default function (pi: ExtensionAPI) {
 
                 const t = tracker.getTracked(picked);
                 if (!t) {
-                    cmdCtx.ui.notify("filechanges: entry not found (maybe log was cleared).", "warning");
+                    cmdCtx.ui.notify(
+                        "filechanges: entry not found (maybe log was cleared).",
+                        "warning",
+                    );
                     continue;
                 }
 

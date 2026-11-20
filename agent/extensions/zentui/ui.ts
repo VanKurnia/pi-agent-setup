@@ -346,7 +346,7 @@ export function installSelectorBorderStyle(
 }
 
 export type CompletionRowsOptions = {
-    lines: string[];
+    lines: readonly string[];
     width: number;
     theme: Theme;
     selectedPrefix: string;
@@ -354,7 +354,7 @@ export type CompletionRowsOptions = {
 };
 
 export type CompletionPaletteOptions = {
-    lines: string[];
+    lines: readonly string[];
     width: number;
     theme: Theme;
     renderSeparator: (text: string) => string;
@@ -448,7 +448,7 @@ export function isNativeCompletionCountRow(line: string): boolean {
     return /^\s*\(\d+\/\d+\)\s*$/.test(withoutSgr);
 }
 
-export function omitTrailingNativeCompletionCountRow(lines: string[]): string[] {
+export function omitTrailingNativeCompletionCountRow(lines: readonly string[]): readonly string[] {
     return lines.length > 0 && isNativeCompletionCountRow(lines.at(-1) ?? "")
         ? lines.slice(0, -1)
         : lines;
@@ -523,14 +523,14 @@ export type EditorMouseLayout = { body: Cell[]; completion: Cell[] };
 
 type RowTranslation = { x: number; y: number };
 
-const layouts = new WeakMap<string[], EditorMouseLayout>();
+const layouts = new WeakMap<readonly string[], EditorMouseLayout>();
 
-const translations = new WeakMap<string[], Map<number, RowTranslation>>();
+const translations = new WeakMap<readonly string[], Map<number, RowTranslation>>();
 
 /** Record only rows actually emitted, never infer positions from terminal text. */
 export function rememberEditorMouseLayout(
-    lines: string[],
-    baseLines: string[],
+    lines: readonly string[],
+    baseLines: readonly string[],
     bodyCount: number,
     completionCount: number,
     layout: EditorMouseLayout,
@@ -564,7 +564,7 @@ export class EditorMouseForwarder {
     private pendingBounds?: { width: number; height: number };
     private captured?: RowTranslation;
 
-    baseRendered(width: number, lines: string[]): string[] {
+    baseRendered(width: number, lines: readonly string[]): readonly string[] {
         this.pendingBounds = { width, height: lines.length };
         return lines;
     }
@@ -1055,7 +1055,7 @@ export function makeMarkdownTheme(theme: Theme | undefined): MarkdownTheme {
     };
 }
 
-function renderMarkdown(input: UserMessageStyleRenderInput, width: number): string[] {
+function renderMarkdown(input: UserMessageStyleRenderInput, width: number): readonly string[] {
     const { text, theme, markdown } = input;
     const transform = markdown?.options?.transform;
     const renderer = new Markdown(
@@ -1652,7 +1652,7 @@ export type ViewportCounts = {
 type PolishedFrameSplit = {
     editorLines: string[];
     /** Logical, unframed autocomplete payload rows owned by this module. */
-    trailingLines: string[];
+    trailingLines: readonly string[];
     viewport: ViewportCounts;
     nativeStatusLine?: string;
 };
@@ -1662,7 +1662,7 @@ type PolishedFrameProvenance = {
     split: PolishedFrameSplit;
 };
 
-const POLISHED_FRAME_SPLITS = new WeakMap<string[], PolishedFrameProvenance>();
+const POLISHED_FRAME_SPLITS = new WeakMap<readonly string[], PolishedFrameProvenance>();
 
 type AutocompleteListInternals = Pick<Component, "render">;
 
@@ -1677,7 +1677,7 @@ type AutocompleteEditorInternals = {
 type AutocompleteCapture = {
     compatible: boolean;
     called: number;
-    rows: string[];
+    rows: readonly string[];
 };
 
 type WrappedEditor = EditorComponent &
@@ -1723,7 +1723,7 @@ export type EditorMeta = {
 export type PolishedEditorFrameOptions = {
     width: number;
     editorLines: string[];
-    autocompleteLines?: string[];
+    autocompleteLines?: readonly string[];
     viewport?: ViewportCounts;
     uiTheme: Theme;
     config: ZentuiConfig;
@@ -1737,7 +1737,7 @@ export type PolishedEditorFrameOptions = {
 type PolishedFrameOptions = {
     width: number;
     baseWidth: number;
-    baseRendered: string[];
+    baseRendered: readonly string[];
     autocompleteSource: AutocompleteEditorInternals;
     autocompleteCapture?: AutocompleteCapture;
     uiTheme: Theme;
@@ -1802,7 +1802,7 @@ type AutocompleteCount = { known: true; count: number } | { known: false };
 function autocompleteCount(
     source: AutocompleteEditorInternals,
     capture: AutocompleteCapture | undefined,
-    baseRendered: string[],
+    baseRendered: readonly string[],
     baseWidth: number,
 ): AutocompleteCount {
     try {
@@ -1844,9 +1844,9 @@ function autocompleteCount(
 // padding; prefer the raw captured rows so decoration starts at column zero.
 function capturedAutocompleteLines(
     capture: AutocompleteCapture | undefined,
-    baseRendered: string[],
+    baseRendered: readonly string[],
     count: number,
-): string[] {
+): readonly string[] {
     if (count <= 0) return [];
     return capture && capture.rows.length === count ? capture.rows : baseRendered.slice(-count);
 }
@@ -1944,7 +1944,7 @@ export function renderWithAutocompleteCapture<T>(
     }
 }
 
-function clampRenderedLines(lines: string[], width: number): string[] {
+function clampRenderedLines(lines: readonly string[], width: number): string[] {
     const maxWidth = Math.max(0, width);
     return lines.map((line) => truncateToWidth(line, maxWidth, ""));
 }
@@ -2130,7 +2130,7 @@ type NormalizedBaseFrame = PolishedFrameSplit & { nativeFrame: boolean };
 
 /** Both hosts feed the same unframed payload into the existing style renderers. */
 function normalizeBaseFrame(
-    baseRendered: string[],
+    baseRendered: readonly string[],
     baseWidth: number,
     source: AutocompleteEditorInternals,
     capture: AutocompleteCapture | undefined,
@@ -2224,8 +2224,8 @@ function normalizeBaseFrame(
 }
 
 function rememberNormalizedMouseLayout(
-    lines: string[],
-    baseRendered: string[],
+    lines: readonly string[],
+    baseRendered: readonly string[],
     frame: NormalizedBaseFrame,
     layout: Parameters<typeof rememberEditorMouseLayout>[4],
 ): void {
@@ -2289,7 +2289,7 @@ function unwrapPolishedFrameOnly(
 }
 
 function splitPolishedFrame(
-    lines: string[],
+    lines: readonly string[],
     config: ZentuiConfig,
     uiTheme: Theme,
     shellMode = false,
@@ -2311,7 +2311,7 @@ function splitPolishedFrame(
 
 function inspectPolishedFrameProvenance(
     base: WrappedEditor,
-    rendered: string[],
+    rendered: readonly string[],
     config: ZentuiConfig,
     uiTheme: Theme,
 ): { safe: boolean; ownedFrame?: PolishedFrameSplit } {
@@ -2637,11 +2637,11 @@ export class PolishedEditor extends CustomEditor {
         this.onMetadataDecorationChange();
     }
 
-    private renderBase(width: number): string[] {
+    private renderBase(width: number): readonly string[] {
         return this.mouse.baseRendered(width, super.render(width));
     }
 
-    private renderFallback(lines: string[], width: number): string[] {
+    private renderFallback(lines: readonly string[], width: number): string[] {
         this.reportMetadataDecoration(false);
         return clampRenderedLines(lines, width);
     }
@@ -2667,7 +2667,7 @@ export class PolishedEditor extends CustomEditor {
         const shellMode = isShellModeInput(this.getText());
         const { railWidth } = getEditorChromeWidths(config, this.uiTheme, "\x1b[0m", shellMode);
         const innerWidth = Math.max(0, width - railWidth);
-        let captured: { value: string[]; capture?: AutocompleteCapture };
+        let captured: { value: readonly string[]; capture?: AutocompleteCapture };
         try {
             captured = renderWithAutocompleteCapture(
                 this as unknown as AutocompleteEditorInternals,
@@ -2839,11 +2839,11 @@ export class WrappedPolishedEditor implements EditorComponent {
         this.onMetadataDecorationChange();
     }
 
-    private renderBase(width: number): string[] {
+    private renderBase(width: number): readonly string[] {
         return this.mouse.baseRendered(width, this.base.render(width));
     }
 
-    private renderFallback(lines: string[], width: number): string[] {
+    private renderFallback(lines: readonly string[], width: number): string[] {
         this.reportMetadataDecoration(false);
         return clampRenderedLines(lines, width);
     }
@@ -2867,7 +2867,7 @@ export class WrappedPolishedEditor implements EditorComponent {
         const shellMode = isShellModeInput(this.base.getText());
         const { railWidth } = getEditorChromeWidths(config, this.uiTheme, "\x1b[0m", shellMode);
         const innerWidth = Math.max(0, width - railWidth);
-        let captured: { value: string[]; capture?: AutocompleteCapture };
+        let captured: { value: readonly string[]; capture?: AutocompleteCapture };
         try {
             captured = renderWithAutocompleteCapture(this.base, () => this.renderBase(innerWidth));
         } catch {

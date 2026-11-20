@@ -4,12 +4,12 @@ A pi extension that registers a single `subagent` tool with two agents:
 
 `~/.pi/agent/ext-config/subagents.json` is the single source of truth for per-agent model and thinking level — edit it via `/subagents:settings`. If the file is missing, the first `subagent` invocation creates it, seeded with the active session model. Agent `.md` frontmatter may declare a fallback `model:`; once `subagents.json` has an entry for an agent, that entry wins (the file is seeded with the active session model on first use).
 
-| Agent      | Tools                                                                                                                             | Model                     | Purpose                                        |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ---------------------------------------------- |
+| Agent      | Tools                                                                                                                                   | Model                     | Purpose                                        |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ---------------------------------------------- |
 | **scout**  | read, ffgrep, fffind, recall, powershell, query_sqlite, query_mysql, web_search, web_fetch, ninerouter_web_search, ninerouter_web_fetch | via `/subagents:settings` | Fast codebase recon + lightweight web research |
 | **worker** | read, write, edit, powershell, ffgrep, fffind, recall, query_sqlite, query_mysql, codemode                                              | via `/subagents:settings` | Code changes                                   |
-| —          | git status, git diff, git log, etc.                                                                                               | —                         | Git operations (via terminal)                  |
-| —          | query_sqlite, query_mysql                                                                                                         | —                         | Database queries (via db-viewer)               |
+| —          | git status, git diff, git log, etc.                                                                                                     | —                         | Git operations (via terminal)                  |
+| —          | query_sqlite, query_mysql                                                                                                               | —                         | Database queries (via db-viewer)               |
 
 ## Usage
 

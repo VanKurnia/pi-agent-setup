@@ -26,7 +26,7 @@ export function createMarkdownResult(markdown: string, expanded = false): Compon
         invalidate(): void {
             md.invalidate();
         },
-        render(width: number): string[] {
+        render(width: number): readonly string[] {
             const lines = md.render(width);
             if (lines.length <= COLLAPSED_LINES) return lines;
             const remaining = lines.length - COLLAPSED_LINES;

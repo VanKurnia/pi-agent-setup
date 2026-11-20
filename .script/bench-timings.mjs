@@ -1,4 +1,4 @@
-// Shared implementation of bench-extensions.mjs and bench-extensions-pi-bolt.mjs.
+// Shared implementation of the .script benches that boot pi with PI_TIMING=1.
 //
 // pi charges jiti's one-time loader initialization to whichever extension loads first, so that
 // extension looks expensive while every later one looks cheap. The init is measured on its own —
@@ -15,7 +15,7 @@ const PROBE_SOURCE = "export default function (): void {}\n";
 const LOADER_LABEL = "<jiti loader init, one-time> [module import]";
 const isImport = (entry) => entry.label.endsWith("[module import]");
 
-const median = (values) => {
+export const median = (values) => {
     const sorted = [...values].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
     return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
