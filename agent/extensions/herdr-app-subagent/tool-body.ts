@@ -67,11 +67,12 @@ function errorResult(text: string) {
 
 function abortResult(terminal: string, sessionFile?: string) {
     // An aborted wait is not a failed turn: the child keeps its terminal and
-    // its session, so a later dispatch to this agent continues both. Closing
+    // its session, so a later dispatch with fresh:false continues both. Closing
     // it here would throw away work that is still in progress.
     const session = sessionFile === undefined ? "" : ` (session: ${sessionFile})`;
     return errorResult(
-        `Subagent run was aborted; its sub-agent terminal ${terminal} was left running${session}.`,
+        `Subagent run was aborted; its sub-agent terminal ${terminal} was left running${session}. ` +
+            "Dispatch again with fresh:false to continue it.",
     );
 }
 
@@ -82,7 +83,7 @@ function noSummaryResult(agentName: string, terminal: string, session: string, r
         content: [
             {
                 type: "text" as const,
-                text: `Subagent (\`${agentName}\`) finished without a text summary. Its session is ${session} — read it, or dispatch again.`,
+                text: `Subagent (\`${agentName}\`) finished without a text summary. Its session is ${session} — read it, or dispatch again with fresh:false to continue it.`,
             },
         ],
         details: { mode: "single", terminal, session, reused, noSummary: true },
@@ -95,7 +96,7 @@ function noSummaryResult(agentName: string, terminal: string, session: string, r
 async function blockedResult(terminal: string, when: string) {
     return errorResult(
         `herdr subagent terminal ${terminal} is blocked ${when}: an approval or question dialog is waiting in the child. ` +
-            `It was left running — answer the dialog there, then dispatch again.${await readAgentTail(terminal)}`,
+            `It was left running — answer the dialog there, then dispatch again with fresh:false.${await readAgentTail(terminal)}`,
     );
 }
 
@@ -105,7 +106,7 @@ function timedOut(terminal: string, sessionFile: string | undefined, usedMs: num
     const session = sessionFile === undefined ? "" : ` (session ${sessionFile})`;
     return errorResult(
         `herdr subagent still working after ${Math.round(usedMs / 60000)} min; terminal ${terminal} was left running${session}. ` +
-            "Dispatch again to collect or continue.",
+            "Dispatch again with fresh:false to collect or continue it.",
     );
 }
 
@@ -145,7 +146,7 @@ export function formatSubagentFailure(input: {
     const sess = input.sessionFile ? ` (session ${input.sessionFile})` : "";
     return (
         `herdr subagent failed: ${input.message}${where}${sess}. ` +
-        `The child was left running — retry to reuse it, or pass fresh:true to discard it.`
+        `The child was left running — retry with fresh:false to reuse it, or retry plainly to start fresh.`
     );
 }
 
@@ -215,7 +216,9 @@ export async function runSubagentTool(
               }
             : undefined;
     const parent = linked !== undefined ? parentKey(linked.parentFile) : undefined;
-    const isFresh = params.fresh === true;
+    // Fresh is the default: a dispatch starts a new child unless the caller asks
+    // for continuity with fresh:false.
+    const isFresh = params.fresh !== false;
     const childId = agentSessionId(agent.name, cwd, parent);
     const lockPath =
         linked !== undefined ? lockFileFor(os.tmpdir(), agent.name, cwd, parent) : undefined;
@@ -326,8 +329,8 @@ export async function runSubagentTool(
             return errorResult(`subagent ${agent.name} is already starting; retry shortly.`);
         }
         try {
-            // Fresh wins over reuse: reap first, so the lookup below cannot hand
-            // the task to the child this dispatch is replacing.
+            // Fresh wins over reuse and is the default: reap first, so the lookup
+            // below cannot hand the task to the child this dispatch is replacing.
             if (isFresh) {
                 if (signal?.aborted) {
                     return errorResult(
@@ -525,8 +528,8 @@ export async function runSubagentTool(
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // The child may already hold the answer. Never reclaim on an unexpected
-        // error: the next dispatch reuses it (findReusableChild), and `fresh: true`
-        // is the explicit way to discard one.
+        // error: a `fresh: false` dispatch reuses it (findReusableChild), while the
+        // default dispatch discards it.
         return errorResult(formatSubagentFailure({ terminal, sessionFile, message }));
     }
 }

@@ -72,7 +72,7 @@ await runCases(
                 assert.ok(text.includes("read failed"), text);
                 assert.ok(text.includes("terminal t95"), text);
                 assert.ok(text.includes("/root/sessions/t95.jsonl"), text);
-                assert.ok(text.includes("fresh:true"), text);
+                assert.ok(text.includes("fresh:false"), text);
                 assert.ok(text.includes("left running"), text);
             },
         ],
@@ -83,7 +83,7 @@ await runCases(
                 assert.ok(text.includes("boom"), text);
                 assert.equal(text.includes("terminal undefined"), false, text);
                 assert.equal(text.includes("session undefined"), false, text);
-                assert.ok(text.includes("fresh:true"), text);
+                assert.ok(text.includes("fresh:false"), text);
             },
         ],
     ],
