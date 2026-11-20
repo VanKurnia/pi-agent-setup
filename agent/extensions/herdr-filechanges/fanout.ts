@@ -79,17 +79,20 @@ export const fanOut: FanOut = {
             // mid-turn, so those are reported, never typed into.
             if (child.status === "working") {
                 skipped.push({ address: child.address, why: "still working" });
-            } else if (child.status === "blocked") {
+                continue;
+            }
+            if (child.status === "blocked") {
                 skipped.push({ address: child.address, why: "waiting for you" });
-            } else {
-                const files = await logged(child.address);
-                if (files === undefined) {
-                    skipped.push({ address: child.address, why: "no change log" });
-                } else if (files > 0) {
-                    // A child with an empty log has nothing to accept; typing into
-                    // it would only make that terminal say so.
-                    reachable.push(child.address);
-                }
+                continue;
+            }
+
+            const files = await logged(child.address);
+            if (files === undefined) {
+                skipped.push({ address: child.address, why: "no change log" });
+            } else if (files > 0) {
+                // A child with an empty log has nothing to accept; typing into it
+                // would only make that terminal say so.
+                reachable.push(child.address);
             }
         }
         return { reachable, skipped };

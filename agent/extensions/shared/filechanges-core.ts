@@ -538,20 +538,6 @@ export function installFileChangeCore(
         return outcome.failed.length > 0 || outcome.unready.length > 0 ? "warning" : "info";
     }
 
-    /** Same meaning for both commands: act on the whole tree, not this session alone. */
-    const TREE_ARGS = new Set(["tree", "all"]);
-
-    /**
-     * Where to look when this session has nothing logged: the sub-agents that do,
-     * as the tail of a notice.
-     */
-    async function elsewhere(command: "accept" | "decline"): Promise<string> {
-        const plan = await subagentPlan();
-        return plan.reachable.length === 0
-            ? ""
-            : ` ${plan.reachable.length} sub-agent(s) it started have changes: /filechanges-${command} tree.`;
-    }
-
     /**
      * The gate accept/decline share: what the command would touch and the
      * confirmation. Null when there is nothing to do or the person said no.
@@ -563,17 +549,25 @@ export function installFileChangeCore(
     ): Promise<{ plan: FanOutPlan; count: number } | null> {
         await ctx.waitForIdle();
 
-        const args: string[] = (ctx as any).args ?? [];
+        // Set by the command handler; absent when a frontend calls in directly.
+        const args = (ctx as { args?: string[] }).args ?? [];
         // A sub-agent is another terminal, so reaching one is asked for, never
         // assumed: a plain accept/decline stays inside this process.
-        const tree = args.some((arg) => TREE_ARGS.has(arg));
-        const plan = tree ? await subagentPlan() : { reachable: [], skipped: [] };
+        const tree = args.some((arg) => arg === "tree" || arg === "all");
         const count = tracker.getTrackedSize();
-        if (count === 0 && plan.reachable.length === 0) {
+        // Listed only when the command acts on them, or when this session is empty
+        // and the notice has to say whether the work is one level down.
+        const plan = tree || count === 0 ? await subagentPlan() : { reachable: [], skipped: [] };
+
+        // With nothing logged here, only `tree` gives the command somewhere else
+        // to go.
+        const reachesSubagents = tree && plan.reachable.length > 0;
+        if (count === 0 && !reachesSubagents) {
             if (ctx.hasUI) {
-                const tail = tree
-                    ? subagentNote(plan, { failed: [], unready: [] })
-                    : await elsewhere(command);
+                const tail =
+                    plan.reachable.length === 0
+                        ? subagentNote(plan, { failed: [], unready: [] })
+                        : ` ${plan.reachable.length} sub-agent(s) it started have changes: /filechanges-${command} tree.`;
                 ctx.ui.notify(`filechanges: nothing to ${command} in this session.${tail}`, "info");
             }
             return null;
