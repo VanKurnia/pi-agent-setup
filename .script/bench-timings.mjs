@@ -35,13 +35,13 @@ function parseEntries(stderr) {
 }
 
 /** One boot, timed to process exit. A nonzero exit code is irrelevant: timings print anyway. */
-function boot(bin, args, tmp, name) {
+export function boot(bin, args, tmp, name, extraEnv = {}) {
     const outFile = join(tmp, `${name}-out.txt`);
     const errFile = join(tmp, `${name}-err.txt`);
     const started = Date.now();
     try {
         execFileSync("cmd.exe", ["/c", bin, ...args, "<", "NUL", ">", outFile, "2>", errFile], {
-            env: { ...process.env, PI_TIMING: "1" },
+            env: { ...process.env, PI_TIMING: "1", ...extraEnv },
             stdio: "ignore",
             timeout: 120000,
         });
@@ -49,7 +49,8 @@ function boot(bin, args, tmp, name) {
         /* exit code irrelevant; timings still printed */
     }
     const ms = Date.now() - started;
-    return { ms, entries: parseEntries(readFileSync(errFile, "utf-8")) };
+    const stderr = readFileSync(errFile, "utf-8");
+    return { ms, entries: parseEntries(stderr), stderr };
 }
 
 export function runExtensionBench(bin, tmpPrefix) {

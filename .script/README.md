@@ -11,6 +11,7 @@ Run them from the repo root. All scripts require `bash` + `npm` on `PATH`
 | [`patch-speeed-home.sh`](#patch-speeed-homesh) | Re-apply pi-speeed Windows HOME fix (used by `install.sh`, `update.sh`) |
 | [`patch-host-deps.sh`](#patch-host-depssh) | Move host-provided packages from `dependencies` to `peerDependencies` in installed extensions (used by `install.sh`, `update.sh`) |
 | [`bench-om.mjs`](#bench-ommjs) | Benchmark Blackhole Observational Memory token compression & prompt cache stability |
+| [`bench-boot.mjs` / `bench-extensions.mjs`](#bench-bootmjs--bench-extensionsmjs--boot-cost) | Boot cost: wall clock, `main TOTAL`, per-extension attribution |
 | [`test/`](#test) | Temp behavior tests loading real TS modules via jiti (no model calls) |
 | [`preview-system-prompt.mjs`](#preview-system-promptmjs) | Render pi's system prompt from the installed build (`--list`, `--section`, `--out`) |
 | [`list-tools.mjs`](#list-toolsmjs) | List every tool pi loads, with the descriptions declared to the model (`--active`, `--json`, `--full`, `--stats`) |
@@ -181,6 +182,24 @@ node .script/bench-om.mjs --synthetic 200
 # Override token cadence thresholds
 node .script/bench-om.mjs --observe-tokens 20000 --reflect-tokens 60000
 ```
+
+---
+
+## `bench-boot.mjs` / `bench-extensions.mjs` — boot cost
+
+```bash
+node .script/bench-boot.mjs 5                                          # wall clock, main TOTAL, extensions TOTAL + verdict
+node .script/bench-boot.mjs 5 --json                                   # same, machine-readable
+node .script/bench-boot.mjs 5 --ab "--no-extensions"                   # interleaved A/B, prints B-A deltas
+node .script/bench-boot.mjs 5 --module agent/extensions/zentui/ui.ts   # one module's own cost
+node .script/bench-extensions.mjs 5                                    # per-extension attribution table
+```
+
+The `extensions` group total is an **attribution** metric, not a boot metric: an import deferred
+into `session_start` shrinks that row while the process still pays it. For boot claims use
+`wall clock` and `main TOTAL` with 5+ `stable` runs (`UNSTABLE` = noise floor too high). Compare
+commits via `--ab` or two `--json` runs on the same machine state; trust `--module` only after
+measuring a tiny module as the floor.
 
 ---
 
