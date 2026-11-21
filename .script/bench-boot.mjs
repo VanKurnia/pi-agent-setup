@@ -4,6 +4,10 @@
 // handler shrinks them while the process still pays the cost before the first prompt. So report
 // process wall clock, pi's own `main TOTAL`, and the extensions group total, with a stability
 // verdict that keeps "boot is faster" claims falsifiable.
+//
+// The extensions group total is raw as well: it still contains the two one-time marks pi charges to
+// whichever extension loads first (jiti init, then the first builtin's phase tail). Both cancel in
+// an `--ab` delta; `bench-extensions.mjs` measures them and lists them as their own rows.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -90,7 +94,9 @@ function printSide(title, side) {
     console.log(`${title}: runs=${side.wall.length}`);
     console.log(`wall clock: median ${mm(stats.wall.median)}  IQR ${mm(stats.wall.iqr)}  (per run: ${cells(side.wall)})`);
     console.log(`main TOTAL: median ${mm(stats.main.median)}  (per run: ${cells(side.main)})`);
-    console.log(`extensions TOTAL: median ${mm(stats.ext.median)}  (per run: ${cells(side.ext)})`);
+    console.log(
+        `extensions TOTAL (raw, one-time rows included): median ${mm(stats.ext.median)}  (per run: ${cells(side.ext)})`,
+    );
     console.log(verdict(stats.wall));
 }
 

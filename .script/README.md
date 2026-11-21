@@ -199,7 +199,29 @@ The `extensions` group total is an **attribution** metric, not a boot metric: an
 into `session_start` shrinks that row while the process still pays it. For boot claims use
 `wall clock` and `main TOTAL` with 5+ `stable` runs (`UNSTABLE` = noise floor too high). Compare
 commits via `--ab` or two `--json` runs on the same machine state; trust `--module` only after
-measuring a tiny module as the floor.
+measuring a tiny module as the floor. `bench-boot` prints that total raw, one-time rows included;
+both are additive constants, so A/B deltas and commit comparisons are unaffected.
+
+### One-time rows in `bench-extensions`
+
+pi's timing rows are a delta chain — every label reports `now - lastTime`
+(`dist/core/timings.js`), not its own duration — so two marks absorb work that belongs to the
+phase rather than the extension they name. `bench-extensions` measures both and reports them as
+their own `<…, one-time>` rows, so per-extension numbers stay comparable regardless of load order:
+
+| Row | What it really is |
+| --- | --- |
+| `<jiti loader init, one-time> [module import]` | jiti's one-time init + transform of the first file it compiles |
+| `<first builtin entry, one-time> [factory]` | the tail of the extension phase: path canonicalization (`realpath`/`lstat`), inline factories, and the GC that phase deferred |
+
+Each is measured, not estimated: a boot whose only extension is that one file
+(`--no-extensions -e <path>`), subtracted with the same clamp the loader-init correction uses. The
+built-in row follows *position*, not code — whichever built-in loads first pays it (`builtin:codemode`
+by default, `builtin:llama.cpp` when that built-in is enabled), and that extension's own factory
+costs ~0ms. Never quote that row as an extension's boot cost.
+
+`bench-extensions-pib.mjs` and `bench-extensions-pi-bolt.mjs` print the same table for the `pib`
+(cached bytecode) and `pi-bolt` launchers.
 
 ---
 
