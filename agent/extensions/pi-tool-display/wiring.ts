@@ -1,7 +1,3 @@
-/**
- * Merged 2026-09-30 from per-module sources (see FORK.md). This file is now the source of truth - edit it directly.
- * Merged to cut boot cost: jiti pays ~19ms per module regardless of size.
- */
 import {
     BoxTheme,
     setFullTheme,
@@ -57,8 +53,6 @@ import {
     getMarkdownTheme,
 } from "@earendil-works/pi-coding-agent";
 import { Markdown, Text, type Component, type TuiMouseEvent } from "@earendil-works/pi-tui";
-
-// from: pistyle-bridge.ts
 
 /**
  * Bridge between this extension and the vendored pi-style boxed renderers
@@ -166,8 +160,6 @@ function renderPistyleToolResult(
     return renderBoxedDispatchResult(name, boxedResult, boxedOptions, boxTheme, boxedContext);
 }
 
-// from: pistyle-tool-patch.ts
-
 // Renderer registration is native as of Pi 1.0.1: `pi.registerToolRenderer`.
 // The previous implementation monkey-patched `ToolExecutionComponent.prototype`
 // and reached into the live component instance to clear Pi's container fill.
@@ -223,8 +215,6 @@ export function registerPistyleToolRenderer(pi: ExtensionAPI): void {
             ),
     }));
 }
-
-// from: thinking-label.ts
 
 interface ThemeLike {
     fg(color: string, text: string): string;
@@ -482,8 +472,6 @@ export function registerThinkingLabeling(pi: ExtensionAPI): void {
         handleThinkingContextEvent(event, ctx);
     });
 }
-
-// from: tool-decoration.ts
 
 /**
  * Tool decoration for MCP and custom tools.
@@ -885,8 +873,6 @@ export function registerToolDecoration(pi: ExtensionAPI): void {
     });
 }
 
-// from: db-query-card.ts
-
 /**
  * Boxed card for db-viewer's query tools (fork addition — not vendored pi-style).
  *
@@ -1055,8 +1041,6 @@ function renderDbQueryResult(
         isPartial: options.isPartial,
     });
 }
-
-// from: ocr-card.ts
 
 /**
  * Boxed card for the OCR tools (`ocr_review`, `ocr_scan`) (fork addition — not vendored pi-style).
@@ -1589,8 +1573,6 @@ function renderOcrResult(
     // Preview runs publish the seeded file list without a result payload.
     return renderPreview(state, options, theme, context);
 }
-
-// from: subagent-card.ts
 
 /**
  * Boxed card for the `subagent` tool (fork addition — not vendored pi-style).

@@ -950,14 +950,6 @@ const ANSI_ONE_SRC = "\u001b\\[[0-9;]*m";
 const SEP_UNIT_SRC = `(?:${ANSI_ONE_SRC})?\\s+\\|\\s+(?:${ANSI_ONE_SRC})?`;
 
 /**
- * Join non-empty parts with a separator (segment-mode style).
- * Useful when building right-side metrics without orphan pipes.
- */
-export function joinNonEmpty(parts: string[], separator: string): string {
-    return parts.filter(Boolean).join(separator);
-}
-
-/**
  * Tidy a rendered format left/middle/right slice:
  * - collapse repeated pipe separators (plain or simple ANSI-wrapped) into one
  * - strip leading/trailing pipe separators
@@ -1432,21 +1424,6 @@ function computeUsageTotals(entries: readonly SessionEntry[]): UsageTotals {
     }
 
     return Object.freeze({ input, output, cacheRead, cacheWrite, latestCacheHitRate, cost });
-}
-
-export function invalidateUsageTotalsCache(): void {
-    usageTotalsCache = undefined;
-}
-
-/** Test helper: counts aggregation passes only; every cache lookup still fingerprints all entries. */
-export function __usageTotalsAggregationPassCount(): number {
-    return usageTotalsAggregationPassCount;
-}
-
-/** Test helper: reset the aggregation-pass counter and cached totals. */
-export function __resetUsageTotalsCacheForTests(): void {
-    usageTotalsCache = undefined;
-    usageTotalsAggregationPassCount = 0;
 }
 
 export function getUsageTotals(ctx: ExtensionContext): UsageTotals {
@@ -2206,34 +2183,6 @@ export function renderEditorMetadataFormatSplit(
         right: renderTokens(tokens.slice(second + 1), values, uiTheme, config, shellMode).styled,
     };
 }
-
-export function renderEditorMetadataFormat(
-    format: string,
-    values: EditorMetadataValues,
-    uiTheme: Theme,
-    config: ZentuiConfig,
-    shellMode = false,
-): string {
-    return renderTokens(
-        parseFooterFormat(sanitizeEditorMetadataText(format)),
-        values,
-        uiTheme,
-        config,
-        shellMode,
-    ).styled;
-}
-
-/** Nerd-mode fallback used when a configured rail is missing or unusable. */
-export const DEFAULT_RAIL_GLYPH = "│";
-
-/** ASCII-mode fallback used when a configured rail is missing or unusable. */
-export const DEFAULT_ASCII_RAIL_GLYPH = "|";
-
-/** Rail glyphs offered by the Editor and User messages settings panels. */
-export const RAIL_GLYPH_CHOICES = ["│", "┃", "▎", "▌", "|"] as const;
-
-/** Settings label for "inherit the shared/default glyph". */
-export const RAIL_GLYPH_INHERIT = "Default";
 
 /** Keep the first terminal cell of a sanitized value without adding escape codes. */
 function firstCell(value: string): string {

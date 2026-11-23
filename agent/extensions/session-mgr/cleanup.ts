@@ -24,16 +24,14 @@ import {
 import { basename, dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { ensureExtConfigDir, extConfigPath } from "../shared/ext-config.ts";
-import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+    ExtensionCommandContext,
+    ExtensionContext,
+    SessionHeader,
+} from "@earendil-works/pi-coding-agent";
 import { showPicker } from "../shared/picker.ts";
 import { normalizeDir, shortenHome } from "../shared/text-format.ts";
-import {
-    fileStamp,
-    listSessionFiles,
-    parseSessionHeader,
-    readFileHead,
-    readSessionCwd,
-} from "./session-ops.ts";
+import { fileStamp, listSessionFiles, readSessionHead } from "./session-ops.ts";
 
 // =============================================================================
 // Settings: Cleanup
@@ -271,10 +269,25 @@ export interface CleanupCandidate {
 
 const TAIL_SCAN_BYTES = 32768;
 
-function readSessionName(filePath: string): string {
-    const fallback =
-        parseSessionHeader(readFileHead(filePath)?.split("\n")[0])?.id.slice(0, 8) ??
-        basename(filePath);
+// A subagent transcript carries a `herdr-` session id (agent/extensions/
+// herdr-app-subagent/session.ts); pi's own ids are uuids, so a clone is never
+// mistaken for one and keeps its own expiry.
+const SUBAGENT_SESSION_ID = /^herdr-/;
+
+function isSubagentTranscript(head: SessionHeader | undefined): head is SessionHeader {
+    return head !== undefined && SUBAGENT_SESSION_ID.test(head.id);
+}
+
+/** The transcripts of one session folder, each with its header. */
+function folderTranscripts(folder: string): { file: string; head: SessionHeader | undefined }[] {
+    return listSessionFiles(folder).map((name) => {
+        const file = join(folder, name);
+        return { file, head: readSessionHead(file) };
+    });
+}
+
+function readSessionName(filePath: string, head: SessionHeader | undefined): string {
+    const fallback = head?.id.slice(0, 8) ?? basename(filePath);
     let fd = -1;
     try {
         fd = openSync(filePath, "r");
@@ -335,15 +348,14 @@ export function collectCleanupCandidates(
 
     for (const folder of folders) {
         const folderPath = join(sessionsRoot, folder);
-        const files = listSessionFiles(folderPath);
-        if (files.length === 0) continue;
+        const transcripts = folderTranscripts(folderPath);
+        if (transcripts.length === 0) continue;
 
-        for (const f of files) {
-            const filePath = join(folderPath, f);
+        for (const { file: filePath, head } of transcripts) {
             if (normalizedExclude && normalizeDir(filePath) === normalizedExclude) continue;
 
-            let mtimeMs = 0;
-            let sizeBytes = 0;
+            let mtimeMs: number;
+            let sizeBytes: number;
             try {
                 const st = statSync(filePath);
                 mtimeMs = st.mtimeMs;
@@ -353,15 +365,19 @@ export function collectCleanupCandidates(
             }
 
             const ageDays = calculateAgeDays(mtimeMs, now);
-            if (thresholdDays > 0 && ageDays < thresholdDays) continue;
+            if (isSubagentTranscript(head)) {
+                // A subagent transcript lives and dies with the session that
+                // spawned it: only one whose parent is gone is a candidate.
+                if (head.parentSession === undefined || existsSync(head.parentSession)) continue;
+            } else if (thresholdDays > 0 && ageDays < thresholdDays) {
+                continue;
+            }
 
-            const cwd = readSessionCwd(filePath) ?? "unknown";
-            const name = readSessionName(filePath);
             candidates.push({
                 file: filePath,
                 folder,
-                cwd,
-                name,
+                cwd: head?.cwd ?? "unknown",
+                name: readSessionName(filePath, head),
                 mtimeMs,
                 ageDays,
                 sizeBytes,
@@ -372,7 +388,37 @@ export function collectCleanupCandidates(
     return candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
 }
 
-export function sweepEmptySessionFolders(agentDir: string): number {
+/**
+ * The transcripts to remove for the given picks: each pick plus every subagent
+ * transcript descended from it. A clone is never descended into, so it stays
+ * until its own age expires.
+ */
+export function expandWithSubagentDescendants(files: string[]): string[] {
+    const childrenOf = new Map<string, string[]>();
+    for (const folder of new Set(files.map((file) => dirname(file)))) {
+        for (const { file, head } of folderTranscripts(folder)) {
+            if (!isSubagentTranscript(head) || head.parentSession === undefined) continue;
+            const parent = normalizeDir(head.parentSession);
+            const siblings = childrenOf.get(parent);
+            if (siblings === undefined) childrenOf.set(parent, [file]);
+            else siblings.push(file);
+        }
+    }
+
+    const expanded = [...files];
+    const seen = new Set(files.map((file) => normalizeDir(file)));
+    for (let index = 0; index < expanded.length; index++) {
+        for (const child of childrenOf.get(normalizeDir(expanded[index])) ?? []) {
+            const key = normalizeDir(child);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            expanded.push(child);
+        }
+    }
+    return expanded;
+}
+
+function sweepEmptySessionFolders(agentDir: string): number {
     const sessionsRoot = join(agentDir, "sessions");
     let removed = 0;
     try {
@@ -406,6 +452,8 @@ export function trashCandidates(
         else failed.push(`${basename(f)}: ${r.error}`);
     }
 
+    // A folder with no transcripts left is no longer a workdir.
+    sweepEmptySessionFolders(agentDir);
     return { os, local, failed };
 }
 
@@ -415,6 +463,10 @@ function formatAge(ageDays: number): string {
     if (ageDays < 30) return `${ageDays}d ago`;
     const m = Math.floor(ageDays / 30);
     return `${m}mo ago`;
+}
+
+function transcriptCount(count: number): string {
+    return `${count} subagent transcript${count === 1 ? "" : "s"}`;
 }
 
 // =============================================================================
@@ -491,16 +543,17 @@ async function cleanNow(
     );
     if (!picked) return;
 
-    const r = trashCandidates(agentDir, [picked]);
-    sweepEmptySessionFolders(agentDir);
+    const files = expandWithSubagentDescendants([picked]);
+    const r = trashCandidates(agentDir, files);
     if (r.failed.length > 0) {
         ctx.ui.notify(`Failed: ${r.failed.join("; ")}`, "error");
-    } else {
-        ctx.ui.notify(
-            `Session trashed (${r.os > 0 ? "OS Recycle Bin" : "sessions/.trash"})`,
-            "info",
-        );
+        return;
     }
+    const extra = files.length - 1;
+    ctx.ui.notify(
+        `Session trashed${extra > 0 ? ` with ${transcriptCount(extra)}` : ""} (${r.os > 0 ? "OS Recycle Bin" : "sessions/.trash"})`,
+        "info",
+    );
 }
 
 async function editShareDestination(
@@ -598,6 +651,9 @@ export async function handleAutoCleanupOnStart(ctx: ExtensionContext): Promise<v
         if (cands.length === 0) return;
         saveCleanupSettings({ ...settings, lastAutoCleanAt: new Date().toISOString() });
 
+        const files = expandWithSubagentDescendants(cands.map((c) => c.file));
+        const extra = files.length - cands.length;
+
         const oldest = Math.max(...cands.map((c) => c.ageDays));
         const mb = (cands.reduce((a, c) => a + c.sizeBytes, 0) / 1048576).toFixed(1);
         const lines = [
@@ -607,15 +663,17 @@ export async function handleAutoCleanupOnStart(ctx: ExtensionContext): Promise<v
                 .map((c) => `• ${c.name} · ${formatAge(c.ageDays)} · ${shortenHome(c.cwd)}`),
         ];
         if (cands.length > 8) lines.push(`…and ${cands.length - 8} more`);
-        if (!(await ctx.ui.confirm(`Delete ${cands.length} old sessions?`, lines.join("\n"))))
+        const subagentNote = extra > 0 ? ` (incl. ${transcriptCount(extra)})` : "";
+        if (
+            !(await ctx.ui.confirm(
+                `Delete ${files.length} old sessions${subagentNote}?`,
+                lines.join("\n"),
+            ))
+        )
             return;
-        const r = trashCandidates(
-            agentDir,
-            cands.map((c) => c.file),
-        );
-        sweepEmptySessionFolders(agentDir);
+        const r = trashCandidates(agentDir, files);
         ctx.ui.notify(
-            `Cleaned ${cands.length - r.failed.length} (${r.os} recycle bin, ${r.local} local trash${r.failed.length ? `, ${r.failed.length} failed` : ""})`,
+            `Cleaned ${files.length - r.failed.length} (${r.os} recycle bin, ${r.local} local trash${r.failed.length ? `, ${r.failed.length} failed` : ""})`,
             r.failed.length > 0 ? "warning" : "info",
         );
     } catch (e) {

@@ -66,9 +66,13 @@ export function parseSessionHeader(line: string | undefined): SessionHeader | un
     }
 }
 
+/** The session header: the only place a transcript records its cwd and lineage. */
+export function readSessionHead(filePath: string): SessionHeader | undefined {
+    return parseSessionHeader(readFileHead(filePath)?.split("\n")[0]);
+}
+
 export function readSessionCwd(filePath: string): string | undefined {
-    const head = readFileHead(filePath, 2048);
-    return parseSessionHeader(head?.split("\n")[0])?.cwd;
+    return readSessionHead(filePath)?.cwd;
 }
 
 export function fileStamp(iso: string): string {

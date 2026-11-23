@@ -1,7 +1,3 @@
-/**
- * Merged 2026-09-30 from per-module sources (see FORK.md). This file is now the source of truth - edit it directly.
- * Merged to cut boot cost: jiti pays ~19ms per module regardless of size.
- */
 import { join, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
@@ -35,12 +31,8 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     });
 }
 
-// from: types.ts
-
-/**
- * Render sizing for the boxed tool cards. There is no runtime knob: the values
- * below are what shipped, and changing them means editing this constant.
- */
+/** Render sizing for the boxed tool cards. There is no runtime knob: the values
+ * below are what shipped, and changing them means editing this constant. */
 export interface ToolDisplayConfig {
     collapseAfterTurn: boolean;
     previewLines: number;
@@ -53,8 +45,6 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = Object.freeze({
     previewLines: 8,
     expandedPreviewMaxLines: 4000,
 });
-
-// from: tool-metadata.ts
 
 const MCP_DESCRIPTION_PATTERN = /\bmcp\b/i;
 const MCP_ADAPTER_SOURCE_PATTERN =
@@ -160,93 +150,40 @@ export function isMcpToolCandidate(tool: unknown): boolean {
     return false;
 }
 
-// from: debug-logger.ts
-
 const EXTENSION_ROOT = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DEBUG_DIR = join(EXTENSION_ROOT, "debug");
 const DEFAULT_DEBUG_LOG_FILE = join(DEFAULT_DEBUG_DIR, "debug.log");
 const DEBUG_ENV_VAR = "PI_TOOL_DISPLAY_DEBUG";
 const SECRET_VALUE_PATTERN =
     /\b(?:sk-[A-Za-z0-9_-]{12,}|[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{12,})\b/g;
-interface ToolDisplayDebugLoggerFileSystem {
-    mkdirSync: typeof mkdirSync;
-    appendFile: typeof appendFile;
-}
-interface ToolDisplayDebugLoggerOptions {
-    debugDir?: string;
-    debugLogFile?: string;
-    createDate?: () => Date;
-    fileSystem?: ToolDisplayDebugLoggerFileSystem;
-}
-interface ToolDisplayDebugLogger {
-    log(message: string, error?: unknown): void;
-    flush(): Promise<void>;
-}
-const DEFAULT_FILE_SYSTEM: ToolDisplayDebugLoggerFileSystem = {
-    mkdirSync,
-    appendFile,
-};
 function redactMessage(value: string): string {
     return value.replace(SECRET_VALUE_PATTERN, "[REDACTED]");
 }
-function createToolDisplayDebugLogger(
-    options: ToolDisplayDebugLoggerOptions = {},
-): ToolDisplayDebugLogger {
-    const debugDir = options.debugDir ?? DEFAULT_DEBUG_DIR;
-    const debugLogFile = options.debugLogFile ?? DEFAULT_DEBUG_LOG_FILE;
-    const createDate = options.createDate ?? (() => new Date());
-    const fileSystem = options.fileSystem ?? DEFAULT_FILE_SYSTEM;
-    let debugDirectoryReady = false;
-    let writeQueue: Promise<void> = Promise.resolve();
-    function isDebugEnabled(): boolean {
-        return process.env[DEBUG_ENV_VAR] === "1";
-    }
-    function ensureDebugDirectory(): void {
-        if (debugDirectoryReady) {
-            return;
-        }
-        fileSystem.mkdirSync(debugDir, { recursive: true });
-        debugDirectoryReady = true;
-    }
-    function appendLine(line: string): Promise<void> {
-        return fileSystem.appendFile(debugLogFile, line, "utf8");
-    }
-    return {
-        log(message: string, error?: unknown): void {
-            if (!isDebugEnabled()) {
-                return;
-            }
-            try {
-                ensureDebugDirectory();
-                const errorText =
-                    error instanceof Error
-                        ? `${error.name}: ${error.message}`
-                        : error === undefined
-                          ? ""
-                          : String(error);
-                const suffix = errorText ? ` ${redactMessage(errorText)}` : "";
-                const line = `${createDate().toISOString()} ${redactMessage(message)}${suffix}\n`;
-                writeQueue = writeQueue.then(
-                    () => appendLine(line),
-                    () => appendLine(line),
-                );
-                void writeQueue.catch(() => undefined);
-            } catch (logError) {
-                // Debug logging must never affect extension behavior.
-                void logError;
-            }
-        },
-        flush(): Promise<void> {
-            return writeQueue.catch(() => undefined);
-        },
-    };
-}
-const defaultDebugLogger = createToolDisplayDebugLogger();
+let debugDirectoryReady = false;
+let debugWriteQueue: Promise<void> = Promise.resolve();
+/** Logs to the extension's own debug file when `PI_TOOL_DISPLAY_DEBUG=1`; never affects rendering. */
 export function logToolDisplayDebug(message: string, error?: unknown): void {
-    defaultDebugLogger.log(message, error);
+    if (process.env[DEBUG_ENV_VAR] !== "1") return;
+    try {
+        if (!debugDirectoryReady) {
+            mkdirSync(DEFAULT_DEBUG_DIR, { recursive: true });
+            debugDirectoryReady = true;
+        }
+        const errorText =
+            error instanceof Error
+                ? `${error.name}: ${error.message}`
+                : error === undefined
+                  ? ""
+                  : String(error);
+        const suffix = errorText ? ` ${redactMessage(errorText)}` : "";
+        const line = `${new Date().toISOString()} ${redactMessage(message)}${suffix}\n`;
+        const append = (): Promise<void> => appendFile(DEFAULT_DEBUG_LOG_FILE, line, "utf8");
+        debugWriteQueue = debugWriteQueue.then(append, append);
+        void debugWriteQueue.catch(() => undefined);
+    } catch {
+        // Debug logging must never affect extension behavior.
+    }
 }
-
-// from: disposable.ts
 
 // Track cleanup callbacks for reload safety
 let cleanupCallbacks: Array<() => void> = [];
@@ -275,8 +212,6 @@ export function resetDisposed(): void {
     isDisposed = false;
     cleanupCallbacks = [];
 }
-
-// from: index.ts (entry helper)
 
 /** Runs `cleanup` when the session shuts down for a reload. */
 export function onReloadShutdown(pi: ExtensionAPI, cleanup: () => void): void {

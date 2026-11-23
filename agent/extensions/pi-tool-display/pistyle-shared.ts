@@ -1,7 +1,3 @@
-/**
- * Merged 2026-09-30 from per-module sources (see FORK.md). This file is now the source of truth - edit it directly.
- * Merged to cut boot cost: jiti pays ~19ms per module regardless of size.
- */
 import {
     type Component,
     visibleWidth as tuiVisibleWidth,
@@ -13,8 +9,6 @@ import { homedir } from "node:os";
 import { dirname, join, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONFIG_DIR_NAME, getAgentDir, highlightCode } from "@earendil-works/pi-coding-agent";
-
-// from: pistyle\shared\ansi.ts
 
 function isFinal(byte: string): boolean {
     return byte >= "@" && byte <= "~";
@@ -190,8 +184,6 @@ function bgHex(
     return `${escapes.prefix}${text}${escapes.suffix}`;
 }
 
-// from: pistyle\shared\elapsed.ts
-
 // Tool metrics: elapsed wall time + output size formatting and annotation.
 const ELAPSED_KEY = "__elapsedMs";
 export interface MetricResultLike {
@@ -221,8 +213,6 @@ export function getElapsedMs(result: MetricResultLike | undefined): number | und
 export function formatElapsed(result: MetricResultLike | undefined): string {
     return formatElapsedMs(getElapsedMs(result));
 }
-
-// from: pistyle\shared\render-budget.ts
 
 // Render budget + ANSI-safe width/truncation/wrapping helpers for boxed tool
 // presentation.
@@ -550,8 +540,6 @@ function boxedResultRenderBudget(
     return { headLines, tailLines, maxRenderedLines: rawLines };
 }
 
-// from: pistyle\shared\theme-extras.ts
-
 // Theme extras reader.
 //
 // Reads extension-specific "extras" plus raw theme vars/export values from the
@@ -818,8 +806,6 @@ function getThemeExtra(_theme: unknown, key: string): string {
     }
     return resolveThemeExtraValue(key, THEME_EXTRA_DEFAULTS[key] ?? "");
 }
-
-// from: pistyle\shared\box.ts
 
 // Boxed tool-call/result rendering primitives.
 //
@@ -1809,8 +1795,6 @@ export function selectRenderLines(
     if (selected.length === 1 && selected[0] === "") return { lines: [], omitted: 0 };
     return { lines: selected, omitted: Math.max(0, lineCount - selected.length) };
 }
-
-// from: pistyle\shared\split-diff.ts
 
 // Adaptive diff renderer — side-by-side (split) for short corresponding
 // changes, unified for additions/removals-only diffs and narrow terminals,

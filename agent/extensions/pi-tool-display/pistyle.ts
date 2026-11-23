@@ -1,7 +1,3 @@
-/**
- * Merged 2026-09-30 from per-module sources (see FORK.md). This file is now the source of truth - edit it directly.
- * Merged to cut boot cost: jiti pays ~19ms per module regardless of size.
- */
 import {
     BoxTheme,
     ESC,
@@ -44,8 +40,6 @@ import {
 } from "./pistyle-shared.ts";
 import { Component } from "@earendil-works/pi-tui";
 import { getLanguageFromPath, highlightCode } from "@earendil-works/pi-coding-agent";
-
-// from: pistyle\features\tools\boxed\command-shape.ts
 
 // Simple bash command shape detection, shared by the bash tool renderer and
 // the git/gh semantic classifiers.
@@ -187,8 +181,6 @@ function parseSimpleBashCommand(
         return null;
     return { tokens: rest, ...(cdDir !== undefined ? { cdDir } : {}) };
 }
-
-// from: pistyle\features\tools\boxed\output-tree.ts
 
 // Boxless output-tree primitives shared by the ls/find/grep/bash renderers.
 //
@@ -526,12 +518,6 @@ function pluralForm(noun: string, count: number): string {
     if (count === 1) return noun;
     return /(s|x|z|ch|sh)$/i.test(noun) ? `${noun}es` : `${noun}s`;
 }
-/** Pluralize a count noun: "1 file" / "3 files", "1 match" / "3 matches". */
-export function pluralize(count: number, noun: string): string {
-    return `${count} ${pluralForm(noun, count)}`;
-}
-
-// from: pistyle\features\tools\boxed\session-config.ts
 
 // Per-session render configuration for boxed tool presentation.
 //
@@ -657,8 +643,6 @@ function stopElapsedTicker(state: Record<string, unknown> | undefined): void {
     tickerEntries.delete(state);
     stopSharedTickerIfIdle();
 }
-
-// from: pistyle\features\tools\boxed\shared.ts
 
 // Shared context/view types + common helpers for the boxed tool renderers.
 /** Renderer context delivered by Pi's ToolExecutionComponent (getRenderContext). */
@@ -884,8 +868,6 @@ function clearFooterState(context: BoxedToolContext): void {
     clearCompactBoxedFooter(context.state);
 }
 export { boxedToolWidthKey, getTextOutput, resolveRelativePath, shortenPath };
-
-// from: pistyle\features\tools\boxed\gh.ts
 
 // GitHub (`gh`) semantic view renderer (Phase 8D).
 //
@@ -1887,8 +1869,6 @@ function renderGhRunJobResult(
         },
     );
 }
-
-// from: pistyle\features\tools\boxed\git.ts
 
 // Git semantic view renderer (Phase 8A).
 //
@@ -3901,8 +3881,6 @@ function buildGitDiffResultComponent(
     };
 }
 
-// from: pistyle\features\tools\boxed\bash.ts
-
 // Boxed bash tool renderer
 // (renderCall/renderResult only).
 const BASH_TOOL_NOTICE_PATTERN = /^\[Showing (?:last|lines)\b.*\. Full output: .+\]$/;
@@ -4968,8 +4946,6 @@ function shellTool(flavor: ShellFlavor): BoxedToolDefinition {
     };
 }
 
-// from: pistyle\features\tools\boxed\batch.ts
-
 // Consecutive quiet-tool (read/ls/find) call batching.
 //
 // Groups back-to-back calls of the same quiet tool inside one assistant turn
@@ -5521,8 +5497,6 @@ function emptyBatchResult(): Component {
     };
 }
 
-// from: pistyle\features\tools\boxed\edit.ts
-
 // Boxed edit tool renderer
 // (renderCall/renderResult only; no edit-core re-registration).
 const MAX_HIGHLIGHT_DIFF_CHARS = 12000;
@@ -5667,8 +5641,6 @@ const editTool: BoxedToolDefinition = {
     },
 };
 
-// from: pistyle\features\tools\boxed\fallback.ts
-
 // Boxed fallback for tools without a dedicated renderer.
 // (component side only; no ToolExecutionComponent prototype patching).
 const MAX_FALLBACK_PREVIEW_LINES = 10;
@@ -5772,8 +5744,6 @@ function formatBoxedFooterWithElapsed(
 // Re-exported for callers that need the tool-name label normalization.
 export { formatToolName };
 
-// from: pistyle\features\tools\boxed\find.ts
-
 // Boxed find tool renderer.
 //
 // find calls render as a boxless tree panel — a lone find shows its parsed
@@ -5828,8 +5798,6 @@ const findTool: BoxedToolDefinition = {
         return emptyBatchResult();
     },
 };
-
-// from: pistyle\features\tools\boxed\grep.ts
 
 // Boxed grep/search tool renderer.
 //
@@ -6000,8 +5968,6 @@ const grepTool: BoxedToolDefinition = {
     },
 };
 
-// from: pistyle\features\tools\boxed\ls.ts
-
 // Boxed ls tool renderer.
 //
 // ls calls render as a boxless tree panel — a lone ls shows its parsed output as
@@ -6050,8 +6016,6 @@ const lsTool: BoxedToolDefinition = {
     },
 };
 
-// from: pistyle\features\tools\boxed\read.ts
-
 // Boxed read tool renderer
 // (renderCall/renderResult only; no tool re-registration).
 //
@@ -6089,8 +6053,6 @@ const readTool: BoxedToolDefinition = {
         return emptyBatchResult();
     },
 };
-
-// from: pistyle\features\tools\boxed\write.ts
 
 // Boxed write tool renderer
 // (renderCall/renderResult only).
@@ -6220,8 +6182,6 @@ const writeTool: BoxedToolDefinition = {
         return compactFooterWithState(theme, result, context);
     },
 };
-
-// from: pistyle\features\tools\boxed\index.ts
 
 // Boxed tool renderer dispatcher.
 //

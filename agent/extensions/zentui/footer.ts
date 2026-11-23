@@ -111,39 +111,6 @@ function resolveSubscription(ctx: ExtensionContext): boolean | undefined {
     }
 }
 
-function resolveAutoCompaction(
-    ctx: ExtensionContext,
-    factory: SettingsManagerFactory | undefined,
-): boolean | undefined {
-    try {
-        const isProjectTrusted = (
-            ctx as ExtensionContext & {
-                isProjectTrusted?: () => unknown;
-            }
-        ).isProjectTrusted;
-        if (typeof factory?.create !== "function" || typeof isProjectTrusted !== "function") {
-            return undefined;
-        }
-        const trusted = isProjectTrusted.call(ctx);
-        if (typeof trusted !== "boolean") return undefined;
-        return readAutoCompaction(factory.create(ctx.cwd, undefined, { projectTrusted: trusted }));
-    } catch {
-        return undefined;
-    }
-}
-
-/** Resolve optional Pi telemetry without depending on private session or TUI fields. */
-export function resolveFooterTelemetry(
-    ctx: ExtensionContext,
-    capabilities: TelemetryCapabilities = {},
-): FooterTelemetry {
-    const settingsManager = capabilities.settingsManager ?? SettingsManager;
-    return {
-        subscription: resolveSubscription(ctx),
-        autoCompaction: resolveAutoCompaction(ctx, settingsManager),
-    };
-}
-
 function readAutoCompaction(settings: SettingsManagerLike): boolean | undefined {
     if (
         typeof settings?.drainErrors !== "function" ||

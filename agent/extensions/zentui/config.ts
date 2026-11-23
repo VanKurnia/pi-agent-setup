@@ -1,4 +1,4 @@
-import type { ThemeColor, EventBus } from "@earendil-works/pi-coding-agent";
+import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import { stripVTControlCharacters } from "node:util";
 import { visibleWidth } from "@earendil-works/pi-tui";
@@ -251,70 +251,6 @@ export function colorize(theme: ThemeLike, color: ColorSpec, text: string): stri
     return safeThemeFg(theme, color, text);
 }
 
-/**
- * Render text with Starship-style terminal styling strings (e.g. "bold red", "fg:202",
- * "bg:blue", "underline bg:#bf5700").
- */
-function isSafeSgrParameters(parameters: string): boolean {
-    const tokens = parameters.split(";");
-    if (tokens.some((token) => !/^\d+$/.test(token))) return false;
-    const values = tokens.map(Number);
-    for (let index = 0; index < values.length; index += 1) {
-        const value = values[index];
-        if (
-            value === 1 ||
-            value === 2 ||
-            value === 3 ||
-            value === 4 ||
-            (value !== undefined && value >= 30 && value <= 37) ||
-            (value !== undefined && value >= 40 && value <= 47) ||
-            (value !== undefined && value >= 90 && value <= 97) ||
-            (value !== undefined && value >= 100 && value <= 107)
-        ) {
-            continue;
-        }
-        if (value !== 38 && value !== 48) return false;
-        const mode = values[index + 1];
-        if (mode === 5) {
-            const color = values[index + 2];
-            if (color === undefined || color < 0 || color > 255) return false;
-            index += 2;
-            continue;
-        }
-        if (mode === 2) {
-            const channels = values.slice(index + 2, index + 5);
-            if (channels.length !== 3 || channels.some((channel) => channel < 0 || channel > 255)) {
-                return false;
-            }
-            index += 4;
-            continue;
-        }
-        return false;
-    }
-    return true;
-}
-
-/** Accept only the bounded SGR subset emitted by Zentui's supported style tokens. */
-export function isSafeSgrStylePrefix(value: unknown): value is string {
-    if (
-        typeof value !== "string" ||
-        value.length === 0 ||
-        value.length > MAX_SAFE_SGR_PREFIX_CODE_UNITS
-    ) {
-        return false;
-    }
-    const sequence = /\x1b\[([0-9]+(?:;[0-9]+)*)m/g;
-    let offset = 0;
-    let count = 0;
-    for (const match of value.matchAll(sequence)) {
-        if (match.index !== offset || !isSafeSgrParameters(match[1] ?? "")) return false;
-        offset = match.index + match[0].length;
-        count += 1;
-        if (count > MAX_SAFE_SGR_PREFIX_SEQUENCES) return false;
-    }
-    return count > 0 && offset === value.length;
-}
-
 export function renderTerminalStyle(style: string, text: string): string {
     const codes: string[] = [];
     for (const token of style.trim().split(/\s+/)) {
@@ -409,31 +345,8 @@ export function renderStyleForSourceOrFallbackStrict(
         : renderThemeStyleStrict(theme, resolvedStyle, text);
 }
 
-export function renderEditorAccent(text: string): string {
-    return renderTerminalStyle(EDITOR_ACCENT_STYLE, text);
-}
-
 export function renderEditorBorder(text: string): string {
     return renderTerminalStyle(EDITOR_BORDER_STYLE, text);
-}
-
-export function renderAccentLine(theme: ThemeLike, source: ColorSource, text: string): string {
-    return renderStyleForSourceOrFallback(theme, source, undefined, EDITOR_ACCENT_FALLBACK, text);
-}
-
-export function renderChromeBorder(
-    theme: ThemeLike,
-    source: ColorSource,
-    terminalFallbackStyle: ColorSpec,
-    text: string,
-): string {
-    return renderStyleForSourceOrFallback(
-        theme,
-        source,
-        undefined,
-        { theme: "borderMuted", terminal: terminalFallbackStyle },
-        text,
-    );
 }
 
 export const componentColorKeys = {
@@ -502,19 +415,6 @@ export type ComponentColorKey<O extends ColorOwner> = (typeof componentColorKeys
 export type ComponentColors<O extends ColorOwner> = Partial<
     Record<ComponentColorKey<O>, ColorSpec>
 >;
-
-export function normalizeComponentColors<O extends ColorOwner>(
-    owner: O,
-    raw: unknown,
-): ComponentColors<O> {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-    return Object.fromEntries(
-        componentColorKeys[owner].flatMap((key) => {
-            const value = (raw as Record<string, unknown>)[key];
-            return typeof value === "string" && isSupportedColorSpec(value) ? [[key, value]] : [];
-        }),
-    ) as ComponentColors<O>;
-}
 
 const editorLegacyKeys = {
     accent: "editorAccent",
@@ -644,138 +544,12 @@ export const MAX_CUSTOM_VARIABLE_KEY_CODE_UNITS = 64;
 
 export const MAX_CUSTOM_VARIABLE_TEXT_CODE_UNITS = 256;
 
-export type CustomVariableCapability = {
-    supported: boolean;
-    active: boolean;
-    key?: string;
-    version?: number;
-};
-
 export type CustomVariableUpdate = {
     key: string;
     text?: string;
 };
 
 export type CustomVariableColorMode = "original" | "zentui";
-
-function isKey(value: unknown): value is string {
-    return (
-        typeof value === "string" &&
-        value.length > 0 &&
-        value.length <= MAX_CUSTOM_VARIABLE_KEY_CODE_UNITS
-    );
-}
-
-function eventRecord(value: unknown): Record<string, unknown> | undefined {
-    return value !== null && typeof value === "object" && !Array.isArray(value)
-        ? (value as Record<string, unknown>)
-        : undefined;
-}
-
-/** Read data only: publisher getters must not run as part of the protocol. */
-function eventField(record: Record<string, unknown>, key: string): unknown {
-    const descriptor = Object.getOwnPropertyDescriptor(record, key);
-    if (descriptor && !("value" in descriptor)) throw new TypeError("Accessor event field");
-    return descriptor?.value;
-}
-
-function variableUpdate(value: unknown): CustomVariableUpdate | undefined {
-    try {
-        const record = eventRecord(value);
-        if (!record) return undefined;
-        const key = eventField(record, "key");
-        const text = eventField(record, "text");
-        if (!isKey(key)) return undefined;
-        if (
-            text !== undefined &&
-            (typeof text !== "string" || text.length > MAX_CUSTOM_VARIABLE_TEXT_CODE_UNITS)
-        )
-            return undefined;
-        return { key, text: text as string | undefined };
-    } catch {
-        return undefined;
-    }
-}
-
-/** Session-scoped, surface-neutral values; keys are package-qualified by publisher convention. */
-export class CustomVariables {
-    private readonly values = new Map<string, string>();
-
-    constructor(
-        events: EventBus | undefined,
-        private readonly isActive: (key?: string) => boolean,
-        private readonly onChange: () => void,
-    ) {
-        if (!events) return;
-        // Registration lasts for the extension runtime, not an editor factory's lifetime.
-        events.on(ZENTUI_VARIABLE_CAPABILITY_EVENT, (value) => {
-            try {
-                const capability = eventRecord(value);
-                if (!capability) return;
-                const key = eventField(capability, "key");
-                if (key !== undefined && !isKey(key)) return;
-                const active = this.isActive(key);
-                // Define data properties rather than invoking publisher setters.
-                Object.defineProperties(capability, {
-                    supported: {
-                        value: true,
-                        writable: true,
-                        enumerable: true,
-                        configurable: true,
-                    },
-                    active: { value: active, writable: true, enumerable: true, configurable: true },
-                    version: {
-                        value: ZENTUI_VARIABLE_PROTOCOL_VERSION,
-                        writable: true,
-                        enumerable: true,
-                        configurable: true,
-                    },
-                });
-            } catch {
-                // Malformed or immutable probes must not break the publisher's event dispatch.
-            }
-        });
-        events.on(ZENTUI_VARIABLE_EVENT, (value) => {
-            const update = variableUpdate(value);
-            if (!update) return;
-            if (update.text === undefined || update.text.length === 0) {
-                if (!this.values.delete(update.key)) return;
-            } else {
-                if (!this.isActive(update.key)) return;
-                if (!this.values.has(update.key) && this.values.size >= MAX_CUSTOM_VARIABLES)
-                    return;
-                if (this.values.get(update.key) === update.text) return;
-                this.values.set(update.key, update.text);
-            }
-            this.onChange();
-        });
-    }
-
-    /** Detached raw snapshot in locale-independent key order; sanitize only at the consumer. */
-    snapshot(): ReadonlyMap<string, string> {
-        return new Map(
-            [...this.values].sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)),
-        );
-    }
-
-    clear(): void {
-        if (this.values.size === 0) return;
-        this.values.clear();
-        this.onChange();
-    }
-
-    /** Evict only keys no longer demanded by any independently owned consumer. */
-    reconcile(): void {
-        let changed = false;
-        for (const key of this.values.keys()) {
-            if (!this.isActive(key)) {
-                this.values.delete(key);
-                changed = true;
-            }
-        }
-        if (changed) this.onChange();
-    }
-}
 
 /** A safe single-line value, closing publisher links and styles before adjacent frame content. */
 export function sanitizeCustomVariableText(
@@ -790,10 +564,6 @@ export function sanitizeCustomVariableText(
 }
 
 export type CustomValueColors = Readonly<Record<string, ColorSpec>>;
-
-// Persistent overrides are independent of the protocol's 16 active values. Reject
-// oversized maps as a whole rather than silently retaining an arbitrary subset.
-const MAX_CUSTOM_VALUE_COLOR_PROPERTIES = 1024;
 
 const MAX_CUSTOM_VALUE_COLOR_STYLE_CODE_UNITS = 4096;
 
@@ -815,31 +585,6 @@ function isStyle(value: unknown): value is ColorSpec {
         value.length <= MAX_CUSTOM_VALUE_COLOR_STYLE_CODE_UNITS &&
         isSupportedColorSpec(value)
     );
-}
-
-function emptyColors(): Record<string, ColorSpec> {
-    return Object.create(null) as Record<string, ColorSpec>;
-}
-
-/** Detached sparse data only; accessors and inherited properties never supply styles. */
-export function normalizeCustomValueColors(raw: unknown): CustomValueColors {
-    const colors = emptyColors();
-    try {
-        if (!raw || typeof raw !== "object" || Array.isArray(raw)) return Object.freeze(colors);
-        const keys = Reflect.ownKeys(raw);
-        if (keys.length > MAX_CUSTOM_VALUE_COLOR_PROPERTIES) return Object.freeze(colors);
-        for (const key of keys) {
-            if (typeof key !== "string" || !isPublisherKey(key)) continue;
-            const descriptor = Object.getOwnPropertyDescriptor(raw, key);
-            if (descriptor?.enumerable && "value" in descriptor && isStyle(descriptor.value)) {
-                colors[key] = descriptor.value;
-            }
-        }
-        return Object.freeze(colors);
-    } catch {
-        // Failed reflection (e.g. a revoked Proxy) must not leave a partial palette.
-        return Object.freeze(emptyColors());
-    }
 }
 
 /** Resolve by stable publisher ID, never an alias or prototype lookup. Empty is an override. */
@@ -999,28 +744,6 @@ export type ResolvedIcons = IconGlyphs & {
     /** Runtime-only provenance needed when an override equals the active mode default. */
     osOverridden: boolean;
 };
-
-export const ICON_GLYPH_KEYS = [
-    "cwd",
-    "git",
-    "ahead",
-    "behind",
-    "diverged",
-    "conflicted",
-    "untracked",
-    "stashed",
-    "modified",
-    "staged",
-    "renamed",
-    "deleted",
-    "typechanged",
-    "cacheHit",
-    "editorPrompt",
-    "rail",
-    "username",
-    "time",
-    "os",
-] as const satisfies readonly (keyof IconGlyphs)[];
 
 /**
  * Nerd Font defaults.
@@ -1224,30 +947,13 @@ export type SelectorBorderStyle = "zentui";
 
 export type FooterStyle = "native" | "starship" | "hidden";
 
-export type WorkingLineSpinner =
-    | "braille"
-    | "star-bloom"
-    | "pinwheel"
-    | "claude-inspired"
-    | "pulse";
-
-export type WorkingLineTextAnimation = "classic" | "kitt" | "disabled";
-
-export type WorkingLinePlacement = "above" | "border";
-
 export type EditorBorderColorMode = "static" | "adaptive";
 
 export type CompletionMenuStyle = "native" | "palette";
 
 export type CompactFooterMaxLines = 1 | 2 | 3 | "unlimited";
 
-export type ExtensionStatusPlacement = "off" | "left" | "middle" | "right";
-
 export type ExtensionStatusColorMode = "zentui" | "original";
-
-export type ExtensionStatusVisibility = "show" | "hide";
-
-export type HiddenExtensionStatusPlacement = "left" | "middle" | "right";
 
 export const DEFAULT_COMPACT_FOOTER_FORMAT =
     "$cwd$wrap(in $session_name)$wrap(on $git_branch) $git_status$wrap$context$wrap_sep$tokens";
@@ -1267,12 +973,6 @@ export type GitBranchConfig = { maxLength: GitBranchMaxLength };
 export type GitCommitConfig = { hashLength: number; onlyDetached: boolean; showTag: boolean };
 
 export type GitMetricsConfig = { onlyNonzero: boolean; ignoreSubmodules: boolean };
-
-export type ColorSourcesConfig = {
-    starship: ColorSource;
-    editor: ColorSource;
-    userMessages: ColorSource;
-};
 
 export type FooterSegmentsConfig = {
     cwd: boolean;
@@ -1579,7 +1279,7 @@ export const defaultConfig: PolishedTuiConfig = {
 
 type ConfigRecord = Record<string, unknown>;
 
-function isRecord(value: unknown): value is ConfigRecord {
+export function isRecord(value: unknown): value is ConfigRecord {
     return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 

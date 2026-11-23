@@ -9,6 +9,7 @@ import {
 import {
     componentColor,
     EDITOR_BORDER_FALLBACK,
+    isRecord,
     renderEditorBorder,
     renderStyleForSourceOrFallback,
     EDITOR_ACCENT_FALLBACK,
@@ -221,22 +222,6 @@ export function installPrototypePatch(
         previousRegistration.onDisplaced = undefined;
     }
     return createCleanup(target, adapter, registry, record, token);
-}
-
-export function isPrototypePatchCurrent(
-    targetValue: object,
-    method: PatchMethod,
-    adapter: PrototypePatchAdapter,
-    token?: symbol,
-): boolean {
-    const target = targetValue as PatchTarget;
-    const record = existingRegistry(target)?.get(adapter);
-    return Boolean(
-        record &&
-        record.method === method &&
-        target[method] === record.wrapper &&
-        (token === undefined || record.registration?.token === token),
-    );
 }
 
 export function removePrototypePatch(
@@ -621,20 +606,6 @@ export type EditorTransferResult =
     | { ok: false; reason: EditorTransferFailureReason };
 
 /**
- * Pi custom UI saves raw editor text and restores it with setText(), which clears
- * collapsed paste storage. Expand nonempty drafts before that snapshot is taken.
- * Hosts without public text APIs retain their existing custom-UI behavior.
- */
-export function prepareEditorTextForCustomUi(
-    ui: Pick<EditorTransferUi, "getEditorText" | "setEditorText">,
-): void {
-    if (typeof ui.getEditorText !== "function" || typeof ui.setEditorText !== "function") return;
-    const text = ui.getEditorText();
-    if (typeof text !== "string") throw new Error("expanded editor text could not be read safely");
-    if (text) ui.setEditorText(text);
-}
-
-/**
  * Prepare the active editor's public expanded text before Pi replaces its factory.
  * This intentionally transfers prompt contents only; editor-private state is never inspected.
  */
@@ -991,16 +962,6 @@ export function sanitizeUserMessageSourceText(text: string): string {
     });
 }
 
-/** Strip strict 7-bit CSI SGR, rejecting source that contains any other terminal control. */
-export function sanitizeSgrOnlySourceText(text: string): string | undefined {
-    const sgrPreserved = filterBalancedUserMessageTerminalText(text, {
-        ...sourceFilterOptions,
-        preserveSgr: true,
-    });
-    if (sgrPreserved !== text) return undefined;
-    return sanitizeUserMessageSourceText(text);
-}
-
 /**
  * Sanitize a predecessor-rendered row. Pi formatting needs only SGR and
  * structurally valid 7-bit OSC 8; every other terminal control is removed.
@@ -1278,10 +1239,6 @@ const userMessageRenderCache = new WeakMap<object, UserMessageRenderCache>();
 
 function isObject(value: unknown): value is object {
     return (typeof value === "object" && value !== null) || typeof value === "function";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isNativeMarkdown(renderer: unknown): boolean {
