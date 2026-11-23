@@ -52,7 +52,7 @@ export default function sessionMgr(pi: ExtensionAPI): void {
         description:
             "Clone the current session into a new session file and switch to it. Unlike builtin /clone, always asks for the new session name first.",
         handler: async (args, ctx) => {
-            const { handleRclone } = await import("./session-ops.js");
+            const { handleRclone } = await import("./session-ops.ts");
             await handleRclone(args, ctx);
         },
     });
@@ -61,7 +61,7 @@ export default function sessionMgr(pi: ExtensionAPI): void {
     pi.registerCommand("workdir", {
         description: "Jump back to a previous working directory (searchable)",
         handler: async (args, ctx) => {
-            const { handleWorkdirCommand } = await import("./session-ops.js");
+            const { handleWorkdirCommand } = await import("./session-ops.ts");
             await handleWorkdirCommand(args, ctx);
         },
     });
@@ -77,7 +77,7 @@ export default function sessionMgr(pi: ExtensionAPI): void {
                 );
                 return;
             }
-            const { handleSessionMgr } = await import("./cleanup.js");
+            const { handleSessionMgr } = await import("./cleanup.ts");
             await handleSessionMgr(getAgentDir(), ctx);
         },
     });
@@ -85,7 +85,7 @@ export default function sessionMgr(pi: ExtensionAPI): void {
     // ---- session_start (auto-cleanup hook) ----
     pi.on("session_start", async (event, ctx) => {
         if (event.reason !== "startup" || !ctx.hasUI) return;
-        const { handleAutoCleanupOnStart } = await import("./cleanup.js");
+        const { handleAutoCleanupOnStart } = await import("./cleanup.ts");
         await handleAutoCleanupOnStart(ctx);
     });
 }

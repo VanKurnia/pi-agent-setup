@@ -23,7 +23,7 @@
 6. Kode yang hanya jalan saat dipanggil → file sendiri + `await import("./x.ts")` di `execute`/`handler`. Wajib jika ≥100 baris atau menarik `node:fs|os|path|child_process`, session projection, spawn, editor/UI.
 7. Import statis saat registrasi: boleh `import type`, `Type` typebox, schema params kecil, konstanta kecil. Selebihnya langgar #6.
 8. Split per peran: `index.ts` (register) · `tool-body.ts`/`<tool>-tool.ts` (payload) · `settings-ui.ts`/`settings-command.ts` · `config.ts`/`om.ts`/`compaction.ts` (domain I/O). Acuan: `herdr-subagents/index.ts` (26 baris).
-9. Import relatif wajib `.ts`, jangan `.js`.
+9. Import relatif default ke bentuk `.ts` (mis. `from "./x.ts"`); bentuk `.js` hanya bila modul yang sama harus berbagi instance dengan importer ber-shape `.js` (mis. entry test yang mengimpor `.../index.js`). Jangan mencampur dua bentuk untuk modul yang sama — itu mengevaluasi salinan kedua. Bentuk `.js` juga lebih mahal: resolusi ESM-nya gagal dulu sebelum di-fallback ke `.ts` (≈13ms/edge pada mesin ini; ukur ulang bila dipakai sebagai klaim boot).
 10. Lintas extension: `import type` saja; runtime lewat `agent/extensions/shared/` atau API global-backed (loader beri instance modul per-extension); jangan import runtime dari ext ter-disable.
 11. Gate I/O mahal di call time, bukan boot (contoh `herdrProtocolProblem()` → pesan upgrade, bukan unknown-method). Aksi advisory (toast, pane tail, rename) wajib `try/catch`.
 12. Klaim hemat boot tanpa angka = dilarang; ukur dengan `.script/bench-extensions.mjs`.

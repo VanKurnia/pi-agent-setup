@@ -15,7 +15,6 @@ const FULL = [
     "terminal.send",
     "terminal.get",
     "terminal.list",
-    "terminal.label",
     "terminal.read",
     "terminal.kill",
     "terminal.rm",

@@ -81,36 +81,14 @@ function entriesToText(entries: SessionEntry[]): string | undefined {
     return texts.join("\n");
 }
 
-// Callers pass the window this dispatch appended, not the whole file, so a
-// length-keyed "append-only" cache cannot know where that window starts: a
-// second window of the same file is longer than the first and would be read as
-// growth, leaving the previous reply as the newest entry. The window is small —
-// parse it. `sessionFile` stays in the signature so callers read as before.
-export function cachedAssistantText(_sessionFile: string, jsonl: string): string | undefined {
+// The window this dispatch appended, parsed directly rather than cached: a
+// length-keyed append-only cache cannot tell where a window starts, because a
+// second window of the same file may be longer than the first.
+export function lastAssistantText(jsonl: string): string | undefined {
     return entriesToText(parseSessionEntries(jsonl));
 }
-export function cachedTurnComplete(_sessionFile: string, jsonl: string): string | undefined {
-    return lastLineIsCompleteTurn(jsonl) ? entriesToText(parseSessionEntries(jsonl)) : undefined;
-}
 
-// True when the file's newest entry is a complete assistant turn. Used on
-// abort so a landed reply is returned instead of "aborted" — and never a
-// stale one (a partially appended turn ends in a user message).
-function lastLineIsCompleteTurn(jsonl: string): boolean {
-    const lines = jsonl.split("\n").filter((line) => line.trim() !== "");
-    if (lines.length === 0) return false;
-    let last: unknown;
-    try {
-        last = JSON.parse(lines[lines.length - 1]);
-    } catch {
-        return false;
-    }
-    if (typeof last !== "object" || last === null) return false;
-    const entry = last as { type?: unknown; message?: { role?: unknown } };
-    return entry.type === "message" && entry.message?.role === "assistant";
-}
-
-// 8-hex project key: stable per cwd, filesystem- and pane-label-safe.
+// 8-hex project key: stable per cwd, filename-safe.
 // djb2 (not crypto) so session.ts keeps zero imports beyond node:fs.
 export function projectKey(cwd: string): string {
     let h = 5381;
@@ -123,17 +101,6 @@ export function projectKey(cwd: string): string {
 // Stable for the parent's lifetime; distinct per live parent session.
 export function parentKey(parentFile: string): string {
     return projectKey(parentFile);
-}
-
-export function paneNameFor(agentName: string, cwd: string, parent?: string): string {
-    const base = `subagent - ${agentName} - ${projectKey(cwd)}`;
-    return parent === undefined ? base : `${base} - ${parent}`;
-}
-
-// Tabs reuse the pane label scheme so existing looks/logs keep working;
-// matching stays label-first via the generic matchPane helper.
-export function tabNameFor(agentName: string, cwd: string, parent?: string): string {
-    return paneNameFor(agentName, cwd, parent);
 }
 
 // Herdr agent names: lowercased, [a-z0-9_-], at most 32 chars, and unique among
@@ -150,19 +117,6 @@ export function agentNameFor(agentName: string, owner: string): string {
 export function agentSessionId(agentName: string, cwd: string, parent?: string): string {
     const base = `herdr-${agentName}-${projectKey(cwd)}`;
     return parent === undefined ? base : `${base}-${parent}`;
-}
-
-// Pane lookup for the check chain: an exact label match wins; the shell
-// title is only a fallback (pi-bolt panes show "Pi-Bolt - <name> - <dir>"
-// as their title, which never equals the pane name).
-export function matchPane<T extends { label?: string; title?: string }>(
-    panes: T[],
-    paneName: string,
-): T | undefined {
-    return (
-        panes.find((candidate) => candidate.label === paneName) ??
-        panes.find((candidate) => candidate.title === paneName)
-    );
 }
 
 export function isSafeAgentName(agentName: string): boolean {

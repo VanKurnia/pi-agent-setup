@@ -10,7 +10,6 @@ const REQUIRED_METHODS = [
     "terminal.send",
     "terminal.get",
     "terminal.list",
-    "terminal.label",
     "terminal.read",
     "terminal.kill",
     "terminal.rm",
@@ -331,10 +330,6 @@ export function listTerminals(labels?: Record<string, string>): Promise<Terminal
             state: typeof terminal?.state === "string" ? terminal.state : undefined,
         }));
     });
-}
-
-export function labelTerminal(terminal: string, labels: Record<string, string>): Promise<void> {
-    return callHerdr("terminal.label", { terminal, labels }).then(() => undefined);
 }
 
 /** End a program. A record the core no longer knows is not an error. */

@@ -29,13 +29,13 @@ import {
     agentSessionId,
     attachDelegationSnapshot,
     buildChildHeader,
-    cachedAssistantText,
     childSessionFilename,
     clearChildMemory,
     createDelegationSnapshot,
     deleteChildSessionFiles,
     findAgentSessionFile,
     isSafeAgentName,
+    lastAssistantText,
     lockFileFor,
     parentKey,
     releaseLock,
@@ -276,7 +276,7 @@ export async function runSubagentTool(
         }
         if (buffer.length <= sizeBefore) return undefined;
         const tail = buffer.subarray(sizeBefore).toString("utf8");
-        const text = cachedAssistantText(sessionFile, tail);
+        const text = lastAssistantText(tail);
         return text === undefined ? undefined : { text, session: sessionFile };
     };
     // The snapshot reads only frozen parent state, so it is built before the
