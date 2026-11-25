@@ -13,13 +13,15 @@ Don't assume — verify. Never start implementing until you are certain what the
 
 Fill the gap with `ask_user_question` (one question per call, never a batch) for intent and preference, and with the repo itself for facts. You are ready when you know exactly what the change does, which files it touches, and which APIs and patterns it uses.
 
+Grounding the session, or the paths you were handed, is a skill of its own: [build-context](../build-context/SKILL.md).
+
 ## Context hygiene
 
 Your context is finite, and every file you read stays in it for good.
 
 - **Locate first.** `fffind` and `ffgrep` answer "where is it" in one call; `read` only what they point at. Go straight to `read` when you already know the path — it is faster than searching for it.
 - **Batch independent calls.** Lookups that don't depend on each other go in one `codemode` script (`Promise.allSettled`), returning a filtered summary and never more than 2KB of raw output. This is the only parallel path; subagent dispatch stays sequential.
-- **Delegate isolated work to a `subagent` worker.** The tool is synchronous — it blocks until the finished reply, one agent at a time, with no async or parallel dispatch. `still working` means wait for it, then retry.
+- **Delegate isolated work to a `subagent`.** `scout` for read-only recon, `worker` for changes. The tool is synchronous — it blocks until the finished reply, one agent at a time, with no async or parallel dispatch. `still working` means wait for it, then retry.
 - **A subagent is the wrong tool** for a small edit you can make directly, or for anything needing user input: subagents cannot call `ask_user_question`, so every constraint, path and expected output has to be in the task text. A read-only parent snapshot is attached automatically — add only task-specific context; children can dig deeper with `recall` `source:'parent'`.
 
 ## Implementation discipline
@@ -39,5 +41,5 @@ Your context is finite, and every file you read stays in it for good.
 | "Tests pass" | Run them, show the output |
 | "Build succeeds" | Run it, show exit 0 |
 | "Bug fixed" | Reproduce the original issue, show it gone |
-| "Code is clean" | `ocr_review` or `ocr_scan`, show findings |
+| "Code is clean" | the repo's lint/typecheck/test command, plus your own read of `git diff` |
 | "Script works" | Run it, show expected output |

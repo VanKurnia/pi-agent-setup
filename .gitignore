@@ -16,7 +16,7 @@ agent/auth.json
 agent/pi-blackhole/
 agent/fff/
 agent/thinking-fold.json
-git/
+/git/
 mcp-cache.json
 mcp-npx-cache.json
 run-history.jsonl

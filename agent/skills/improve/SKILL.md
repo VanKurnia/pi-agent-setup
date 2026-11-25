@@ -68,7 +68,7 @@ Present findings ordered by leverage, impact ÷ effort discounted by confidence 
 
 Read [references/plan-template.md](references/plan-template.md) before the first plan.
 
-Every plan written here — full workflow and `plan <description>` — is bound by [simplify-changes](../../prompts/simplify-changes.md) as normative (scope, anti-bloat, comment hygiene, approval gate); do not restate it here. Edits to this skill itself necessarily follow [skill-diet](../skill-diet/SKILL.md).
+Every plan written here — full workflow and `plan <description>` — is bound by [simplify-changes](../../prompts/simplify-changes.md) as normative (scope, anti-bloat, comment hygiene, approval gate); do not restate it here. Edits to this skill itself necessarily follow [skill-diet](../../../.pi/skills/skill-diet/SKILL.md).
 
 ```
 .plans/
