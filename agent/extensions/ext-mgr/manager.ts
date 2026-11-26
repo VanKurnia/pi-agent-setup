@@ -635,12 +635,7 @@ export function isValidPresetName(name: string): boolean {
 
 function isPresetSnapshot(value: unknown): value is PresetSnapshot {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-    const snap = value as {
-        extensions?: unknown;
-        plugins?: unknown;
-        savedAt?: unknown;
-        cwd?: unknown;
-    };
+    const snap = value as Record<string, unknown>;
     if (!snap.extensions || typeof snap.extensions !== "object" || Array.isArray(snap.extensions)) {
         return false;
     }

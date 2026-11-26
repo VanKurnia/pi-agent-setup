@@ -72,7 +72,6 @@ try {
     assert.deepEqual(await m.readPresetFile(), { version: 1, presets: {} });
     console.log("ok - corrupt reads empty");
 
-    // A snapshot is only trusted when it carries the fields its type claims.
     await writeFile(
         join(dir, "ext-config", "ext-presets.json"),
         JSON.stringify({

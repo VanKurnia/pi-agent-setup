@@ -52,7 +52,7 @@ export class HerdrError extends Error {
 
 /** Why a core cannot be used, or undefined when it speaks everything we call. */
 export function protocolProblem(hello: unknown): string | undefined {
-    const info = hello as { version?: unknown; methods?: unknown } | null | undefined;
+    const info = asRecord(hello);
     const methods = Array.isArray(info?.methods)
         ? info.methods.filter((name): name is string => typeof name === "string")
         : [];
@@ -305,7 +305,7 @@ export async function readAgentTail(terminal: string, lines = 40): Promise<strin
                 lines,
             }),
         );
-        const text: unknown = result?.text;
+        const text = result?.text;
         return typeof text === "string" ? `\n--- terminal ${terminal} ---\n${text}` : "";
     } catch {
         return "";
