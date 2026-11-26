@@ -30,7 +30,16 @@ Target scope: ${@:-all current changes in this session}
 
 ## Comments hygiene
 
-- Leave every comment team-clean: short, factual, general, and explaining only constraints, intent, or non-obvious decisions. Describe the rule, not specific instances — no unnecessary examples. Delete comments that merely restate the code.
+- Leave every comment team-clean: short, factual, general, and explaining only what the code cannot. Describe the rule, not specific instances — no unnecessary examples. Delete comments that merely restate the code.
+- A comment survives only on a closed keep-list, each claim proven in this pass — by the symbol it names, or by a link we cannot reshape:
+  - legal or license headers;
+  - non-obvious behavior forced by an external dependency, platform, vendor, or protocol;
+  - `// prettier-ignore`-style tool directives;
+  - doc comments defining a public API contract;
+  - an issue or RFC link that states a constraint code cannot express.
+  A surprise in our own code is not an exception: delete the comment and fix the symbol so the behavior is obvious without prose. When you are unsure whether a clause applies, delete the comment.
+- Never compress a justification into a shorter alibi. A long "too risky", "fine for now", or "do not remove" without a proven keep-list clause is a confession: delete it, don't polish it.
+- When a keep is real, offer the cheapest enforcement — a type, a runtime check, a test, a lint rule — and delete the comment once it is enforced. Without enforcement the constraint is open work: delete the comment and report it in the summary.
 - Never reference personal workflow artifacts in code comments — no `sesuai todo`, `per todo section 4`, `sesuai plans 30`, `plan #X`, or tracking IDs. Describe the actual rule/intent generically (e.g. `enforce single source of truth`) instead of pointing to a todo/plan section.
 - Never add task-tracking comments to code: no `TODO`, `FIXME`, `HACK`, `XXX`, `NOTE`, or todo-list sections used to track personal follow-ups. Keep the personal todo list outside the codebase; do not leak it into committed code where it would bother other team members.
 - Remove any such tracking comments introduced by the workpackage: either resolve the item now as part of the simplification, or drop the comment from code and report it as unfinished work in the final summary instead.
