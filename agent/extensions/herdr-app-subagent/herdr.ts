@@ -1,5 +1,7 @@
 import net from "node:net";
 
+import { asRecord } from "./agents.ts";
+
 /**
  * Methods this client needs. A core advertises what it speaks in `hello`;
  * a missing name is an upgrade hint, not a mysterious dispatch failure.
@@ -83,7 +85,7 @@ function callHerdr(
     params: Record<string, unknown>,
     timeoutMs = 8000,
     signal?: AbortSignal,
-): Promise<any> {
+): Promise<unknown> {
     return new Promise((resolve, reject) => {
         let endpoint: string;
         try {
@@ -152,29 +154,30 @@ function callHerdr(
             buffer += chunk.toString("utf8");
             for (const line of buffer.split("\n")) {
                 if (!line.trim()) continue;
-                let message: any;
+                let message: unknown;
                 try {
                     message = JSON.parse(line);
                 } catch {
                     continue;
                 }
-                if (!message || typeof message !== "object" || message.id !== id) continue;
+                const reply = asRecord(message);
+                if (!reply || reply.id !== id) continue;
                 settle(() => {
-                    if (message.error && typeof message.error === "object") {
+                    const error = asRecord(reply.error);
+                    if (error) {
                         // The core reports a machine-readable `kind` in data
                         // (unknown_method, not_found, ...); the numeric code
                         // alone says nothing useful.
-                        const kind = String(
-                            message.error.data?.kind ?? message.error.code ?? "unknown",
-                        );
+                        const code = asRecord(error.data);
+                        const kind = String(code?.kind ?? error.code ?? "unknown");
                         reject(
                             new HerdrError(
-                                `herdr-core ${method} error ${kind}: ${String(message.error.message)}`,
+                                `herdr-core ${method} error ${kind}: ${String(error.message)}`,
                                 kind,
                             ),
                         );
                     } else {
-                        resolve(message.result);
+                        resolve(reply.result);
                     }
                 });
                 return;
@@ -202,17 +205,19 @@ export async function waitForAgentStatus(
     signal?: AbortSignal,
 ): Promise<WaitOutcome> {
     const seconds = Math.max(1, Math.ceil(timeoutMs / 1000));
-    const result: any = await callHerdr(
-        "terminal.wait",
-        { terminal, caller: callerId(), timeout: seconds },
-        timeoutMs + 15000,
-        signal,
+    const reply = asRecord(
+        await callHerdr(
+            "terminal.wait",
+            { terminal, caller: callerId(), timeout: seconds },
+            timeoutMs + 15000,
+            signal,
+        ),
     );
     return {
-        ended: result?.ended !== false,
-        reason: typeof result?.reason === "string" ? result.reason : "unknown",
-        status: typeof result?.status === "string" ? result.status : undefined,
-        turn: typeof result?.turn === "number" ? result.turn : 0,
+        ended: reply?.ended !== false,
+        reason: typeof reply?.reason === "string" ? reply.reason : "unknown",
+        status: typeof reply?.status === "string" ? reply.status : undefined,
+        turn: typeof reply?.turn === "number" ? reply.turn : 0,
     };
 }
 
@@ -235,8 +240,8 @@ export async function runTerminal(input: {
         no_notify: true,
     };
     if (input.name !== undefined) params.name = input.name;
-    const result: any = await callHerdr("terminal.run", params, 30000);
-    const address: unknown = result?.address;
+    const result = await callHerdr("terminal.run", params, 30000);
+    const address = asRecord(result)?.address;
     if (typeof address !== "string" || address.length === 0) {
         throw new Error(`herdr-core terminal.run returned no address: ${JSON.stringify(result)}`);
     }
@@ -255,11 +260,15 @@ export interface TerminalState {
 export function getTerminal(terminal: string): Promise<TerminalState> {
     // No caller: a caller looking at its child has seen its news, and reading
     // the turn must not swallow the completion the wait is about to report.
-    return callHerdr("terminal.get", { terminal }).then((result: any) => ({
-        status: typeof result?.status?.state === "string" ? result.status.state : undefined,
-        state: String(result?.state ?? ""),
-        turn: typeof result?.turn === "number" ? result.turn : 0,
-    }));
+    return callHerdr("terminal.get", { terminal }).then((raw) => {
+        const result = asRecord(raw);
+        const status = asRecord(result?.status);
+        return {
+            status: typeof status?.state === "string" ? status.state : undefined,
+            state: String(result?.state ?? ""),
+            turn: typeof result?.turn === "number" ? result.turn : 0,
+        };
+    });
 }
 
 /** Paste a task into an idle child and submit it. Use `waitForAgentStatus` for the turn. */
@@ -276,7 +285,7 @@ export async function sendTask(terminal: string, text: string): Promise<void> {
  * accepting that child's news is the intended effect, not a side effect.
  */
 export async function terminalSessionFile(terminal: string): Promise<string | undefined> {
-    const result: any = await callHerdr("terminal.get", { terminal, caller: callerId() });
+    const result = asRecord(await callHerdr("terminal.get", { terminal, caller: callerId() }));
     const argv = Array.isArray(result?.argv)
         ? result.argv.filter((arg: unknown): arg is string => typeof arg === "string")
         : [];
@@ -289,11 +298,13 @@ export async function terminalSessionFile(terminal: string): Promise<string | un
 /** Tail of a terminal's screen and history, for a blocked report. */
 export async function readAgentTail(terminal: string, lines = 40): Promise<string> {
     try {
-        const result: any = await callHerdr("terminal.read", {
-            terminal,
-            caller: callerId(),
-            lines,
-        });
+        const result = asRecord(
+            await callHerdr("terminal.read", {
+                terminal,
+                caller: callerId(),
+                lines,
+            }),
+        );
         const text: unknown = result?.text;
         return typeof text === "string" ? `\n--- terminal ${terminal} ---\n${text}` : "";
     } catch {
@@ -314,21 +325,25 @@ export interface TerminalSummary {
 export function listTerminals(labels?: Record<string, string>): Promise<TerminalSummary[]> {
     const params: Record<string, unknown> = {};
     if (labels !== undefined) params.labels = labels;
-    return callHerdr("terminal.list", params).then((result: any) => {
-        const terminals = result?.terminals;
+    return callHerdr("terminal.list", params).then((raw) => {
+        const terminals = asRecord(raw)?.terminals;
         if (!Array.isArray(terminals)) {
             throw new Error(
-                `herdr-core terminal.list returned no terminals: ${JSON.stringify(result)}`,
+                `herdr-core terminal.list returned no terminals: ${JSON.stringify(raw)}`,
             );
         }
-        return terminals.map((terminal: any) => ({
-            address: String(terminal?.address),
-            parent: typeof terminal?.parent === "string" ? terminal.parent : undefined,
-            cwd: typeof terminal?.cwd === "string" ? terminal.cwd : undefined,
-            name: typeof terminal?.name === "string" ? terminal.name : undefined,
-            status: typeof terminal?.status?.state === "string" ? terminal.status.state : undefined,
-            state: typeof terminal?.state === "string" ? terminal.state : undefined,
-        }));
+        return terminals.map((entry) => {
+            const terminal = asRecord(entry);
+            const status = asRecord(terminal?.status);
+            return {
+                address: String(terminal?.address),
+                parent: typeof terminal?.parent === "string" ? terminal.parent : undefined,
+                cwd: typeof terminal?.cwd === "string" ? terminal.cwd : undefined,
+                name: typeof terminal?.name === "string" ? terminal.name : undefined,
+                status: typeof status?.state === "string" ? status.state : undefined,
+                state: typeof terminal?.state === "string" ? terminal.state : undefined,
+            };
+        });
     });
 }
 

@@ -422,8 +422,13 @@ export function renderJsonContent(formattedJson: string, format: OutputFormat): 
             return formattedJson;
         case "html":
             return `<pre><code class="language-json">${escapeHtml(formattedJson)}</code></pre>`;
-        default:
+        case "markdown":
+        case "raw":
             return `\`\`\`json\n${formattedJson}\n\`\`\``;
+        default: {
+            const _exhaustive: never = format;
+            return _exhaustive;
+        }
     }
 }
 
@@ -1499,15 +1504,23 @@ function buildJsonResult(
     };
 }
 
-async function buildFileResult(
-    opts: FetchOptions,
-    response: FetchResponseLike,
-    finalUrl: string,
-    contentType: string,
-    contentDisposition: string,
-    browser: string,
-    os: string,
-): Promise<FetchResult | FetchError> {
+async function buildFileResult({
+    opts,
+    response,
+    finalUrl,
+    contentType,
+    contentDisposition,
+    browser,
+    os,
+}: {
+    opts: FetchOptions;
+    response: FetchResponseLike;
+    finalUrl: string;
+    contentType: string;
+    contentDisposition: string;
+    browser: string;
+    os: string;
+}): Promise<FetchResult | FetchError> {
     const tempDir = opts.tempDir || join(tmpdir(), "smart-fetch");
     await mkdir(tempDir, { recursive: true });
 
@@ -1759,7 +1772,7 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
 
             if (shouldDownloadToFile) {
                 errorContext.phase = "loading";
-                const fileResult = await buildFileResult(
+                const fileResult = await buildFileResult({
                     opts,
                     response,
                     finalUrl,
@@ -1767,7 +1780,7 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
                     contentDisposition,
                     browser,
                     os,
-                );
+                });
                 if (!isError(fileResult)) {
                     emitStatus(hooks, "done");
                     emitProgress(hooks, {

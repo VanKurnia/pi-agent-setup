@@ -343,13 +343,19 @@ async function askFreeText(
     );
 }
 
-async function askSingleChoice(
-    ctx: ExtensionToolContext,
-    question: string,
-    context: string | undefined,
-    options: AskOption[],
-    autocomplete: AutocompleteProvider,
-): Promise<AskAnswer | null> {
+async function askSingleChoice({
+    ctx,
+    question,
+    context,
+    options,
+    autocomplete,
+}: {
+    ctx: ExtensionToolContext;
+    question: string;
+    context: string | undefined;
+    options: AskOption[];
+    autocomplete: AutocompleteProvider;
+}): Promise<AskAnswer | null> {
     const items: ChoiceItem[] = [
         ...optionItems(options),
         { kind: "other", label: getOtherLabel(options) },
@@ -688,13 +694,13 @@ export default function askUserQuestion(pi: ExtensionAPI) {
                 }
 
                 if (mode === "single-select") {
-                    const answer = await askSingleChoice(
+                    const answer = await askSingleChoice({
                         ctx,
-                        params.question,
+                        question: params.question,
                         context,
                         options,
                         autocomplete,
-                    );
+                    });
                     if (!answer) {
                         return cancelledResult(params.question, mode, context);
                     }

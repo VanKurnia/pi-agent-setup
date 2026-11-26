@@ -635,13 +635,20 @@ export function isValidPresetName(name: string): boolean {
 
 function isPresetSnapshot(value: unknown): value is PresetSnapshot {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-    const snap = value as { extensions?: unknown; plugins?: unknown };
+    const snap = value as {
+        extensions?: unknown;
+        plugins?: unknown;
+        savedAt?: unknown;
+        cwd?: unknown;
+    };
     if (!snap.extensions || typeof snap.extensions !== "object" || Array.isArray(snap.extensions)) {
         return false;
     }
     for (const state of Object.values(snap.extensions as Record<string, unknown>)) {
         if (state !== "enabled" && state !== "disabled") return false;
     }
+    if (typeof snap.savedAt !== "string" || snap.savedAt.length === 0) return false;
+    if (typeof snap.cwd !== "string" || snap.cwd.length === 0) return false;
     return Array.isArray(snap.plugins);
 }
 

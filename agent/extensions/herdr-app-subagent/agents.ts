@@ -153,7 +153,7 @@ export interface SubagentsSettings {
 // characters pass, plus the CLI's optional `:thinking` suffix.
 const MODEL_PATTERN = /^[A-Za-z0-9_./-]+(:[A-Za-z0-9_.-]+)?$/;
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
+export function asRecord(value: unknown): Record<string, unknown> | undefined {
     return typeof value === "object" && value !== null
         ? (value as Record<string, unknown>)
         : undefined;

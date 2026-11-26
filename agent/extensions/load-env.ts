@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
 import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const piConfigDir = process.env.PI_CONFIG_DIR || CONFIG_DIR_NAME;
 const envPath = join(homedir(), piConfigDir, ".env");
@@ -46,6 +47,6 @@ if (existsSync(envPath)) {
     }
 }
 
-export default function (_pi: any) {
+export default function (_pi: ExtensionAPI) {
     // No-op extension — env loading happens at import time above
 }

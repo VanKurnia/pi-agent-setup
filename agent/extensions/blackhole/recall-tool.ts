@@ -136,6 +136,15 @@ function windowPayload(
     return `${body.slice(start, end)}\n[chars ${start}-${end} of ${body.length}]${next}`;
 }
 
+/** Only the readers `recall` touches; the host and the parent link differ by design. */
+interface ReadableSessionManager {
+    getSessionId?(): string;
+    getEntries?(): unknown[];
+    buildSessionProjection?():
+        | { messages?: Array<{ role?: string; content?: unknown }> }
+        | undefined;
+}
+
 /** Body of the `recall` tool. Lazy-loaded: the tool is call-only, so its code stays off the boot path. */
 export async function runRecallTool(
     params: RecallParams,
@@ -147,7 +156,7 @@ export async function runRecallTool(
     // subagent dispatcher per run and cleared on dispose — parent reads
     // are always explicit and mutate neither session.
     const childSessionId: string = ctx.sessionManager?.getSessionId?.() || "";
-    let targetManager: any = ctx.sessionManager;
+    let targetManager: ReadableSessionManager | undefined = ctx.sessionManager;
     let omSessionId = childSessionId;
     let readCwd: string = ctx.cwd;
     // Assigned by the file-based parent fallback when the link is absent,

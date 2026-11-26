@@ -71,6 +71,25 @@ try {
     await writeFile(join(dir, "ext-config", "ext-presets.json"), "{nope", "utf8");
     assert.deepEqual(await m.readPresetFile(), { version: 1, presets: {} });
     console.log("ok - corrupt reads empty");
+
+    // A snapshot is only trusted when it carries the fields its type claims.
+    await writeFile(
+        join(dir, "ext-config", "ext-presets.json"),
+        JSON.stringify({
+            version: 1,
+            presets: {
+                good: snap,
+                nostamp: { ...snap, savedAt: undefined },
+                nowhere: { ...snap, cwd: 7 },
+            },
+        }),
+        "utf8",
+    );
+    const guarded = await m.readPresetFile();
+    assert.deepEqual(guarded.presets.good, snap, "complete preset survives");
+    assert.equal(guarded.presets.nostamp, undefined, "preset without savedAt dropped");
+    assert.equal(guarded.presets.nowhere, undefined, "preset with non-string cwd dropped");
+    console.log("ok - incomplete presets dropped");
 } finally {
     rmSync(dir, { recursive: true, force: true });
 }
