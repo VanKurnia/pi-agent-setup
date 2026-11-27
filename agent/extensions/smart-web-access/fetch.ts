@@ -16,6 +16,8 @@ import { getProfiles, fetch as wreqFetch } from "wreq-js";
 
 import { truncateChars } from "../shared/text-format.ts";
 import { parseLinkedomHTML } from "./dom.ts";
+import type { WebFetchInput } from "./index.ts";
+import { applyReadingView, validateReadingViewRequest, type ReadingView } from "./views.ts";
 import {
     DEFAULT_ACCEPT_HEADER,
     DEFAULT_ACCEPT_LANGUAGE_HEADER,
@@ -27,14 +29,8 @@ import {
     DEFAULT_RAW_ACCEPT_HEADER,
     DEFAULT_TIMEOUT_MS,
     formatByteCount,
-    resolveBatchConcurrency,
     isFileFetchResult,
     isError,
-    type BatchFetchItemProgress,
-    type BatchFetchItemResult,
-    type BatchFetchItemStatus,
-    type BatchFetchProgressSnapshot,
-    type BatchFetchResult,
     type FetchDependencies,
     type FetchError,
     type FetchErrorPhase,
@@ -43,6 +39,7 @@ import {
     type FetchProgressUpdate,
     type FetchResponseLike,
     type FetchResult,
+    type FetchStatus,
     type FetchToolDefaults,
     type OutputFormat,
 } from "./types.ts";
@@ -344,51 +341,6 @@ export function buildFetchResponseText(
     }
 
     return header ? `${header}\n\n${result.content}` : result.content;
-}
-
-function buildBatchItemHeading(item: BatchFetchItemResult, total: number): string {
-    const ordinal = item.index + 1;
-    const url = item.result?.finalUrl ?? item.request.url;
-    return `## [${ordinal}/${total}] ${url}`;
-}
-
-function buildBatchItemText(
-    item: BatchFetchItemResult,
-    total: number,
-    options: { verbose?: boolean } = {},
-): string {
-    const heading = buildBatchItemHeading(item, total);
-
-    if (item.status === "error") {
-        const errorText = item.error ?? "Unknown error";
-        if (errorText.includes("\n")) {
-            return `${heading}\n${errorText}`;
-        }
-
-        const errorHeader = buildHeader([
-            ["URL", item.request.url],
-            ["Status", "error"],
-            ["Error", errorText.replace(/^Error:\s+/, "")],
-        ]);
-        return `${heading}\n${errorHeader}`;
-    }
-
-    return `${heading}\n${buildFetchResponseText(item.result as FetchResult, options)}`;
-}
-
-export function buildBatchFetchResponseText(
-    result: BatchFetchResult,
-    options: { verbose?: boolean } = {},
-): string {
-    const summary = buildHeader([
-        ["Requests", result.total],
-        ["Succeeded", result.succeeded],
-        ["Failed", result.failed],
-        ["Concurrency", result.batchConcurrency],
-    ]);
-    const items = result.items.map((item) => buildBatchItemText(item, result.total, options));
-
-    return [summary, ...items].filter(Boolean).join("\n\n");
 }
 
 export function estimateWordCount(content: string): number {
@@ -1117,10 +1069,7 @@ function emitProgress(hooks: FetchExecutionHooks, update: FetchProgressUpdate): 
     hooks.onProgressChange?.(update);
 }
 
-function emitStatus(
-    hooks: FetchExecutionHooks,
-    status: Exclude<FetchProgressUpdate["status"], never>,
-): void {
+function emitStatus(hooks: FetchExecutionHooks, status: FetchStatus): void {
     hooks.onStatusChange?.(status);
 }
 
@@ -1162,6 +1111,15 @@ function extractHostname(url: string): string {
     } catch {
         return url;
     }
+}
+
+function viewNotApplicable(what: string): FetchError {
+    return {
+        error: `toc, section and focus read a page's extracted markdown. This response is ${what}, so there are no headings to read: drop the view.`,
+        code: "processing_error",
+        phase: "processing",
+        retryable: false,
+    };
 }
 
 function buildAbortedError(url: string): FetchError {
@@ -1618,14 +1576,6 @@ async function withInterceptedConsoleError<T>(
     }
 }
 
-export function getLatestChromeProfile(listProfiles: () => string[] = getProfiles): string {
-    const chromes = listProfiles()
-        .filter((profile) => profile.startsWith("chrome_"))
-        .sort();
-
-    return chromes[chromes.length - 1] ?? DEFAULT_BROWSER;
-}
-
 export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDependencies) {
     async function fetchWithClientRedirects(
         opts: FetchOptions,
@@ -1771,6 +1721,7 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
                 isAttachmentDisposition(contentDisposition) || !isTextualContentType(contentType);
 
             if (shouldDownloadToFile) {
+                if (opts.view) return viewNotApplicable("a downloadable file");
                 errorContext.phase = "loading";
                 const fileResult = await buildFileResult({
                     opts,
@@ -1938,6 +1889,7 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
                     };
                 }
 
+                if (opts.view) return viewNotApplicable("JSON");
                 const result = buildJsonResult(
                     opts,
                     finalUrl,
@@ -1959,6 +1911,7 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
             }
 
             if (jsonResponse) {
+                if (opts.view) return viewNotApplicable("JSON");
                 const result = buildJsonResult(
                     opts,
                     finalUrl,
@@ -1980,6 +1933,7 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
             }
 
             if (isPlainTextContentType(contentType)) {
+                if (opts.view) return viewNotApplicable("plain text");
                 const result = buildPlainTextResult(
                     opts,
                     finalUrl,
@@ -2174,6 +2128,36 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
                 }
             }
 
+            let finalContent = truncateContent(plainText, maxChars);
+            let finalWordCount = wordCount;
+            let finalWarning = warning;
+
+            if (opts.view) {
+                // Views read the markdown extraction; executeFetchToolCall already
+                // rejected html/json/raw, so extractedContent is markdown here.
+                const viewed = applyReadingView(extractedContent, opts.view);
+                if ("error" in viewed) {
+                    return {
+                        error: viewed.error,
+                        code: "processing_error",
+                        phase: "processing",
+                        retryable: false,
+                        timeoutMs,
+                        url: opts.url,
+                        finalUrl,
+                        statusCode: response.status,
+                        statusText: response.statusText,
+                        mimeType: normalizeContentType(contentType) || undefined,
+                        contentLength: errorContext.contentLength,
+                    };
+                }
+                finalContent = truncateContent(viewed.text, maxChars);
+                finalWordCount = viewed.wordCount;
+                finalWarning = warning
+                    ? `${warning} This result is a ${opts.view.kind} view, not the whole document.`
+                    : `This result is a ${opts.view.kind} view: ${wordCount} words were extracted from the page.`;
+            }
+
             const result: FetchResult = {
                 kind: "content",
                 url: opts.url,
@@ -2183,11 +2167,11 @@ export function createDefuddleFetch(dependencies: FetchDependencies = runtimeDep
                 published: extracted.published ?? "",
                 site: extracted.site ?? "",
                 language: extracted.language ?? "",
-                wordCount,
-                content: truncateContent(plainText, maxChars),
+                wordCount: finalWordCount,
+                content: finalContent,
                 browser,
                 os,
-                warning,
+                warning: finalWarning,
             };
 
             emitStatus(hooks, "done");
@@ -2218,204 +2202,51 @@ export const defuddleFetch = createDefuddleFetch();
 // ── Tool Execution ─────────────────────────────────────────────────────
 
 function buildFetchOptionsFromParams(
-    params: Record<string, unknown>,
+    params: WebFetchInput,
     defaults: FetchToolDefaults,
 ): FetchOptions {
+    const section = params.section?.trim();
+    const focus = params.focus?.trim();
+    const view: ReadingView | undefined = params.toc
+        ? { kind: "toc" }
+        : section
+          ? { kind: "section", target: section }
+          : focus
+            ? { kind: "focus", query: focus }
+            : undefined;
+
     return {
-        url: params.url as string,
-        browser: (params.browser as string) ?? defaults.browser,
-        os: (params.os as string) ?? defaults.os,
-        headers: params.headers as Record<string, string> | undefined,
-        maxChars: (params.maxChars as number) ?? defaults.maxChars,
-        format: (params.format as "markdown" | "html" | "text" | "json") ?? "markdown",
-        removeImages: (params.removeImages as boolean) ?? defaults.removeImages,
-        includeReplies:
-            (params.includeReplies as boolean | "extractors") ?? defaults.includeReplies,
-        proxy: params.proxy as string | undefined,
-        timeoutMs: (params.timeoutMs as number) ?? defaults.timeoutMs,
+        url: params.url,
+        browser: params.browser ?? defaults.browser,
+        os: params.os ?? defaults.os,
+        headers: params.headers,
+        maxChars: params.maxChars ?? defaults.maxChars,
+        format: params.format ?? "markdown",
+        removeImages: params.removeImages ?? defaults.removeImages,
+        includeReplies: params.includeReplies ?? defaults.includeReplies,
+        proxy: params.proxy,
+        timeoutMs: params.timeoutMs ?? defaults.timeoutMs,
         tempDir: defaults.tempDir,
+        view,
     };
 }
 
 export async function executeFetchToolCall(
-    params: Record<string, unknown>,
+    params: WebFetchInput,
     defaults: FetchToolDefaults,
     hooks: FetchExecutionHooks = {},
     signal?: AbortSignal,
 ): Promise<FetchResult | FetchError> {
-    return defuddleFetch({ ...buildFetchOptionsFromParams(params, defaults), signal }, hooks);
-}
-
-const PROGRESS_BY_STATUS: Record<BatchFetchItemStatus, number> = {
-    queued: 0,
-    connecting: 0,
-    waiting: 0.11,
-    loading: 0.51,
-    processing: 0.96,
-    done: 1,
-    error: 1,
-};
-
-function createInitialProgressItems(requests: Record<string, unknown>[]): BatchFetchItemProgress[] {
-    return requests.map((request, index) => ({
-        index,
-        url: typeof request.url === "string" ? request.url : String(request.url ?? ""),
-        status: "queued",
-        progress: PROGRESS_BY_STATUS.queued,
-        statusStartedAt: Date.now(),
-    }));
-}
-
-function buildProgressSnapshot(
-    items: BatchFetchItemProgress[],
-    batchConcurrency: number,
-): BatchFetchProgressSnapshot {
-    let completed = 0;
-    let succeeded = 0;
-    let failed = 0;
-
-    for (const item of items) {
-        if (item.status === "done" || item.status === "error") {
-            completed += 1;
-        }
-        if (item.status === "done") {
-            succeeded += 1;
-        }
-        if (item.status === "error") {
-            failed += 1;
-        }
-    }
-
-    return {
-        items: items.map((item) => ({ ...item })),
-        total: items.length,
-        completed,
-        succeeded,
-        failed,
-        batchConcurrency,
-    };
-}
-
-export async function executeBatchFetchToolCall(
-    params: Record<string, unknown>,
-    defaults: FetchToolDefaults,
-    options: {
-        batchConcurrency?: number;
-        onProgress?(snapshot: BatchFetchProgressSnapshot): void;
-        executeItem?(
-            params: Record<string, unknown>,
-            defaults: FetchToolDefaults,
-            hooks?: FetchExecutionHooks,
-        ): Promise<FetchResult | FetchError>;
-    } = {},
-): Promise<BatchFetchResult> {
-    const requests = ((params.requests as Record<string, unknown>[] | undefined) ?? []).map(
-        (request) => request ?? {},
-    );
-    const batchConcurrency = resolveBatchConcurrency(
-        options.batchConcurrency ?? defaults.batchConcurrency,
-    );
-    const progressItems = createInitialProgressItems(requests);
-    const results = new Array<BatchFetchItemResult>(requests.length);
-
-    const emitProgress = () => {
-        options.onProgress?.(buildProgressSnapshot(progressItems, batchConcurrency));
-    };
-
-    const updateProgress = (
-        index: number,
-        status: BatchFetchItemStatus,
-        error?: string,
-        progress?: number,
-    ) => {
-        const previous = progressItems[index];
-        progressItems[index] = {
-            ...previous,
-            status,
-            progress:
-                progress === undefined
-                    ? PROGRESS_BY_STATUS[status]
-                    : Math.max(0, Math.min(1, progress)),
-            statusStartedAt: previous?.status === status ? previous.statusStartedAt : Date.now(),
-            ...(error ? { error } : {}),
+    const viewError = validateReadingViewRequest(params);
+    if (viewError) {
+        emitStatus(hooks, "error");
+        return {
+            error: viewError,
+            code: "processing_error",
+            phase: "processing",
+            retryable: false,
+            url: params.url,
         };
-        emitProgress();
-    };
-
-    emitProgress();
-
-    let nextIndex = 0;
-
-    const worker = async () => {
-        while (true) {
-            const index = nextIndex;
-            nextIndex += 1;
-
-            if (index >= requests.length) {
-                return;
-            }
-
-            const request = requests[index] ?? {};
-            const normalizedRequest = buildFetchOptionsFromParams(request, defaults);
-
-            try {
-                const executeItem = options.executeItem ?? executeFetchToolCall;
-                const result = await executeItem(request, defaults, {
-                    onStatusChange(status) {
-                        if (status === "done") return;
-                        updateProgress(index, status);
-                    },
-                    onProgressChange(update) {
-                        if (update.status === "done") return;
-                        updateProgress(index, update.status, undefined, update.progress);
-                    },
-                });
-
-                if (isError(result)) {
-                    const errorText = buildFetchErrorResponseText(result);
-                    results[index] = {
-                        index,
-                        request: normalizedRequest,
-                        status: "error",
-                        progress: PROGRESS_BY_STATUS.error,
-                        error: errorText,
-                    };
-                    updateProgress(index, "error", buildUserFacingFetchErrorSummary(result));
-                    continue;
-                }
-
-                results[index] = {
-                    index,
-                    request: normalizedRequest,
-                    status: "done",
-                    progress: PROGRESS_BY_STATUS.done,
-                    result,
-                };
-                updateProgress(index, "done");
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                results[index] = {
-                    index,
-                    request: normalizedRequest,
-                    status: "error",
-                    progress: PROGRESS_BY_STATUS.error,
-                    error: message,
-                };
-                updateProgress(index, "error", message);
-            }
-        }
-    };
-
-    const workerCount = requests.length === 0 ? 0 : Math.min(batchConcurrency, requests.length);
-    await Promise.all(Array.from({ length: workerCount }, async () => worker()));
-
-    const finalSnapshot = buildProgressSnapshot(progressItems, batchConcurrency);
-
-    return {
-        items: results,
-        total: finalSnapshot.total,
-        succeeded: finalSnapshot.succeeded,
-        failed: finalSnapshot.failed,
-        batchConcurrency,
-    };
+    }
+    return defuddleFetch({ ...buildFetchOptionsFromParams(params, defaults), signal }, hooks);
 }

@@ -1,4 +1,5 @@
-import { type TSchema, Type, type Static } from "typebox";
+import { Type, type Static } from "typebox";
+import type { ReadingView } from "./views.ts";
 
 // =============================================================================
 // Fetch Constants & Defaults
@@ -8,7 +9,6 @@ export const DEFAULT_BROWSER = "chrome_145";
 export const DEFAULT_OS = "windows" as const;
 export const DEFAULT_MAX_CHARS = 50_000;
 export const DEFAULT_TIMEOUT_MS = 15_000;
-export const DEFAULT_BATCH_CONCURRENCY = 8;
 export const DEFAULT_INCLUDE_REPLIES = "extractors" as const;
 export const DEFAULT_ACCEPT_HEADER =
     "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
@@ -25,14 +25,9 @@ export const DEFAULT_ACCEPT_LANGUAGE_HEADER = "en-US,en;q=0.9";
 export type OutputFormat = "markdown" | "html" | "text" | "json" | "raw";
 export type FingerprintOs = "windows" | "macos" | "linux" | "android" | "ios";
 export type IncludeRepliesOption = boolean | "extractors";
-export type BatchFetchItemStatus =
-    | "queued"
-    | "connecting"
-    | "waiting"
-    | "loading"
-    | "processing"
-    | "done"
-    | "error";
+
+/** Live status of one fetch, as reported to the tool card while it runs. */
+export type FetchStatus = "connecting" | "waiting" | "loading" | "processing" | "done" | "error";
 
 export interface FetchOptions {
     url: string;
@@ -45,6 +40,8 @@ export interface FetchOptions {
     includeReplies?: IncludeRepliesOption;
     proxy?: string;
     timeoutMs?: number;
+    /** Read part of the extracted markdown instead of the whole document. */
+    view?: ReadingView;
     tempDir?: string;
     /** Caller's abort signal; cancels the request and reports `code: "aborted"`. */
     signal?: AbortSignal;
@@ -118,41 +115,6 @@ export interface FetchError {
     downloadedBytes?: number;
 }
 
-export interface BatchFetchItemProgress {
-    index: number;
-    url: string;
-    status: BatchFetchItemStatus;
-    progress: number;
-    statusStartedAt?: number;
-    error?: string;
-}
-
-export interface BatchFetchItemResult {
-    index: number;
-    request: FetchOptions;
-    status: "done" | "error";
-    progress: number;
-    result?: FetchResult;
-    error?: string;
-}
-
-export interface BatchFetchProgressSnapshot {
-    items: BatchFetchItemProgress[];
-    total: number;
-    completed: number;
-    succeeded: number;
-    failed: number;
-    batchConcurrency: number;
-}
-
-export interface BatchFetchResult {
-    items: BatchFetchItemResult[];
-    total: number;
-    succeeded: number;
-    failed: number;
-    batchConcurrency: number;
-}
-
 export interface ExtractedContent {
     content?: string;
     wordCount: number;
@@ -206,7 +168,6 @@ export interface FetchToolConfig {
     os?: string;
     removeImages?: boolean;
     includeReplies?: IncludeRepliesOption;
-    batchConcurrency?: number;
     tempDir?: string;
 }
 
@@ -217,18 +178,17 @@ export interface FetchToolDefaults {
     os: string;
     removeImages: boolean;
     includeReplies: IncludeRepliesOption;
-    batchConcurrency: number;
     tempDir?: string;
 }
 
 export interface FetchProgressUpdate {
-    status: Exclude<BatchFetchItemStatus, "queued">;
+    status: FetchStatus;
     progress: number;
     phase?: string;
 }
 
 export interface FetchExecutionHooks {
-    onStatusChange?(status: Exclude<BatchFetchItemStatus, "queued">): void;
+    onStatusChange?(status: FetchStatus): void;
     onProgressChange?(update: FetchProgressUpdate): void;
 }
 
@@ -316,13 +276,6 @@ export function formatByteCount(bytes: number): string {
 // Schema Helpers
 // =============================================================================
 
-export function resolveBatchConcurrency(value: number | undefined): number {
-    if (!value || !Number.isFinite(value)) {
-        return DEFAULT_BATCH_CONCURRENCY;
-    }
-    return Math.max(1, Math.floor(value));
-}
-
 export function resolveFetchToolDefaults(config: FetchToolConfig = {}): FetchToolDefaults {
     return {
         maxChars: config.maxChars ?? DEFAULT_MAX_CHARS,
@@ -331,14 +284,12 @@ export function resolveFetchToolDefaults(config: FetchToolConfig = {}): FetchToo
         os: config.os ?? DEFAULT_OS,
         removeImages: config.removeImages ?? false,
         includeReplies: config.includeReplies ?? DEFAULT_INCLUDE_REPLIES,
-        batchConcurrency: resolveBatchConcurrency(config.batchConcurrency),
         tempDir: config.tempDir,
     };
 }
 
-export function createBaseFetchToolParameterProperties(
-    defaults: FetchToolDefaults,
-): Record<string, TSchema> {
+/** The parameters both fetch tools share; the literal type is what `Static` reads. */
+export function createBaseFetchToolParameterProperties(defaults: FetchToolDefaults) {
     return {
         url: Type.String({ description: "URL to fetch (http/https only)" }),
         browser: Type.Optional(
@@ -398,22 +349,23 @@ export function createBaseFetchToolParameterProperties(
                 description: "Proxy URL (http://user:pass@host:port or socks5://host:port)",
             }),
         ),
-    };
-}
-
-export function createBatchFetchToolParameterProperties(
-    defaults: FetchToolDefaults,
-): Record<string, TSchema> {
-    return {
-        requests: Type.Array(
-            Type.Object(createBaseFetchToolParameterProperties(defaults), {
-                additionalProperties: false,
-            }),
-            {
-                minItems: 1,
+        toc: Type.Optional(
+            Type.Boolean({
                 description:
-                    "Array of fetch requests. Each item accepts the same parameters as the single-item fetch tool.",
-            },
+                    "Return only the numbered heading outline instead of the body. Cannot be combined with section or focus.",
+            }),
+        ),
+        section: Type.Optional(
+            Type.String({
+                description:
+                    'Return one section by its toc number (for example "17") or by a fragment of its heading text; subsections included. Cannot be combined with toc or focus.',
+            }),
+        ),
+        focus: Type.Optional(
+            Type.String({
+                description:
+                    "Return the sections that best match this query, best first, each with its heading path. Cannot be combined with toc or section.",
+            }),
         ),
     };
 }
@@ -441,10 +393,13 @@ export const webFetchOutputSchema = Type.Object({
     finalUrl: Type.String({ description: "Final URL after redirects" }),
     title: Type.String({ description: "Extracted document title" }),
     content: Type.String({ description: "Extracted document text or error message" }),
-    wordCount: Type.Number({ description: "Word count of extracted document text" }),
+    wordCount: Type.Number({ description: "Word count of the returned content" }),
     site: Type.Optional(Type.String({ description: "Site name if extracted" })),
     author: Type.Optional(Type.String({ description: "Author name if extracted" })),
     published: Type.Optional(Type.String({ description: "Published date if extracted" })),
+    warning: Type.Optional(
+        Type.String({ description: "Set when the page extracted far less than it holds" }),
+    ),
     statusCode: Type.Optional(Type.Number({ description: "HTTP status code" })),
     filePath: Type.Optional(Type.String({ description: "Local disk path for downloaded file" })),
     fileSize: Type.Optional(Type.Number({ description: "Size of downloaded file in bytes" })),
