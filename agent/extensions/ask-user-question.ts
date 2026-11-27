@@ -641,16 +641,9 @@ export default function askUserQuestion(pi: ExtensionAPI) {
         label: "ask_user_question",
         exposure: "model-only",
         annotations: { readOnlyHint: true, idempotentHint: false },
-        description:
-            "Ask the user a single question and pause execution until they answer. One question per call — for several questions, make several separate calls.",
+        description: "Ask the user a single question and pause execution until they answer.",
         promptSnippet:
             "Ask one clarifying question when the requirement, preference, or path is unclear",
-        promptGuidelines: [
-            'Users will always be able to select "Other" to provide custom text input when options are provided.',
-            "Use multiSelect: true only when you need multiple answers to the same question.",
-            'If you recommend a specific option, make it the first option in the list and add "(Recommended)" at the end of the label.',
-            "Keep options[].label under 50 characters — long labels overflow because they don't wrap in the interactive UI.",
-        ],
         parameters: AskUserQuestionParams,
 
         async execute(_toolCallId, params, signal, _onUpdate, ctx) {

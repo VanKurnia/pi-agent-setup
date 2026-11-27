@@ -6,7 +6,7 @@ export const recallParams = Type.Object({
     query: Type.Optional(
         Type.String({
             description:
-                "Text/regex search; #N expands entry; #N:text reads a message body; #N:file / #N:<path> reads a tool-call payload; append :offset:limit or :full to page a long entry; 12-char hex recovers an observation/reflection. mode:file searches tool-call payloads (write/edit arguments) and message text.",
+                "Text/regex search; #N expands entry; #N:text reads a message body; #N:file / #N:<path> reads a tool-call payload; append :offset:limit or :full to page a long entry; 12-char hex recovers an observation/reflection.",
         }),
     ),
     expand: Type.Optional(

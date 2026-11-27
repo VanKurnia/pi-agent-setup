@@ -169,16 +169,14 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
     pi.registerTool({
         name: "query_sqlite",
         label: "Query SQLite",
-        description:
-            "Execute safe, read-only SELECT queries on a local SQLite database file. Omit dbPath to use the closest-dir default from db-config.json.",
+        description: "Run a read-only SQL query on a SQLite database file.",
         annotations: {
             readOnlyHint: true,
             idempotentHint: true,
         },
-        promptSnippet: "Query a SQLite database file (SELECT only)",
+        promptSnippet: "Query a SQLite database file",
         promptGuidelines: [
-            "Use query_sqlite when you need to inspect SQLite schema, counts, or table records.",
-            "Do not try to write, insert, update, delete or drop tables. Only SELECT is supported.",
+            "query_sqlite: writes are blocked; SELECT, SHOW, DESCRIBE, EXPLAIN, PRAGMA, USE and WITH are the only allowed statement heads.",
         ],
         parameters: Type.Object({
             dbPath: Type.Optional(
@@ -267,16 +265,14 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
     pi.registerTool({
         name: "query_mysql",
         label: "Query MySQL",
-        description:
-            "Execute safe, read-only queries on a MySQL database. Omit connectionString to use the closest-dir default from db-config.json.",
+        description: "Run a read-only SQL query on a MySQL database.",
         annotations: {
             readOnlyHint: true,
             idempotentHint: true,
         },
-        promptSnippet: "Query a MySQL database (SELECT, SHOW, DESCRIBE only)",
+        promptSnippet: "Query a MySQL database",
         promptGuidelines: [
-            "Use query_mysql to view table data, schema, or descriptions on MySQL databases.",
-            "Only read-only queries (SELECT, SHOW, DESCRIBE) are executed. Writing operations are blocked.",
+            "query_mysql: writes are blocked; SELECT, SHOW, DESCRIBE, EXPLAIN, PRAGMA, USE and WITH are the only allowed statement heads.",
         ],
         parameters: Type.Object({
             connectionString: Type.Optional(
@@ -380,15 +376,12 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
         name: "db_status",
         label: "DB Status",
         description:
-            "Check database connectivity for the closest-dir defaults from db-config.json. Returns reachability + latency per driver without running user queries.",
+            "Probe the closest-dir default databases and report reachability and latency per driver.",
         annotations: {
             readOnlyHint: true,
             idempotentHint: true,
         },
         promptSnippet: "Check whether the default SQLite/MySQL connections are reachable",
-        promptGuidelines: [
-            "Use db_status when you need to check whether the closest-dir default databases are reachable, before running queries.",
-        ],
         parameters: Type.Object({
             driver: Type.Optional(
                 Type.Union([Type.Literal("sqlite"), Type.Literal("mysql")], {
@@ -446,8 +439,7 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
     pi.registerTool({
         name: "db_save",
         label: "DB Save",
-        description:
-            "Save a database connection for a working directory to db-config.json. Probes the connection first and refuses redundant entries already covered by a parent directory.",
+        description: "Save a database connection for a working directory to db-config.json.",
         annotations: {
             readOnlyHint: false,
             destructiveHint: true,
@@ -455,24 +447,20 @@ export default function dbViewerExtension(pi: ExtensionAPI) {
         },
         promptSnippet: "Save a DB connection for this directory",
         promptGuidelines: [
-            "Use db_save only when the user asks to remember a database or when a verified working connection has no covering entry in db_status.",
-            "db_save always probes first; unreachable credentials are rejected, never stored.",
-            "If the result says covered-by-parent, use the parent entry — do not re-save.",
+            "db_save: probes first — unreachable credentials are rejected, never stored.",
+            "db_save: if the result says covered-by-parent, use the parent entry — do not re-save.",
         ],
         parameters: Type.Object({
             name: Type.String({
                 description: "Connection name, unique case-insensitive.",
             }),
-            driver: Type.Union([Type.Literal("sqlite"), Type.Literal("mysql")], {
-                description: "Driver for the connection.",
-            }),
+            driver: Type.Union([Type.Literal("sqlite"), Type.Literal("mysql")]),
             connection: Type.String({
                 description: "File path (sqlite) or full URI (mysql).",
             }),
             directory: Type.Optional(
                 Type.String({
-                    description:
-                        "Working directory to save for; defaults to cwd. Must not be empty.",
+                    description: "Working directory to save for; defaults to cwd.",
                 }),
             ),
             overwrite: Type.Optional(

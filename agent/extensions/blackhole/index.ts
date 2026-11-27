@@ -279,15 +279,11 @@ export default function (pi: ExtensionAPI): void {
             idempotentHint: true,
         },
         description:
-            "Search session history and earlier lines omitted, file write/edit content by text/regex. " +
-            "Expand entries (#N); read one entry's text (#N:text) or a tool-call payload (#N:file, #N:<path>) with paging (:offset:limit, :full); aggregate touched files (mode:touched). " +
-            "Each drill-down window reports [chars X-Y of N] so the next window can be requested; :full returns the whole payload.",
+            "Search this session's history — messages, file write/edit payloads, observations — by text or regex.",
         promptSnippet:
             "Search your own earlier session history and file write/edit payloads by text or regex",
         promptGuidelines: [
-            "Use recall — literal text/regex search across session history and file write/edit payloads. If nothing matches, retry with fewer terms or a different pattern.",
-            "Use recall — when a drill-down path matches several files, the options are listed; narrow it with a more specific path substring.",
-            "Use recall — source:'parent' reads the delegating parent session's history + OM instead of your own. Only works inside a subagent child run; default stays 'current' so parent reads are always explicit, never implicit.",
+            "recall: if nothing matches, retry with fewer terms or a different pattern.",
         ],
         parameters: recallParams,
         async execute(_toolCallId, params, _signal, _onUpdate, ctx) {

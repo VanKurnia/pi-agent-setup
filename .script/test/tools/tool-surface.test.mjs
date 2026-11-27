@@ -1,11 +1,12 @@
 // Test: every tool the model sees declares a complete, non-redundant string set.
 // Run from repo root: node .script/test/tools/tool-surface.test.mjs
 //
-// Loads the eight extension entry files that declare those strings through the harness
+// Loads the seven extension entry files that declare those strings through the harness
 // as the other model-free tests, captures every registered tool through a
-// recording stub, and asserts the four gate properties: exact per-file
-// coverage, a non-empty promptSnippet, snippet shape, and no restatement
-// across the three surfaces. No model calls, no session writes.
+// recording stub, and asserts the six gate properties: exact per-file
+// coverage, a non-empty promptSnippet, snippet shape, no restatement across the
+// three surfaces, guideline naming, and guideline/parameter overlap.
+// No model calls, no session writes.
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -13,7 +14,7 @@ import { createTestJiti, importProd, ROOT, runCases } from "../subagent/helpers.
 
 const jiti = await createTestJiti();
 
-// Only the ExtensionAPI methods the eight factories call at load time, so a new
+// Only the ExtensionAPI methods the seven factories call at load time, so a new
 // load-time dependency fails loudly instead of being silently absorbed.
 const tools = {};
 const byFile = {};
@@ -32,7 +33,6 @@ const entries = {
     "agent/extensions/blackhole/index.js": ["recall"],
     "agent/extensions/db-viewer/index.js": ["query_sqlite", "query_mysql", "db_status", "db_save"],
     "agent/extensions/ninerouter.js": ["ninerouter_web_search", "ninerouter_web_fetch"],
-    "agent/extensions/open-code-review/index.js": ["ocr_review", "ocr_scan", "ocr_health"],
     "agent/extensions/session-mgr/index.js": ["rename_session"],
     "agent/extensions/smart-web-access/index.js": ["web_search", "web_fetch"],
     "agent/extensions/herdr-app-subagent/index.js": ["subagent"],
@@ -139,6 +139,44 @@ test("no guideline restates its own snippet/description or duplicates another", 
             );
             seen.add(text);
         }
+    }
+});
+
+test("every guideline names the tool it belongs to", () => {
+    for (const name of scoped) {
+        for (const guideline of tools[name].promptGuidelines ?? []) {
+            const text = normalized(guideline);
+            assert.ok(
+                text.startsWith(name),
+                `${name}: guideline does not start with the tool name: ${text.slice(0, 100)}`,
+            );
+        }
+    }
+});
+
+test("no guideline repeats a parameter description", () => {
+    const MIN_PARAM_CHARS = 40;
+    for (const name of scoped) {
+        const tool = tools[name];
+        const guidelines = tool.promptGuidelines ?? [];
+        const properties = tool.parameters?.properties ?? {};
+        for (const guideline of guidelines) {
+            const text = normalized(guideline);
+            assert.ok(
+                text.length <= 200,
+                `${name}: guideline is ${text.length} chars (max 200): ${text.slice(0, 100)}`,
+            );
+            for (const [property, schema] of Object.entries(properties)) {
+                const described = normalized(schema?.description ?? "");
+                if (described.length < MIN_PARAM_CHARS) continue;
+                assert.ok(
+                    !text.includes(described) && !described.includes(text),
+                    `${name}: guideline overlaps the ${property} parameter description`,
+                );
+            }
+        }
+        const joined = guidelines.reduce((total, g) => total + normalized(g).length, 0);
+        assert.ok(joined <= 400, `${name}: guidelines total ${joined} chars (max 400)`);
     }
 });
 

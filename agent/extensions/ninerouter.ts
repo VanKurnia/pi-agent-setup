@@ -382,19 +382,17 @@ export default function ninerouter(pi: ExtensionAPI) {
             openWorldHint: true,
             idempotentHint: true,
         },
-        description:
-            "Fallback web search through your 9router instance. Use when web_search fails, times out, or returns nothing useful. Not the default search tool.",
+        description: "Search the web through your 9router instance.",
         promptSnippet: "Fallback web search via 9router when web_search fails",
         promptGuidelines: [
-            "Fallback path only: try web_search first. If it errors, times out, or returns nothing useful, retry the same query once with ninerouter_web_search before giving up.",
-            "The route parameter is optional; omit it to use the configured 9router default search route.",
+            "ninerouter_web_search: fallback only — retry the same query once after web_search errors, times out, or comes back empty.",
         ],
         parameters: Type.Object({
             query: Type.String({ description: "Search query." }),
             route: Type.Optional(
                 Type.String({
                     description:
-                        "Optional 9router web search route, provider alias, or combo name. Examples: brave/search, tavily/search, my-search-combo.",
+                        "Optional 9router web search route, provider alias, or combo name.",
                 }),
             ),
             max_results: Type.Optional(
@@ -440,7 +438,7 @@ export default function ninerouter(pi: ExtensionAPI) {
                 Type.Object(
                     {},
                     {
-                        description: "Advanced 9router content_options forwarded as-is.",
+                        description: "Forwarded to the 9router request as-is.",
                         additionalProperties: true,
                     },
                 ),
@@ -449,8 +447,7 @@ export default function ninerouter(pi: ExtensionAPI) {
                 Type.Object(
                     {},
                     {
-                        description:
-                            "Advanced provider_options forwarded as-is to 9router/upstream provider.",
+                        description: "Forwarded to the 9router request as-is.",
                         additionalProperties: true,
                     },
                 ),
@@ -534,19 +531,16 @@ export default function ninerouter(pi: ExtensionAPI) {
             openWorldHint: true,
             idempotentHint: true,
         },
-        description:
-            "Fallback URL fetch/extract through your 9router instance. Use when web_fetch fails on a URL. Not the default fetch tool.",
+        description: "Fetch and extract a URL through your 9router instance.",
         promptSnippet: "Fallback URL fetch via 9router when web_fetch fails",
         promptGuidelines: [
-            "Fallback path only: try web_fetch first (several in parallel through codemode when needed). If a URL errors, is blocked, times out, or extracts empty, retry that URL once with ninerouter_web_fetch before giving up.",
-            "The route parameter is optional; omit it to use the configured 9router default fetch route.",
+            "ninerouter_web_fetch: fallback only — retry a URL once after web_fetch errors, is blocked, times out, or extracts empty.",
         ],
         parameters: Type.Object({
             url: Type.String({ description: "URL to fetch and extract." }),
             route: Type.Optional(
                 Type.String({
-                    description:
-                        "Optional 9router web fetch route, provider alias, or combo name. Examples: tavily/fetch, jina-reader/fetch, my-fetch-combo.",
+                    description: "Optional 9router web fetch route, provider alias, or combo name.",
                 }),
             ),
             format: Type.Optional(

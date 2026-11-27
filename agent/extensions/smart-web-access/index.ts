@@ -186,12 +186,8 @@ export async function loadPiSmartFetchSettings(
 // Descriptions & UI Constants
 // =============================================================================
 
-const toolDescription = [
-    "Fetch a URL with browser-grade TLS fingerprinting and extract clean, readable content.",
-    "Uses wreq-js for browser-like TLS/HTTP2 impersonation and Defuddle for article extraction.",
-    "Returns full metadata plus the extracted document to the agent while keeping the pi history preview brief.",
-    "Does NOT execute JavaScript — use a browser automation tool for JS-heavy pages.",
-].join(" ");
+const toolDescription =
+    "Fetch a URL and return it as readable markdown (html, text, json or raw on request). Extractors add title, author and date when the page publishes them. Does not execute JavaScript.";
 
 const SPINNER_INTERVAL_MS = 80;
 
@@ -395,17 +391,10 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
             idempotentHint: true,
         },
         description:
-            "Search the web and return each query's results as readable markdown -- title, URL and snippet " +
-            "per result -- followed by a summary of every result link, to open with " +
-            "web_fetch (or several web_fetch calls in parallel through codemode). Call this " +
-            "whenever the answer depends on information that changes over time: latest versions, APIs, " +
-            "prices, dates, events, release notes. Memory of these is often stale even when it feels certain.",
+            "Search the web and return per-query results as markdown — title, URL and snippet — followed by a summary of every result link.",
         promptSnippet: "Search the web for current or external information",
         promptGuidelines: [
-            "Use web_search when current or external information would change the answer, then " +
-                "web_fetch (in parallel through codemode) to open the few most relevant links it returns.",
-            "Match the number of web_search queries to the question: one for a narrow lookup, more only when the " +
-                "extra angles would change the answer.",
+            "web_search: when current or external information would change the answer, then open the few most relevant links with web_fetch (in parallel through codemode).",
         ],
         parameters: searchParametersSchema,
         outputSchema: webSearchOutputSchema,
@@ -500,7 +489,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
             verbose: Type.Optional(
                 Type.Boolean({
                     description:
-                        "Compatibility flag. pi currently returns the full metadata header to the agent regardless, while keeping the history preview compact. Default: false, or smartFetchVerboseByDefault from pi settings.",
+                        "Include the full metadata header (site, language, word count, browser) in the returned text. Default: false, or smartFetchVerboseByDefault from settings.",
                 }),
             ),
         }),
