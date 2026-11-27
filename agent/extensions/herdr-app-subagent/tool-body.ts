@@ -6,6 +6,7 @@ import {
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { SubagentParams } from "./index.ts";
 import {
     HerdrError,
     awaitTerminalGone,
@@ -50,22 +51,11 @@ import {
     type AgentConfig,
 } from "./agents.ts";
 
-/**
- * The flag builders emit `--name "value"` for a shell, and their values are
- * paths and roles. A terminal is started as a real program, so the same flags
- * travel as argv: split on the quotes they emit, not on spaces, because a path
- * may contain one.
- */
-export function argvFromFlags(flags: string): string[] {
-    const tokens = flags.match(/"[^"]*"|\S+/g) ?? [];
-    return tokens.map((token) => (token.startsWith('"') ? token.slice(1, -1) : token));
+function errorResult(text: string): AgentToolResult<unknown> {
+    return { content: [{ type: "text", text }], isError: true, details: {} };
 }
 
-function errorResult(text: string) {
-    return { content: [{ type: "text" as const, text }], isError: true, details: {} };
-}
-
-function abortResult(terminal: string, sessionFile?: string) {
+function abortResult(terminal: string, sessionFile?: string): AgentToolResult<unknown> {
     // An aborted wait is not a failed turn: the child keeps its terminal and
     // its session, so a later dispatch with fresh:false continues both. Closing
     // it here would throw away work that is still in progress.
@@ -78,11 +68,16 @@ function abortResult(terminal: string, sessionFile?: string) {
 
 // A turn that ended without a closing sentence is still a turn: the work is
 // done and its record is in the session file, so this is a result, not an error.
-function noSummaryResult(agentName: string, terminal: string, session: string, reused: boolean) {
+function noSummaryResult(
+    agentName: string,
+    terminal: string,
+    session: string,
+    reused: boolean,
+): AgentToolResult<unknown> {
     return {
         content: [
             {
-                type: "text" as const,
+                type: "text",
                 text: `Subagent (\`${agentName}\`) finished without a text summary. Its session is ${session} — read it, or dispatch again with fresh:false to continue it.`,
             },
         ],
@@ -93,7 +88,7 @@ function noSummaryResult(agentName: string, terminal: string, session: string, r
 // A blocked child is not a failed child: the core saw an approval or question
 // dialog, and nothing in this pipeline can answer it. Leave it running so the
 // work is not lost.
-async function blockedResult(terminal: string, when: string) {
+async function blockedResult(terminal: string, when: string): Promise<AgentToolResult<unknown>> {
     return errorResult(
         `herdr subagent terminal ${terminal} is blocked ${when}: an approval or question dialog is waiting in the child. ` +
             `It was left running — answer the dialog there, then dispatch again with fresh:false.${await readAgentTail(terminal)}`,
@@ -102,7 +97,11 @@ async function blockedResult(terminal: string, when: string) {
 
 // A child that outlived the budget is not a failed child: it holds work and a
 // terminal a later dispatch can reuse. Report it, never reclaim it.
-function timedOut(terminal: string, sessionFile: string | undefined, usedMs: number) {
+function timedOut(
+    terminal: string,
+    sessionFile: string | undefined,
+    usedMs: number,
+): AgentToolResult<unknown> {
     const session = sessionFile === undefined ? "" : ` (session ${sessionFile})`;
     return errorResult(
         `herdr subagent still working after ${Math.round(usedMs / 60000)} min; terminal ${terminal} was left running${session}. ` +
@@ -164,7 +163,7 @@ export function argvFitsTask(argv: readonly string[], task: string): boolean {
 
 /** Body of the `subagent` tool. Lazy-loaded: the dispatch machinery stays off the boot path. */
 export async function runSubagentTool(
-    params: { agent: string; task: string; fresh?: boolean },
+    params: SubagentParams,
     signal: AbortSignal | undefined,
     ctx: ExtensionContext,
 ): Promise<AgentToolResult<unknown>> {
@@ -202,17 +201,14 @@ export async function runSubagentTool(
     }
     // Model/thinking follow agent/ext-config/subagents.json (read-only sharing with
     // the old backend); continued sessions adopt the current config.
-    const { modelFlag, thinkingFlag } = resolveAgentFlags(
-        agent,
-        loadSubagentsSettings(getAgentDir()),
-    );
-    const rawParentFile: unknown = ctx.sessionManager?.getSessionFile?.();
+    const agentFlags = resolveAgentFlags(agent, loadSubagentsSettings(getAgentDir()));
+    const parentFile = ctx.sessionManager.getSessionFile();
     const linked =
-        typeof rawParentFile === "string" && rawParentFile.length > 0
+        parentFile !== undefined && parentFile.length > 0
             ? {
-                  parentFile: rawParentFile,
-                  groupDir: path.dirname(rawParentFile),
-                  sessionsRoot: path.dirname(path.dirname(rawParentFile)),
+                  parentFile,
+                  groupDir: path.dirname(parentFile),
+                  sessionsRoot: path.dirname(path.dirname(parentFile)),
               }
             : undefined;
     const parent = linked !== undefined ? parentKey(linked.parentFile) : undefined;
@@ -283,7 +279,6 @@ export async function runSubagentTool(
     // lock is taken and never holds up a concurrent dispatch.
     const task = attachDelegationSnapshot(params.task, await createDelegationSnapshot(ctx));
     try {
-        const toolsFlag = agent.tools.length > 0 ? ` --tools ${agent.tools.join(",")}` : "";
         const systemFlags = buildAppendSystemPromptFlags({
             agent,
             cwd,
@@ -305,7 +300,10 @@ export async function runSubagentTool(
                 argv.push("--session-dir", sessionDir);
             }
             argv.push(
-                ...argvFromFlags(toolsFlag + modelFlag + thinkingFlag + systemFlags + trustFlag),
+                ...(agent.tools.length > 0 ? ["--tools", agent.tools.join(",")] : []),
+                ...agentFlags,
+                ...systemFlags,
+                ...trustFlag,
             );
             const inlineTask = argvFitsTask(argv, task);
             if (inlineTask) argv.push(`Task:\n${task}`);
@@ -420,7 +418,7 @@ export async function runSubagentTool(
         const startedAt = Date.now();
         const deadline = startedAt + 1800000;
         let last: WaitOutcome | undefined;
-        const aborted = async (target: string) => {
+        const aborted = async (target: string): Promise<AgentToolResult<unknown>> => {
             // Late reply: a turn that ended before the cancel is still an
             // answer, and it counts even when it has no text.
             if (last === undefined || classifyWait(last, turnBefore) !== "done") {
@@ -433,7 +431,7 @@ export async function runSubagentTool(
                     : noSummaryResult(agent.name, child, sessionFile, reused);
             }
             return {
-                content: [{ type: "text" as const, text: late.text }],
+                content: [{ type: "text", text: late.text }],
                 details: {
                     mode: "single",
                     terminal,
@@ -515,7 +513,7 @@ export async function runSubagentTool(
             return noSummaryResult(agent.name, child, sessionFile, reused);
         }
         return {
-            content: [{ type: "text" as const, text: ours.text }],
+            content: [{ type: "text", text: ours.text }],
             details: {
                 mode: "single",
                 terminal,

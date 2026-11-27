@@ -4,381 +4,59 @@
  * `batch_web_fetch` was removed on purpose -- use `codemode` to fan out
  * `tools.web_fetch(...)` calls when several URLs are needed.
  *
- * Heavy dependencies (wreq-js, linkedom, defuddle, mime-types) are
- * lazily loaded inside execute() handlers so startup cost remains near zero.
+ * Heavy dependencies (wreq-js, linkedom, defuddle) are lazily loaded inside
+ * execute() handlers so startup cost remains near zero.
  */
 
-import { readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import {
-    CONFIG_DIR_NAME,
-    type ExtensionAPI,
-    getAgentDir,
-    type KeybindingHints,
-    type Theme,
-    type ThemeColor,
-} from "@earendil-works/pi-coding-agent";
-import { Container, Spacer, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { Type } from "typebox";
+import type { JsonValue } from "@earendil-works/pi-ai";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { type Static, Type } from "typebox";
 
 import { createCachedMarkdownResult } from "../shared/markdown.ts";
 
 import {
-    type FetchResult,
-    type FetchToolConfig,
-    type FingerprintOs,
-    type IncludeRepliesOption,
-    type OutputFormat,
-    type QueryProgress,
-    type QueryStatus,
+    type WebFetchOutput,
     type WebSearchDetails,
-    webSearchOutputSchema,
-    webFetchOutputSchema,
+    type WebSearchOutput,
     createBaseFetchToolParameterProperties,
-    formatByteCount,
-    isFileFetchResult,
     isError,
+    isFileFetchResult,
     resolveFetchToolDefaults,
     searchParametersSchema,
+    webFetchOutputSchema,
+    webSearchOutputSchema,
 } from "./types.ts";
+import {
+    createWebFetchCallComponent,
+    createWebFetchResultComponent,
+    renderSearchProgressCard,
+    type WebFetchRenderDetails,
+} from "./tui.ts";
 
 // =============================================================================
-// Settings: Fetch
+// Tool Parameters
 // =============================================================================
-
-const VALID_OS_VALUES = new Set<FingerprintOs>(["windows", "macos", "linux", "android", "ios"]);
-
-interface PiSmartFetchSettings {
-    smartFetchVerboseByDefault?: boolean;
-    smartFetchDefaultMaxChars?: number;
-    smartFetchDefaultTimeoutMs?: number;
-    smartFetchDefaultBrowser?: string;
-    smartFetchDefaultOs?: FingerprintOs;
-    smartFetchDefaultRemoveImages?: boolean;
-    smartFetchDefaultIncludeReplies?: IncludeRepliesOption;
-    smartFetchDefaultBatchConcurrency?: number;
-    smartFetchTempDir?: string;
-}
-
-export interface ResolvedPiSmartFetchSettings extends FetchToolConfig {
-    verboseByDefault: boolean;
-}
-
-/**
- * Read the first alias that holds an acceptable value, so a renamed setting
- * keeps working alongside the current name.
- */
-function readSetting<T>(
-    source: Record<string, unknown>,
-    keys: readonly string[],
-    accept: (value: unknown) => value is T,
-): T | undefined {
-    for (const key of keys) {
-        const value = source[key];
-        if (accept(value)) return value;
-    }
-    return undefined;
-}
-
-const isBoolean = (v: unknown): v is boolean => typeof v === "boolean";
-const isPositiveNumber = (v: unknown): v is number =>
-    typeof v === "number" && Number.isFinite(v) && v > 0;
-const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
-const isFingerprintOs = (v: unknown): v is FingerprintOs =>
-    typeof v === "string" && VALID_OS_VALUES.has(v as FingerprintOs);
-const isIncludeReplies = (v: unknown): v is IncludeRepliesOption =>
-    typeof v === "boolean" || v === "extractors";
-
-function normalizePiSmartFetchSettings(input: unknown): PiSmartFetchSettings {
-    if (!input || typeof input !== "object") return {};
-    const source = input as Record<string, unknown>;
-
-    return {
-        smartFetchVerboseByDefault: readSetting(
-            source,
-            ["smartFetchVerboseByDefault", "webFetchVerboseByDefault"],
-            isBoolean,
-        ),
-        smartFetchDefaultMaxChars: readSetting(
-            source,
-            ["smartFetchDefaultMaxChars", "webFetchDefaultMaxChars"],
-            isPositiveNumber,
-        ),
-        smartFetchDefaultTimeoutMs: readSetting(
-            source,
-            ["smartFetchDefaultTimeoutMs"],
-            isPositiveNumber,
-        ),
-        smartFetchDefaultBrowser: readSetting(
-            source,
-            ["smartFetchDefaultBrowser"],
-            isNonEmptyString,
-        ),
-        smartFetchDefaultOs: readSetting(source, ["smartFetchDefaultOs"], isFingerprintOs),
-        smartFetchDefaultRemoveImages: readSetting(
-            source,
-            ["smartFetchDefaultRemoveImages"],
-            isBoolean,
-        ),
-        smartFetchDefaultIncludeReplies: readSetting(
-            source,
-            ["smartFetchDefaultIncludeReplies"],
-            isIncludeReplies,
-        ),
-        smartFetchDefaultBatchConcurrency: readSetting(
-            source,
-            ["smartFetchDefaultBatchConcurrency", "webFetchDefaultBatchConcurrency"],
-            isPositiveNumber,
-        ),
-        smartFetchTempDir: readSetting(
-            source,
-            ["smartFetchTempDir", "webFetchTempDir"],
-            isNonEmptyString,
-        ),
-    };
-}
-
-export function resolvePiSmartFetchSettings(
-    globalSettings: unknown,
-    projectSettings: unknown,
-): ResolvedPiSmartFetchSettings {
-    const global = normalizePiSmartFetchSettings(globalSettings);
-    const project = normalizePiSmartFetchSettings(projectSettings);
-
-    return {
-        verboseByDefault:
-            project.smartFetchVerboseByDefault ?? global.smartFetchVerboseByDefault ?? false,
-        maxChars: project.smartFetchDefaultMaxChars ?? global.smartFetchDefaultMaxChars,
-        timeoutMs: project.smartFetchDefaultTimeoutMs ?? global.smartFetchDefaultTimeoutMs,
-        browser: project.smartFetchDefaultBrowser ?? global.smartFetchDefaultBrowser,
-        os: project.smartFetchDefaultOs ?? global.smartFetchDefaultOs,
-        removeImages: project.smartFetchDefaultRemoveImages ?? global.smartFetchDefaultRemoveImages,
-        includeReplies:
-            project.smartFetchDefaultIncludeReplies ?? global.smartFetchDefaultIncludeReplies,
-        batchConcurrency:
-            project.smartFetchDefaultBatchConcurrency ?? global.smartFetchDefaultBatchConcurrency,
-        tempDir:
-            project.smartFetchTempDir ??
-            global.smartFetchTempDir ??
-            join(tmpdir(), "smart-fetch-pi"),
-    };
-}
-
-async function readSettingsFile(path: string): Promise<unknown> {
-    try {
-        return JSON.parse(await readFile(path, "utf-8"));
-    } catch {
-        return {};
-    }
-}
-
-export async function loadPiSmartFetchSettings(
-    cwd: string,
-    agentDir = getAgentDir(),
-): Promise<ResolvedPiSmartFetchSettings> {
-    const globalSettings = await readSettingsFile(join(agentDir, "settings.json"));
-    const projectSettings = await readSettingsFile(join(cwd, CONFIG_DIR_NAME, "settings.json"));
-    return resolvePiSmartFetchSettings(globalSettings, projectSettings);
-}
-
-// =============================================================================
-// Descriptions & UI Constants
-// =============================================================================
-
-const toolDescription =
-    "Fetch a URL and return it as readable markdown (html, text, json or raw on request). Extractors add title, author and date when the page publishes them. Does not execute JavaScript.";
 
 const SPINNER_INTERVAL_MS = 80;
 
-type WebFetchRenderDetails = {
-    error?: boolean;
-    errorText?: string;
-    userErrorSummary?: string;
-    verbose?: boolean;
-    format?: OutputFormat;
-    maxChars?: number;
-    fetchResult?: FetchResult;
-    started?: boolean;
-    status?: "connecting" | "waiting" | "loading" | "processing" | "done" | "error";
-    progress?: number;
-    phase?: string;
-    url?: string;
-    spinnerTick?: number;
-};
+const fetchDefaults = resolveFetchToolDefaults();
 
-// =============================================================================
-// TUI Helpers: Search
-// =============================================================================
+const webFetchParameters = Type.Object({
+    ...createBaseFetchToolParameterProperties(fetchDefaults),
+    verbose: Type.Optional(
+        Type.Boolean({
+            description:
+                "Include the full metadata header (site, language, word count, browser) in the returned text. Default: false, or smartFetchVerboseByDefault from settings.",
+        }),
+    ),
+});
 
-const STATUS_STYLES: Record<QueryStatus, { color: ThemeColor; glyph: string }> = {
-    queued: { color: "muted", glyph: "." },
-    loading: { color: "accent", glyph: "." },
-    done: { color: "success", glyph: "+" },
-    error: { color: "error", glyph: "x" },
-};
-
-const STATUS_BADGE_TEXT_WIDTH = 9;
-
-export function formatStatusBadge(status: string): string {
-    const spacesNeeded = Math.max(0, STATUS_BADGE_TEXT_WIDTH - status.length);
-    const spacesBefore = Math.floor(spacesNeeded / 2);
-    const spacesAfter = spacesNeeded - spacesBefore;
-    return `[ ${" ".repeat(spacesBefore)}${status}${" ".repeat(spacesAfter)} ]`;
-}
-
-function truncate(text: string, roomAvailable: number): string {
-    if (visibleWidth(text) <= roomAvailable) return text;
-    return truncateToWidth(text, Math.max(1, roomAvailable));
-}
-
-const GLYPH_COLUMN_WIDTH = 2;
-
-export function renderSearchProgressCard(
-    progressByQuery: QueryProgress[] | undefined,
-    theme: Pick<Theme, "fg" | "bold">,
-    terminalWidth: number,
-): string {
-    const entries = progressByQuery ?? [];
-    const width = Math.max(24, terminalWidth || 80);
-
-    const succeeded = entries.filter((entry) => entry.status === "done").length;
-    const failed = entries.filter((entry) => entry.status === "error").length;
-
-    const lines = [
-        theme.fg(
-            "muted",
-            `${succeeded + failed}/${entries.length} done · ok ${succeeded} · err ${failed}`,
-        ),
-    ];
-
-    for (const entry of entries) {
-        const badge = formatStatusBadge(entry.status);
-        const style = STATUS_STYLES[entry.status];
-        const roomForQuery = width - GLYPH_COLUMN_WIDTH - badge.length - 1;
-        const query = truncate(entry.query, Math.max(1, roomForQuery));
-        const gapBeforeBadge = Math.max(
-            1,
-            width - GLYPH_COLUMN_WIDTH - visibleWidth(query) - badge.length,
-        );
-
-        lines.push(
-            `${theme.fg(style.color, style.glyph)} ${theme.fg("accent", query)}` +
-                `${" ".repeat(gapBeforeBadge)}${theme.fg(style.color, badge)}`,
-        );
-    }
-
-    return lines.join("\n");
-}
-
-// =============================================================================
-// TUI Helpers: Fetch
-// =============================================================================
-
-export function createWebFetchCallComponent(
-    args: Record<string, unknown>,
-    theme: Pick<Theme, "fg" | "bold">,
-): Text {
-    const url = typeof args.url === "string" ? args.url : "...";
-    const format = typeof args.format === "string" ? ` [${args.format}]` : "";
-    return new Text(
-        `${theme.fg("toolTitle", theme.bold("web_fetch"))} ${theme.fg("accent", url)}${theme.fg("dim", format)}`,
-        0,
-        0,
-    );
-}
-
-export function createWebFetchResultComponent(
-    details: WebFetchRenderDetails | undefined,
-    expanded: boolean,
-    theme: Pick<Theme, "fg" | "bold">,
-    context: KeybindingHints & { state?: Record<string, unknown> },
-): Container {
-    const container = new Container();
-    if (details?.error) {
-        const summary = details.userErrorSummary || details.errorText || "Request failed.";
-        container.addChild(new Text(theme.fg("error", `✗ ${summary}`), 0, 0));
-        return container;
-    }
-
-    const result = details?.fetchResult;
-    if (!result) {
-        container.addChild(new Text(theme.fg("muted", "No preview details available."), 0, 0));
-        return container;
-    }
-
-    if (isFileFetchResult(result)) {
-        const metaParts = [
-            formatByteCount(result.fileSize),
-            result.contentType,
-            `${result.browser}/${result.os}`,
-        ].filter(Boolean);
-        const meta = metaParts.length > 0 ? ` (${metaParts.join(" · ")})` : "";
-        container.addChild(
-            new Text(
-                `${theme.fg("success", "✓")} ${theme.fg("accent", result.title || result.finalUrl || result.url)}${theme.fg("dim", meta)}`,
-                0,
-                0,
-            ),
-        );
-        container.addChild(new Spacer(1));
-        container.addChild(
-            new Text(`${theme.fg("muted", "Saved:")} ${theme.fg("accent", result.filePath)}`, 0, 0),
-        );
-        return container;
-    }
-
-    const metaParts = [
-        `${result.wordCount.toLocaleString()} words`,
-        details?.format ?? "markdown",
-        result.site || undefined,
-        `${result.browser}/${result.os}`,
-    ].filter(Boolean);
-    const meta = metaParts.length > 0 ? ` (${metaParts.join(" · ")})` : "";
-
-    container.addChild(
-        new Text(
-            `${theme.fg("success", "✓")} ${theme.fg("accent", result.title || result.finalUrl || result.url)}${theme.fg("dim", meta)}`,
-            0,
-            0,
-        ),
-    );
-
-    if (expanded) {
-        container.addChild(new Spacer(1));
-        container.addChild(
-            createCachedMarkdownResult(context.state, "__webFetchBody", result.content),
-        );
-    } else {
-        const previewLines = result.content
-            .split(/\r?\n/)
-            .map((l) => l.trim())
-            .filter(Boolean)
-            .slice(0, 4);
-        if (previewLines.length > 0) {
-            container.addChild(new Spacer(1));
-            for (const line of previewLines) {
-                container.addChild(new Text(theme.fg("dim", line.slice(0, 120)), 0, 0));
-            }
-        }
-        container.addChild(new Spacer(1));
-        container.addChild(
-            new Text(
-                `${theme.fg("muted", "... (")} ${context.keyHint("app.tools.expand", "to expand full document")} ${theme.fg("muted", ")")}`,
-                0,
-                0,
-            ),
-        );
-    }
-
-    return container;
-}
+export type WebFetchInput = Static<typeof webFetchParameters>;
 
 // =============================================================================
 // Extension Entry Point
 // =============================================================================
-
-type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
 
 export default function smartWebAccessExtension(pi: ExtensionAPI): void {
     // ── 1. web_search ───────────────────────────────────────────────────────────
@@ -409,34 +87,46 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
             );
         },
 
-        async execute(_toolCallId, params, signal, onUpdate, ctx) {
-            const { executeWebSearch } = await import("./search.js");
+        async execute(_toolCallId, params, signal, onUpdate) {
+            const [{ executeWebSearch }, { readSmartFetchSettings }] = await Promise.all([
+                import("./search.js"),
+                import("./settings.js"),
+            ]);
+            const settings = readSmartFetchSettings(pi.getSettings());
             const result = await executeWebSearch(
                 params.searches,
-                ctx.cwd,
+                settings.resultsPerQuery,
                 (progressByQuery) => {
                     onUpdate?.({ content: [], details: { progressByQuery } });
                 },
                 signal,
             );
             const emptyLinks: Array<{ title: string; url: string }> = [];
-            const results = (result.details?.progressByQuery || []).map((q) => {
-                const res = q.result;
-                if (!res) {
-                    return { query: q.query, ok: false, error: "no response", links: emptyLinks };
-                }
-                if (res.ok) {
-                    return {
-                        query: q.query,
-                        ok: true,
-                        links: res.links.map((l) => ({ title: l.title, url: l.url })),
-                    };
-                }
-                return { query: q.query, ok: false, error: res.error, links: emptyLinks };
-            });
+            const results: WebSearchOutput["results"] = (result.details?.progressByQuery || []).map(
+                (q) => {
+                    const res = q.result;
+                    if (!res) {
+                        return {
+                            query: q.query,
+                            ok: false,
+                            error: "no response",
+                            links: emptyLinks,
+                        };
+                    }
+                    if (res.ok) {
+                        return {
+                            query: q.query,
+                            ok: true,
+                            links: res.links.map((l) => ({ title: l.title, url: l.url })),
+                        };
+                    }
+                    return { query: q.query, ok: false, error: res.error, links: emptyLinks };
+                },
+            );
+            const structuredContent: WebSearchOutput = { queries: params.searches, results };
             return {
                 content: [{ type: "text", text: result.text }],
-                structuredContent: { queries: params.searches, results } as JsonValue,
+                structuredContent: structuredContent as JsonValue,
                 details: result.details,
             };
         },
@@ -472,9 +162,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
     });
 
     // ── 2. web_fetch ────────────────────────────────────────────────────────────
-    const fetchDefaults = resolveFetchToolDefaults();
-
-    pi.registerTool({
+    pi.registerTool<typeof webFetchParameters, WebFetchRenderDetails>({
         name: "web_fetch",
         label: "web_fetch",
         annotations: {
@@ -482,37 +170,33 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
             openWorldHint: true,
             idempotentHint: true,
         },
-        description: toolDescription,
+        description:
+            "Fetch a URL and return it as readable markdown (html, text, json or raw on request). Extractors add title, author and date when the page publishes them. Does not execute JavaScript.",
         promptSnippet: "Fetch a URL and extract readable content (does not run JavaScript)",
-        parameters: Type.Object({
-            ...createBaseFetchToolParameterProperties(fetchDefaults),
-            verbose: Type.Optional(
-                Type.Boolean({
-                    description:
-                        "Include the full metadata header (site, language, word count, browser) in the returned text. Default: false, or smartFetchVerboseByDefault from settings.",
-                }),
-            ),
-        }),
+        parameters: webFetchParameters,
         outputSchema: webFetchOutputSchema,
 
         renderCall(args, theme) {
             return createWebFetchCallComponent(args, theme);
         },
 
-        async execute(_toolCallId, params: Record<string, unknown>, signal, onUpdate, ctx) {
-            const settings = await loadPiSmartFetchSettings(ctx.cwd, getAgentDir());
+        async execute(_toolCallId, params, signal, onUpdate) {
+            const [{ readSmartFetchSettings }, fetch] = await Promise.all([
+                import("./settings.js"),
+                import("./fetch.js"),
+            ]);
+            const settings = readSmartFetchSettings(pi.getSettings());
             const runtimeDefaults = resolveFetchToolDefaults(settings);
-            const verbose = (params.verbose as boolean) ?? settings.verboseByDefault;
+            const verbose = params.verbose ?? settings.verboseByDefault;
 
             let spinnerTick = 0;
-            let spinnerTimer: NodeJS.Timeout | null = null;
             const latestDetails: WebFetchRenderDetails = {
                 verbose,
-                format: params.format as OutputFormat,
-                maxChars: params.maxChars as number,
+                format: params.format,
+                maxChars: params.maxChars,
                 started: true,
                 status: "connecting",
-                url: params.url as string,
+                url: params.url,
                 spinnerTick: 0,
             };
 
@@ -520,20 +204,14 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                 onUpdate?.({ content: [{ type: "text", text: "" }], details });
             };
 
-            spinnerTimer = setInterval(() => {
+            const spinnerTimer = setInterval(() => {
                 spinnerTick += 1;
                 emitProgress({ ...latestDetails, spinnerTick });
             }, SPINNER_INTERVAL_MS);
+            const stopSpinner = () => clearInterval(spinnerTimer);
 
             try {
-                const {
-                    executeFetchToolCall,
-                    buildFetchErrorResponseText,
-                    buildFetchResponseText,
-                    buildUserFacingFetchErrorSummary,
-                } = await import("./fetch.js");
-
-                const result = await executeFetchToolCall(
+                const result = await fetch.executeFetchToolCall(
                     params,
                     runtimeDefaults,
                     {
@@ -557,14 +235,11 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                     signal,
                 );
 
-                if (spinnerTimer) {
-                    clearInterval(spinnerTimer);
-                    spinnerTimer = null;
-                }
+                stopSpinner();
 
                 if (isError(result)) {
-                    const userSummary = buildUserFacingFetchErrorSummary(result);
-                    const fullError = buildFetchErrorResponseText(result);
+                    const userSummary = fetch.buildUserFacingFetchErrorSummary(result);
+                    const fullError = fetch.buildFetchErrorResponseText(result);
                     emitProgress({
                         ...latestDetails,
                         error: true,
@@ -572,9 +247,9 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                         errorText: fullError,
                         userErrorSummary: userSummary,
                     });
-                    const structuredContent = {
-                        url: (params.url as string) || "",
-                        finalUrl: result.finalUrl || (params.url as string) || "",
+                    const structuredContent: WebFetchOutput = {
+                        url: params.url,
+                        finalUrl: result.finalUrl || params.url,
                         title: "Error",
                         content: fullError,
                         wordCount: 0,
@@ -595,7 +270,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                     };
                 }
 
-                const responseText = buildFetchResponseText(result, { verbose });
+                const responseText = fetch.buildFetchResponseText(result, { verbose });
                 emitProgress({
                     ...latestDetails,
                     status: "done",
@@ -603,7 +278,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                     progress: 1,
                 });
                 const isFile = isFileFetchResult(result);
-                const structuredContent = {
+                const structuredContent: WebFetchOutput = {
                     url: result.url,
                     finalUrl: result.finalUrl,
                     title: result.title,
@@ -628,10 +303,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                     },
                 };
             } catch (error) {
-                if (spinnerTimer) {
-                    clearInterval(spinnerTimer);
-                    spinnerTimer = null;
-                }
+                stopSpinner();
                 const message = error instanceof Error ? error.message : String(error);
                 emitProgress({
                     ...latestDetails,
@@ -640,9 +312,9 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
                     errorText: message,
                     userErrorSummary: message,
                 });
-                const structuredContent = {
-                    url: (params.url as string) || "",
-                    finalUrl: (params.url as string) || "",
+                const structuredContent: WebFetchOutput = {
+                    url: params.url,
+                    finalUrl: params.url,
                     title: "Error",
                     content: message,
                     wordCount: 0,
@@ -664,8 +336,7 @@ export default function smartWebAccessExtension(pi: ExtensionAPI): void {
         },
 
         renderResult(result, { expanded }, theme, context) {
-            const details = result.details as WebFetchRenderDetails | undefined;
-            return createWebFetchResultComponent(details, expanded, theme, context);
+            return createWebFetchResultComponent(result.details, expanded, theme, context);
         },
     });
 }

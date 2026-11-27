@@ -149,8 +149,8 @@ export interface SubagentsSettings {
     agentThinking?: Record<string, ThinkingLevel>;
 }
 
-// Model ids are interpolated into a shell command, so only shell-safe
-// characters pass, plus the CLI's optional `:thinking` suffix.
+// A model id is stored, read back, and handed to the child as one argv element;
+// the pattern is what makes the reader and the writers agree on a single token.
 const MODEL_PATTERN = /^[A-Za-z0-9_./-]+(:[A-Za-z0-9_.-]+)?$/;
 
 export function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -212,31 +212,26 @@ export function defaultThinkingForAgent(name: string): ThinkingLevel | undefined
     return undefined;
 }
 
-// Flag values are interpolated into a pane shell command, so every value is quoted.
-function flag(name: string, value: string): string {
-    return ` --${name} "${value}"`;
-}
-
 /**
  * Trust flags take no value, so `flag()` cannot build them: `--approve ""`
  * would become a positional message. The parent's decision is mirrored so the
  * child loads exactly the project resources the parent loaded, and never stops
  * at a trust prompt the dispatch pipeline cannot answer.
  */
-export function buildTrustFlag(projectTrusted: boolean): string {
-    return projectTrusted ? " --approve" : " --no-approve";
+export function buildTrustFlag(projectTrusted: boolean): string[] {
+    return [projectTrusted ? "--approve" : "--no-approve"];
 }
 
+/** Model and thinking flags as argv: each flag, then its value. */
 export function resolveAgentFlags(
     agent: { name: string; model: string },
     settings: SubagentsSettings,
-): { modelFlag: string; thinkingFlag: string } {
+): string[] {
     const model = settings.agentModels?.[agent.name] ?? agent.model;
     const thinking = settings.agentThinking?.[agent.name] ?? defaultThinkingForAgent(agent.name);
-    return {
-        modelFlag: flag("model", model),
-        thinkingFlag: thinking ? flag("thinking", thinking) : "",
-    };
+    const flags = ["--model", model];
+    if (thinking) flags.push("--thinking", thinking);
+    return flags;
 }
 
 export interface AppendSystemPromptInput {
@@ -254,12 +249,12 @@ export interface AppendSystemPromptInput {
  * replaces pi's own discovery of that file, so it is resolved here the same
  * way: trusted project file first, agent directory second.
  *
- * The values are paths, never inline text: the command is typed into a pane
- * shell, and persona markdown is full of backticks. The persona file is
- * content-hashed, so an edit creates a new file instead of rewriting one that a
- * running child may re-read.
+ * The values are paths, never inline text: persona markdown is full of
+ * backticks, and a path is one argv element however many spaces it holds. The
+ * persona file is content-hashed, so an edit creates a new file instead of
+ * rewriting one that a running child may re-read.
  */
-export function buildAppendSystemPromptFlags(input: AppendSystemPromptInput): string {
+export function buildAppendSystemPromptFlags(input: AppendSystemPromptInput): string[] {
     const { agent, cwd, agentDir, projectTrusted, tmpDir } = input;
 
     const projectFile = path.join(cwd, CONFIG_DIR_NAME, "APPEND_SYSTEM.md");
@@ -269,7 +264,7 @@ export function buildAppendSystemPromptFlags(input: AppendSystemPromptInput): st
             : path.join(agentDir, "APPEND_SYSTEM.md");
 
     const flags: string[] = [];
-    if (fs.existsSync(addendum)) flags.push(flag("append-system-prompt", addendum));
+    if (fs.existsSync(addendum)) flags.push("--append-system-prompt", addendum);
 
     const persona = agent.systemPrompt.replace(/^\n+|\n+$/g, "");
     if (persona.length > 0) {
@@ -277,10 +272,10 @@ export function buildAppendSystemPromptFlags(input: AppendSystemPromptInput): st
         fs.mkdirSync(dir, { recursive: true });
         const file = path.join(dir, `agent-${agent.name}-${projectKey(persona)}.md`);
         if (!fs.existsSync(file)) fs.writeFileSync(file, persona, "utf-8");
-        flags.push(flag("append-system-prompt", file));
+        flags.push("--append-system-prompt", file);
     }
 
-    return flags.join("");
+    return flags;
 }
 
 // Read-modify-write of the raw file: only the one entry changes, every other

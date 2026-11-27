@@ -1,13 +1,17 @@
-// Tests for the herdr-core client's capability gate (herdr.ts) and the argv
-// builder the dispatch uses (tool-body.ts).
+// Tests for the herdr-core client's capability gate (herdr.ts) and the child
+// argv the dispatch builds (agents.ts, tool-body.ts).
 // Run from repo root: node .script/test/herdr-app-subagent/herdr.test.mjs
 // Pure helpers only: the socket calls need a live herdr-core and a live agent.
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { createTestJiti, importProd, runCases } from "../subagent/helpers.mjs";
 
 const jiti = await createTestJiti();
 const herdr = await importProd(jiti, "agent/extensions/herdr-app-subagent/herdr.js");
 const body = await importProd(jiti, "agent/extensions/herdr-app-subagent/tool-body.js");
+const agents = await importProd(jiti, "agent/extensions/herdr-app-subagent/agents.js");
 
 const FULL = [
     "terminal.run",
@@ -61,24 +65,54 @@ await runCases(
             },
         ],
         [
-            "argv: the flag builders' quoted values become single arguments",
-            () =>
+            "flags: model and thinking arrive as flag-plus-value pairs",
+            () => {
                 assert.deepEqual(
-                    body.argvFromFlags(' --model "opencode-go/x" --approve --tools read,edit'),
-                    ["--model", "opencode-go/x", "--approve", "--tools", "read,edit"],
-                ),
+                    agents.resolveAgentFlags({ name: "scout", model: "fallback/m" }, {}),
+                    ["--model", "fallback/m", "--thinking", "low"],
+                );
+                assert.deepEqual(
+                    agents.resolveAgentFlags(
+                        { name: "scout", model: "fallback/m" },
+                        {
+                            agentModels: { scout: "opencode-go/x" },
+                            agentThinking: { scout: "high" },
+                        },
+                    ),
+                    ["--model", "opencode-go/x", "--thinking", "high"],
+                );
+                // No default and no stored level: the thinking flag is absent, not empty.
+                assert.deepEqual(
+                    agents.resolveAgentFlags({ name: "other", model: "fallback/m" }, {}),
+                    ["--model", "fallback/m"],
+                );
+            },
         ],
         [
-            "argv: a quoted path with spaces stays one argument",
-            () =>
-                assert.deepEqual(
-                    body.argvFromFlags(' --append-system-prompt "C:\\\\a b\\\\prompt.md"'),
-                    ["--append-system-prompt", "C:\\\\a b\\\\prompt.md"],
-                ),
+            "flags: trust is one valueless argument either way",
+            () => {
+                assert.deepEqual(agents.buildTrustFlag(true), ["--approve"]);
+                assert.deepEqual(agents.buildTrustFlag(false), ["--no-approve"]);
+            },
         ],
         [
-            "argv: an empty flag string yields no arguments",
-            () => assert.deepEqual(body.argvFromFlags(""), []),
+            "flags: a prompt path with spaces stays a single argument",
+            () => {
+                const dir = fs.mkdtempSync(path.join(os.tmpdir(), "herdr flags "));
+                const addendum = path.join(dir, "APPEND_SYSTEM.md");
+                fs.writeFileSync(addendum, "addendum");
+                assert.deepEqual(
+                    agents.buildAppendSystemPromptFlags({
+                        agent: { name: "scout", systemPrompt: "" },
+                        cwd: dir,
+                        agentDir: dir,
+                        projectTrusted: false,
+                        tmpDir: dir,
+                    }),
+                    ["--append-system-prompt", addendum],
+                );
+                fs.rmSync(dir, { recursive: true, force: true });
+            },
         ],
         // The regression this suite exists for: a turn that ends without a
         // closing sentence. `turn` rises when the status leaves `working`, so

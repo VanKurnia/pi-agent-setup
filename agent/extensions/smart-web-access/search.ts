@@ -1,8 +1,5 @@
 import { fetch } from "wreq-js";
 import { Defuddle } from "defuddle/node";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { parseLinkedomHTML } from "./dom.ts";
 import type {
     PageFetchResult,
@@ -144,40 +141,13 @@ const DEFAULT_RESULTS_PER_QUERY = 5;
 const MIN_RESULTS_PER_QUERY = 1;
 const MAX_RESULTS_PER_QUERY = 10;
 
-function clamp(value: number, lowest: number, highest: number): number {
-    return Math.min(highest, Math.max(lowest, value));
-}
-
-interface SettingsFile {
-    smartWebSearch?: { resultsPerQuery?: unknown };
-}
-
-async function readResultsPerQueryFrom(file: string): Promise<number | undefined> {
-    let settings: SettingsFile;
-    try {
-        settings = JSON.parse(await readFile(file, "utf-8")) as SettingsFile;
-    } catch {
-        return undefined;
-    }
-
-    const configured = settings.smartWebSearch?.resultsPerQuery;
-    if (typeof configured !== "number" || !Number.isFinite(configured)) return undefined;
-    return Math.floor(configured);
-}
-
-async function loadResultsPerQuery(
-    cwd: string,
-    userSettingsDir: string = getAgentDir(),
-): Promise<number> {
-    const projectSettings = join(cwd, CONFIG_DIR_NAME, "settings.json");
-    const userSettings = join(userSettingsDir, "settings.json");
-
-    const resultsPerQuery =
-        (await readResultsPerQueryFrom(projectSettings)) ??
-        (await readResultsPerQueryFrom(userSettings)) ??
-        DEFAULT_RESULTS_PER_QUERY;
-
-    return clamp(resultsPerQuery, MIN_RESULTS_PER_QUERY, MAX_RESULTS_PER_QUERY);
+/** Results to keep per query: the configured `smartWebSearch.resultsPerQuery`, clamped. */
+export function clampResultsPerQuery(configured: number | undefined): number {
+    const value =
+        configured !== undefined && Number.isFinite(configured)
+            ? Math.floor(configured)
+            : DEFAULT_RESULTS_PER_QUERY;
+    return Math.min(MAX_RESULTS_PER_QUERY, Math.max(MIN_RESULTS_PER_QUERY, value));
 }
 
 // =============================================================================
@@ -277,11 +247,11 @@ function renderToolResult(searches: QueryProgress[]): string {
 
 export async function executeWebSearch(
     queries: string[],
-    cwd: string,
+    configuredResultsPerQuery: number | undefined,
     onProgress?: (progressByQuery: QueryProgress[]) => void,
     signal?: AbortSignal,
 ): Promise<{ text: string; details: WebSearchDetails }> {
-    const resultsPerQuery = await loadResultsPerQuery(cwd);
+    const resultsPerQuery = clampResultsPerQuery(configuredResultsPerQuery);
 
     const progressByQuery: QueryProgress[] = queries.map((query) => ({
         query,

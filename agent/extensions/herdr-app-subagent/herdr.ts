@@ -1,3 +1,4 @@
+import { uuidv7 } from "@earendil-works/pi-ai";
 import net from "node:net";
 
 import { asRecord } from "./agents.ts";
@@ -35,10 +36,6 @@ function socketEndpoint(): string {
 export function callerId(): string | undefined {
     const id = process.env.HC_TERMINAL_ID;
     return typeof id === "string" && id.length > 0 ? id : undefined;
-}
-
-function requestId(): string {
-    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 export class HerdrError extends Error {
@@ -94,7 +91,7 @@ function callHerdr(
             reject(err);
             return;
         }
-        const id = requestId();
+        const id = uuidv7();
         let sock: net.Socket;
         try {
             sock = net.createConnection(endpoint);
@@ -128,7 +125,7 @@ function callHerdr(
                 ),
             );
         }, timeoutMs);
-        timer.unref?.();
+        timer.unref();
         const fail = (message: string): void => {
             settle(() => reject(new Error(message)));
         };
@@ -257,15 +254,20 @@ export interface TerminalState {
     turn: number;
 }
 
+/** The program's own word for its state, read from a core status record. */
+function statusState(status: unknown): string | undefined {
+    const state = asRecord(status)?.state;
+    return typeof state === "string" ? state : undefined;
+}
+
 export function getTerminal(terminal: string): Promise<TerminalState> {
     // No caller: a caller looking at its child has seen its news, and reading
     // the turn must not swallow the completion the wait is about to report.
     return callHerdr("terminal.get", { terminal }).then((raw) => {
         const result = asRecord(raw);
-        const status = asRecord(result?.status);
         return {
-            status: typeof status?.state === "string" ? status.state : undefined,
-            state: String(result?.state ?? ""),
+            status: statusState(result?.status),
+            state: typeof result?.state === "string" ? result.state : "",
             turn: typeof result?.turn === "number" ? result.turn : 0,
         };
     });
@@ -332,17 +334,21 @@ export function listTerminals(labels?: Record<string, string>): Promise<Terminal
                 `herdr-core terminal.list returned no terminals: ${JSON.stringify(raw)}`,
             );
         }
-        return terminals.map((entry) => {
+        return terminals.flatMap((entry): TerminalSummary[] => {
             const terminal = asRecord(entry);
-            const status = asRecord(terminal?.status);
-            return {
-                address: String(terminal?.address),
-                parent: typeof terminal?.parent === "string" ? terminal.parent : undefined,
-                cwd: typeof terminal?.cwd === "string" ? terminal.cwd : undefined,
-                name: typeof terminal?.name === "string" ? terminal.name : undefined,
-                status: typeof status?.state === "string" ? status.state : undefined,
-                state: typeof terminal?.state === "string" ? terminal.state : undefined,
-            };
+            const address = terminal?.address;
+            // An entry with no address names nothing this client can reach.
+            if (typeof address !== "string") return [];
+            return [
+                {
+                    address,
+                    parent: typeof terminal?.parent === "string" ? terminal.parent : undefined,
+                    cwd: typeof terminal?.cwd === "string" ? terminal.cwd : undefined,
+                    name: typeof terminal?.name === "string" ? terminal.name : undefined,
+                    status: statusState(terminal?.status),
+                    state: typeof terminal?.state === "string" ? terminal.state : undefined,
+                },
+            ];
         });
     });
 }

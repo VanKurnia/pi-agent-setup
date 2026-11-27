@@ -57,6 +57,7 @@ const childCtx = {
     cwd: ROOT,
     sessionManager: {
         getSessionId: () => "child-1",
+        getSessionFile: () => undefined,
         buildSessionProjection: () => ({ messages: CHILD_MSGS }),
         getEntries: () => CHILD_MSGS.map((message) => ({ type: "message", message })),
     },
@@ -65,6 +66,7 @@ const lonerCtx = {
     cwd: ROOT,
     sessionManager: {
         getSessionId: () => "loner-9",
+        getSessionFile: () => undefined,
         buildSessionProjection: () => ({ messages: CHILD_MSGS }),
         getEntries: () => CHILD_MSGS.map((message) => ({ type: "message", message })),
     },

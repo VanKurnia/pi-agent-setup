@@ -1,4 +1,12 @@
 import {
+    CURRENT_SESSION_VERSION,
+    parseSessionEntries,
+    type ExtensionContext,
+    type SessionEntry,
+    type SessionHeader,
+} from "@earendil-works/pi-coding-agent";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import {
     closeSync,
     openSync,
     readdirSync,
@@ -9,21 +17,6 @@ import {
 } from "node:fs";
 import { getBlackholeSnapshotApi, type BlackholeSnapshotApi } from "../shared/blackhole-api.ts";
 
-interface SessionEntry {
-    id: string;
-    parentId?: unknown;
-    type?: unknown;
-    message?: {
-        role?: unknown;
-        content?: unknown;
-    };
-}
-
-interface ContentBlock {
-    type?: unknown;
-    text?: unknown;
-}
-
 // Stale-lock horizon: a lock older than this is treated as abandoned
 // (crashed holder) and may be taken over. 60 s keeps margin over the max
 // real hold (30 s settle + launch) while a SIGKILL-resumed parent waits
@@ -32,28 +25,9 @@ const LOCK_STALE_MS = 60 * 1000;
 
 const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
 
-function parseSessionEntries(jsonl: string): SessionEntry[] {
-    const entries: SessionEntry[] = [];
-    for (const line of jsonl.split("\n")) {
-        if (line.trim() === "") continue;
-        try {
-            const parsed: unknown = JSON.parse(line);
-            if (
-                typeof parsed === "object" &&
-                parsed !== null &&
-                typeof (parsed as SessionEntry).id === "string"
-            ) {
-                entries.push(parsed as SessionEntry);
-            }
-        } catch {
-            continue;
-        }
-    }
-    return entries;
-}
-
 // Branch walk over already-parsed entries: newest entry's ancestor chain,
-// then the last assistant message's text blocks.
+// then the last assistant message's text blocks. Runs on a tail slice of a
+// live file, so a parentId outside the slice ends the walk.
 function entriesToText(entries: SessionEntry[]): string | undefined {
     if (entries.length === 0) return undefined;
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
@@ -63,20 +37,18 @@ function entriesToText(entries: SessionEntry[]): string | undefined {
     while (current !== undefined && !seen.has(current.id)) {
         seen.add(current.id);
         branch.push(current);
-        current = typeof current.parentId === "string" ? byId.get(current.parentId) : undefined;
+        current = current.parentId === null ? undefined : byId.get(current.parentId);
     }
     branch.reverse();
-    let lastAssistant: SessionEntry | undefined;
+    let lastAssistant: AssistantMessage | undefined;
     for (const entry of branch) {
-        if (entry.type === "message" && entry.message?.role === "assistant") {
-            lastAssistant = entry;
+        if (entry.type === "message" && entry.message.role === "assistant") {
+            lastAssistant = entry.message;
         }
     }
-    const content = lastAssistant?.message?.content;
+    const content = lastAssistant?.content;
     if (!Array.isArray(content)) return undefined;
-    const texts = (content as ContentBlock[])
-        .filter((block) => block.type === "text" && typeof block.text === "string")
-        .map((block) => block.text as string);
+    const texts = content.filter((block) => block.type === "text").map((block) => block.text);
     if (texts.length === 0) return undefined;
     return texts.join("\n");
 }
@@ -85,11 +57,15 @@ function entriesToText(entries: SessionEntry[]): string | undefined {
 // length-keyed append-only cache cannot tell where a window starts, because a
 // second window of the same file may be longer than the first.
 export function lastAssistantText(jsonl: string): string | undefined {
-    return entriesToText(parseSessionEntries(jsonl));
+    return entriesToText(
+        parseSessionEntries(jsonl).filter(
+            (entry): entry is SessionEntry => entry.type !== "session",
+        ),
+    );
 }
 
-// 8-hex project key: stable per cwd, filename-safe.
-// djb2 (not crypto) so session.ts keeps zero imports beyond node:fs.
+// 8-hex project key: stable per cwd, filename-safe. A dependency-free hash, so
+// the same key can be built anywhere a path is known.
 export function projectKey(cwd: string): string {
     let h = 5381;
     for (let i = 0; i < cwd.length; i++) h = ((h << 5) + h + cwd.charCodeAt(i)) >>> 0;
@@ -236,14 +212,15 @@ export function buildChildHeader(
     parentSessionFile: string | undefined,
     timestampIso: string,
 ): string {
-    return `${JSON.stringify({
+    const header: SessionHeader = {
         type: "session",
-        version: 3,
+        version: CURRENT_SESSION_VERSION,
         id: sessionId,
         timestamp: timestampIso,
         cwd,
         parentSession: parentSessionFile,
-    })}\n`;
+    };
+    return `${JSON.stringify(header)}\n`;
 }
 
 export function childSessionFilename(sessionId: string, timestampIso: string): string {
@@ -337,33 +314,19 @@ export function releaseLock(
 export const SNAPSHOT_MAX_CHARS = 24000;
 export const SNAPSHOT_MARKER = "Reference context";
 
-interface SnapshotCtx {
-    cwd?: string;
-    sessionManager?: {
-        getSessionId?: () => string;
-        buildSessionProjection?: () => {
-            messages?: Array<{ role?: string; content?: unknown }>;
-        };
-    };
-}
-
-export async function createDelegationSnapshot(ctx: SnapshotCtx): Promise<string> {
+export async function createDelegationSnapshot(ctx: ExtensionContext): Promise<string> {
     try {
         const api: BlackholeSnapshotApi | undefined = getBlackholeSnapshotApi();
         if (!api) return "";
-        const sessionId: string = ctx?.sessionManager?.getSessionId?.() ?? "";
-        const messages = (ctx?.sessionManager?.buildSessionProjection?.()?.messages ??
-            []) as Array<{
-            role?: string;
-            content?: unknown;
-        }>;
+        const sessionId = ctx.sessionManager.getSessionId();
+        const messages = ctx.sessionManager.buildSessionProjection().messages;
         const snapshot = api.compileVccSummary({
             messages,
-            cwd: ctx?.cwd,
+            cwd: ctx.cwd,
             omSummary: sessionId ? api.buildOmCompactionSummary(sessionId) : "",
             maxChars: SNAPSHOT_MAX_CHARS,
         });
-        if (!snapshot || !snapshot.trim()) return "";
+        if (!snapshot.trim()) return "";
         // Neutralize the chain template token so a later fillPrevious() over the
         // combined string can never rewrite the frozen reference.
         return snapshot.replace(/\{previous\}/g, "{ previous }");

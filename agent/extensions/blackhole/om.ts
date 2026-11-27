@@ -14,13 +14,14 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { Box, Container, MouseRegion, Text, type Component } from "@earendil-works/pi-tui";
-import type { AssistantMessageEventStream } from "@earendil-works/pi-ai";
+import { type AssistantMessageEventStream, uuidv7 } from "@earendil-works/pi-ai";
 import {
     type EntryRenderer,
     estimateTokens,
     type ExtensionAPI,
     type ExtensionContext,
     type MessageRenderer,
+    type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import {
     getBlackholeDataDir,
@@ -244,24 +245,18 @@ export function buildOmCompactionSummary(sessionId: string): string {
     return sections.join("\n\n");
 }
 
-export function estimateEntryTokens(entry: {
-    type?: string;
-    message?: unknown;
-    content?: unknown;
-}): number {
-    if (entry.type === "message" && entry.message) {
-        return estimateTokens(entry.message as Parameters<typeof estimateTokens>[0]);
-    }
-    if (entry.type === "custom_message" && entry.content) {
-        return estimateTextTokens(String(entry.content));
-    }
+/** 12 lowercase hex chars — the id `recall` resolves and its drill-down contract expects. */
+function observationId(): string {
+    return uuidv7().replace(/-/g, "").slice(-12);
+}
+
+export function estimateEntryTokens(entry: SessionEntry): number {
+    if (entry.type === "message") return estimateTokens(entry.message);
+    if (entry.type === "custom_message") return estimateTextTokens(String(entry.content));
     return 0;
 }
 
-export function calculateTokensAfter(
-    entries: Array<{ id?: string; type?: string; message?: unknown }>,
-    cursorId?: string,
-): number {
+export function calculateTokensAfter(entries: SessionEntry[], cursorId?: string): number {
     let startIndex = -1;
     if (cursorId) {
         startIndex = entries.findIndex((e) => e.id === cursorId);
@@ -278,15 +273,11 @@ export function calculateTokensAfter(
 }
 
 export function formatChunkEntries(
-    entries: Array<{ id?: string; type?: string; message?: { role?: string; content?: unknown } }>,
+    entries: SessionEntry[],
     maxTokens = 60000,
 ): { text: string; lastEntryId?: string } {
     let totalTokens = 0;
-    const kept: Array<{
-        id?: string;
-        type?: string;
-        message?: { role?: string; content?: unknown };
-    }> = [];
+    const kept: SessionEntry[] = [];
     for (let i = entries.length - 1; i >= 0; i--) {
         const est = estimateEntryTokens(entries[i]);
         if (totalTokens + est > maxTokens && kept.length > 0) break;
@@ -295,19 +286,18 @@ export function formatChunkEntries(
     }
 
     const blocks: string[] = [];
-    for (const e of kept) {
-        if (e.type === "message" && e.message) {
-            const role = e.message.role || "unknown";
-            const content = Array.isArray(e.message.content)
-                ? e.message.content
-                      .map((c) => (c as { text?: string })?.text || JSON.stringify(c))
-                      .join(" ")
-                : String(e.message.content || "");
-            if (content.trim()) {
-                blocks.push(
-                    `[Source entry id: ${e.id || "unknown"}]\n[${role.toUpperCase()}]: ${content.trim()}`,
-                );
-            }
+    for (const entry of kept) {
+        if (entry.type !== "message") continue;
+        const { role } = entry.message;
+        // Custom message variants (branch summary, bash execution) carry no `content`.
+        const content = "content" in entry.message ? entry.message.content : "";
+        const text = Array.isArray(content)
+            ? content
+                  .map((block) => (block.type === "text" ? block.text : JSON.stringify(block)))
+                  .join(" ")
+            : content;
+        if (text.trim()) {
+            blocks.push(`[Source entry id: ${entry.id}]\n[${role.toUpperCase()}]: ${text.trim()}`);
         }
     }
     return { text: blocks.join("\n\n"), lastEntryId: kept.at(-1)?.id };
@@ -480,7 +470,7 @@ async function runReflectorWorker(
     pi: ExtensionAPI,
     sessionId: string,
     state: PendingOMState,
-    entries: Array<{ id?: string; type?: string; message?: unknown }>,
+    entries: SessionEntry[],
 ): Promise<void> {
     if (isWorkerCoolingDown("reflector")) return;
     if (state.observations.length < 4) return;
@@ -489,7 +479,7 @@ async function runReflectorWorker(
     if (tokensSinceReflect < reflectThreshold) return;
 
     const modelTarget = config.reflectorModel || config.model;
-    if (!isModelTarget(modelTarget) || !ctx.modelRegistry) return;
+    if (!isModelTarget(modelTarget)) return;
 
     const unreflected = state.observations.slice(-8);
     const prompt = `Synthesize these observations into 1 concise, durable high-level reflection:\n${unreflected.map((o) => `- ${o.text}`).join("\n")}`;
@@ -506,8 +496,7 @@ async function runReflectorWorker(
 
     const newReflections: PendingReflection[] = [];
     for (const text of lines) {
-        const hexId = Math.random().toString(16).slice(2, 14);
-        const item: PendingReflection = { id: hexId, text, createdAt: Date.now() };
+        const item: PendingReflection = { id: observationId(), text, createdAt: Date.now() };
         state.reflections.push(item);
         newReflections.push(item);
     }
@@ -577,19 +566,11 @@ export async function runBackgroundConsolidation(
     pi: ExtensionAPI,
 ): Promise<void> {
     if (isConsolidationRunning || config.memory === false) return;
-    const sessionId = ctx?.sessionManager?.getSessionId?.();
-    if (!sessionId) return;
-
+    const sessionId = ctx.sessionManager.getSessionId();
     isConsolidationRunning = true;
     try {
         const state = readPendingState(sessionId);
-        const entries = (ctx?.sessionManager?.getBranch?.() ||
-            ctx?.sessionManager?.getEntries?.() ||
-            []) as Array<{
-            id?: string;
-            type?: string;
-            message?: { role?: string; content?: unknown };
-        }>;
+        const entries = ctx.sessionManager.getBranch();
         if (entries.length < 2) return;
 
         if (reanchorMissingCursors(state, entries)) {
@@ -599,11 +580,7 @@ export async function runBackgroundConsolidation(
         const observeThreshold = config.observeAfterTokens ?? 25000;
         const unobservedTokens = calculateTokensAfter(entries, state.lastObservedEntryId);
 
-        if (
-            !isWorkerCoolingDown("observer") &&
-            unobservedTokens >= observeThreshold &&
-            ctx.modelRegistry
-        ) {
+        if (!isWorkerCoolingDown("observer") && unobservedTokens >= observeThreshold) {
             const modelTarget = config.observerModel || config.model;
             if (isModelTarget(modelTarget)) {
                 let startIndex = -1;
@@ -639,9 +616,8 @@ export async function runBackgroundConsolidation(
 
                         const newObservations: PendingObservation[] = [];
                         for (const text of lines) {
-                            const hexId = Math.random().toString(16).slice(2, 14);
                             const item: PendingObservation = {
-                                id: hexId,
+                                id: observationId(),
                                 text,
                                 createdAt: Date.now(),
                             };

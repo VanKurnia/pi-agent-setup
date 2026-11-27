@@ -1,10 +1,17 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { relative } from "node:path";
-import { calculateContextTokens, estimateTokens } from "@earendil-works/pi-coding-agent";
+import {
+    calculateContextTokens,
+    estimateTokens,
+    type SessionEntry,
+} from "@earendil-works/pi-coding-agent";
 import { truncateChars } from "../shared/text-format.ts";
 
+/** One message as the summary reads it; the cross-extension seam accepts plain objects. */
+export type SummaryMessage = { role?: string; content?: unknown };
+
 export interface CompileInput {
-    messages: Array<{ role?: string; content?: unknown }>;
+    messages: SummaryMessage[];
     previousSummary?: string;
     cwd?: string;
     omSummary?: string;
@@ -14,7 +21,7 @@ export interface CompileInput {
 
 export function extractGitCommits(cwd?: string): string[] {
     try {
-        const output = execSync("git log -n 5 --oneline", {
+        const output = execFileSync("git", ["log", "-n", "5", "--oneline"], {
             cwd: cwd || process.cwd(),
             encoding: "utf8",
             stdio: ["ignore", "pipe", "ignore"],
@@ -25,31 +32,24 @@ export function extractGitCommits(cwd?: string): string[] {
     }
 }
 
+/** A tool-call block carries its arguments under `arguments` (pi-ai `ToolCall`). */
 interface ToolCallBlock {
     type?: string;
     arguments?: Record<string, unknown>;
-    args?: Record<string, unknown>;
 }
 
-export function collectTouchedFiles(
-    messages: Array<{ role?: string; content?: unknown }>,
-    cwd?: string,
-): string[] {
+export function collectTouchedFiles(messages: SummaryMessage[], cwd?: string): string[] {
     const files = new Set<string>();
     const root = cwd || process.cwd();
     for (const msg of messages) {
-        if (!msg || typeof msg !== "object") continue;
-        const content = Array.isArray(msg.content) ? msg.content : [];
-        for (const rawBlock of content) {
+        if (!Array.isArray(msg.content)) continue;
+        for (const rawBlock of msg.content) {
             const block = rawBlock as ToolCallBlock | undefined;
-            if (block?.type === "toolCall") {
-                const args = block.arguments || block.args;
-                if (typeof args === "object" && args !== null) {
-                    const candidate = args.path || args.file || args.filePath;
-                    if (typeof candidate === "string" && candidate.trim()) {
-                        files.add(relative(root, candidate.trim()).replace(/\\/g, "/"));
-                    }
-                }
+            if (block?.type !== "toolCall" || !block.arguments) continue;
+            const candidate =
+                block.arguments.path || block.arguments.file || block.arguments.filePath;
+            if (typeof candidate === "string" && candidate.trim()) {
+                files.add(relative(root, candidate.trim()).replace(/\\/g, "/"));
             }
         }
     }
@@ -75,7 +75,7 @@ function bulletLines(text: string): string[] {
 }
 
 /** Bounded, newest-last extractive slice of the conversation being summarized. */
-function buildTranscriptExcerpt(messages: Array<{ role?: string; content?: unknown }>): string[] {
+function buildTranscriptExcerpt(messages: SummaryMessage[]): string[] {
     const lines: string[] = [];
     let used = 0;
     for (let i = messages.length - 1; i >= 0 && used < EXCERPT_MAX_CHARS; i--) {
@@ -152,31 +152,17 @@ export function compileVccSummary(input: CompileInput): string {
     return head === summary ? summary : `${head}\n... (summary truncated)`;
 }
 
-export interface SessionEntryLike {
-    type: string;
-    message?: unknown;
-    firstKeptEntryId?: string;
+/** Context tokens an entry reported, when it holds a usable assistant response. */
+function usageTokens(entry: SessionEntry): number | undefined {
+    if (entry.type !== "message") return undefined;
+    const message = entry.message;
+    if (message.role !== "assistant") return undefined;
+    if (message.stopReason === "error" || message.stopReason === "aborted") return undefined;
+    const tokens = calculateContextTokens(message.usage);
+    return Number.isFinite(tokens) && tokens > 0 ? tokens : undefined;
 }
 
-export function getUsageTokens(msg: unknown): number | undefined {
-    if (typeof msg !== "object" || msg === null) return undefined;
-    const record = msg as Record<string, unknown>;
-    if (record.role !== "assistant") return undefined;
-    if (record.stopReason === "error" || record.stopReason === "aborted") return undefined;
-    if (!record.usage) return undefined;
-    try {
-        const tokens = calculateContextTokens(
-            record.usage as Parameters<typeof calculateContextTokens>[0],
-        );
-        return typeof tokens === "number" && Number.isFinite(tokens) && tokens > 0
-            ? tokens
-            : undefined;
-    } catch {
-        return undefined;
-    }
-}
-
-export function rawTokensSinceLastCompaction(entries: SessionEntryLike[]): number {
+export function rawTokensSinceLastCompaction(entries: SessionEntry[]): number {
     let compactionIndex = -1;
     for (let i = entries.length - 1; i >= 0; i--) {
         if (entries[i].type === "compaction") {
@@ -188,30 +174,26 @@ export function rawTokensSinceLastCompaction(entries: SessionEntryLike[]): numbe
     const scanStart = compactionIndex === -1 ? 0 : compactionIndex + 1;
     let usageIndex = -1;
     for (let i = entries.length - 1; i >= scanStart; i--) {
-        if (entries[i].type === "message" && getUsageTokens(entries[i].message) !== undefined) {
+        if (usageTokens(entries[i]) !== undefined) {
             usageIndex = i;
             break;
         }
     }
 
     if (usageIndex !== -1) {
-        const baseline = getUsageTokens(entries[usageIndex].message) || 0;
+        const baseline = usageTokens(entries[usageIndex]) || 0;
         let postTokens = 0;
         for (let i = usageIndex + 1; i < entries.length; i++) {
-            if (entries[i].type === "message" && entries[i].message) {
-                postTokens += estimateTokens(
-                    entries[i].message as Parameters<typeof estimateTokens>[0],
-                );
-            }
+            const entry = entries[i];
+            if (entry.type === "message") postTokens += estimateTokens(entry.message);
         }
         return baseline + postTokens;
     }
 
     let total = 0;
     for (let i = scanStart; i < entries.length; i++) {
-        if (entries[i].type === "message" && entries[i].message) {
-            total += estimateTokens(entries[i].message as Parameters<typeof estimateTokens>[0]);
-        }
+        const entry = entries[i];
+        if (entry.type === "message") total += estimateTokens(entry.message);
     }
     return total;
 }

@@ -1,9 +1,4 @@
-import type {
-    ExtensionAPI,
-    ExtensionContext,
-    SessionBeforeCompactEvent,
-    SessionBeforeCompactResult,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { setBlackholeSnapshotApi } from "../shared/blackhole-api.ts";
 import { recallParams } from "./recall-schema.ts";
 import { getAutoCompactThreshold, getBlackholeConfigPath, loadBlackholeConfig } from "./config.ts";
@@ -55,15 +50,14 @@ export default function (pi: ExtensionAPI): void {
     // Store files of sessions that no longer exist are unreachable, so reap them
     // on every start instead of waiting for a manual /blackhole-prune.
     pi.on("session_start", (_event, ctx) => {
-        const keepSessionId = ctx.sessionManager?.getSessionId?.();
-        const { removed } = cleanupOrphanedPendingFiles(keepSessionId || undefined);
+        const { removed } = cleanupOrphanedPendingFiles(ctx.sessionManager.getSessionId());
         if (removed > 0) {
             ctx.ui.notify(`blackhole: reaped ${removed} orphaned store files.`, "info");
         }
     });
 
     pi.on("agent_settled", async (event, ctx) => {
-        if ((event as { aborted?: boolean }).aborted) {
+        if (event.aborted) {
             abortInFlightCompaction();
             return;
         }
@@ -72,19 +66,17 @@ export default function (pi: ExtensionAPI): void {
         if (currentConfig.compaction === "off" || currentConfig.compaction === "manual") return;
         if (compactInFlight) return;
 
-        const contextWindow = ctx.model?.contextWindow || 128000;
+        const usage = ctx.getContextUsage();
+        const contextWindow = usage?.contextWindow ?? ctx.model?.contextWindow;
+        if (!contextWindow) return;
         const threshold = getAutoCompactThreshold(currentConfig, contextWindow);
 
-        const branch = (ctx.sessionManager?.getBranch?.() || []) as Array<{
-            type: string;
-            message?: unknown;
-        }>;
+        const branch = ctx.sessionManager.getBranch();
         if (branch.length === 0) return;
 
         // Skip if branch already ends with a compaction entry
         if (branch[branch.length - 1]?.type === "compaction") return;
 
-        const usage = ctx.getContextUsage?.();
         const tokens = usage?.tokens != null ? usage.tokens : rawTokensSinceLastCompaction(branch);
 
         if (tokens < threshold) return;
@@ -94,7 +86,7 @@ export default function (pi: ExtensionAPI): void {
         const controller = new AbortController();
         autoCompactionController = controller;
         const signal = controller.signal;
-        const sessionId = ctx.sessionManager?.getSessionId?.();
+        const sessionId = ctx.sessionManager.getSessionId();
 
         if (currentConfig.showWorkerMessages !== false) {
             notifyWorkerAction(
@@ -114,7 +106,7 @@ export default function (pi: ExtensionAPI): void {
                 const idleDeadline = Date.now() + IDLE_WAIT_MAX_MS;
                 while (!isIdle) {
                     if (signal.aborted) return;
-                    if (ctx.sessionManager?.getSessionId?.() !== sessionId) return;
+                    if (ctx.sessionManager.getSessionId() !== sessionId) return;
                     if (Date.now() > idleDeadline) {
                         // Session stayed busy; release the latch so a later
                         // agent_settled can try again instead of disabling
@@ -123,7 +115,7 @@ export default function (pi: ExtensionAPI): void {
                         return;
                     }
 
-                    isIdle = ctx.isIdle ? ctx.isIdle() : true;
+                    isIdle = ctx.isIdle();
                     if (!isIdle) {
                         const sliceMs = 50;
                         const end = Date.now() + 200;
@@ -136,10 +128,7 @@ export default function (pi: ExtensionAPI): void {
 
                 if (signal.aborted) return;
 
-                const currentBranch = (ctx.sessionManager?.getBranch?.() || []) as Array<{
-                    type: string;
-                    message?: unknown;
-                }>;
+                const currentBranch = ctx.sessionManager.getBranch();
                 if (
                     currentBranch.length === 0 ||
                     currentBranch[currentBranch.length - 1]?.type === "compaction"
@@ -147,7 +136,7 @@ export default function (pi: ExtensionAPI): void {
                     return;
                 }
 
-                const currentUsage = ctx.getContextUsage?.();
+                const currentUsage = ctx.getContextUsage();
                 const currentTokens =
                     currentUsage?.tokens != null
                         ? currentUsage.tokens
@@ -163,7 +152,7 @@ export default function (pi: ExtensionAPI): void {
                 // so one stuck compaction cannot disable every future one.
                 const settleTimer = setTimeout(releaseLatch, COMPACTION_SETTLE_TIMEOUT_MS);
 
-                ctx.compact?.({
+                ctx.compact({
                     onComplete: () => {
                         clearTimeout(settleTimer);
                         releaseLatch();
@@ -179,7 +168,7 @@ export default function (pi: ExtensionAPI): void {
                         ) {
                             return;
                         }
-                        ctx.ui?.notify?.(`Blackhole compaction error: ${msg}`, "error");
+                        ctx.ui.notify(`Blackhole compaction error: ${msg}`, "error");
                     },
                 });
             } catch {
@@ -189,49 +178,38 @@ export default function (pi: ExtensionAPI): void {
     });
 
     // ── 3. VCC Compaction Hook ──
-    pi.on(
-        "session_before_compact",
-        async (
-            event: SessionBeforeCompactEvent,
-            ctx: ExtensionContext,
-        ): Promise<SessionBeforeCompactResult | void> => {
-            const config = loadBlackholeConfig();
-            if (config.compaction === "off") return;
-            // "pi-default" defers to the host's own summarizer.
-            if (config.compactionEngine === "pi-default") return;
-            const sessionId = ctx.sessionManager?.getSessionId?.();
-            const omSummary = sessionId ? buildOmCompactionSummary(sessionId) : "";
-            // A split turn passes its earlier part separately
-            // (compaction.d.ts: turnPrefixMessages); without it, file edits made
-            // before the split disappear from ### Files Touched.
-            const messages = [
-                ...(event.preparation?.turnPrefixMessages || []),
-                ...(event.preparation?.messagesToSummarize ||
-                    ctx.sessionManager?.buildSessionProjection?.()?.messages ||
-                    []),
-            ] as Array<{
-                role?: string;
-                content?: unknown;
-            }>;
+    pi.on("session_before_compact", async (event, ctx) => {
+        const config = loadBlackholeConfig();
+        if (config.compaction === "off") return;
+        // "pi-default" defers to the host's own summarizer.
+        if (config.compactionEngine === "pi-default") return;
+        const sessionId = ctx.sessionManager.getSessionId();
+        const omSummary = sessionId ? buildOmCompactionSummary(sessionId) : "";
+        // A split turn passes its earlier part separately
+        // (compaction.d.ts: turnPrefixMessages); without it, file edits made
+        // before the split disappear from ### Files Touched.
+        const messages = [
+            ...event.preparation.turnPrefixMessages,
+            ...event.preparation.messagesToSummarize,
+        ];
 
-            const summary = compileVccSummary({
-                messages,
-                previousSummary: event.preparation?.previousSummary,
-                cwd: ctx.cwd,
-                omSummary,
-            });
+        const summary = compileVccSummary({
+            messages,
+            previousSummary: event.preparation.previousSummary,
+            cwd: ctx.cwd,
+            omSummary,
+        });
 
-            if (summary && summary.trim().length > 0) {
-                return {
-                    compaction: {
-                        summary,
-                        firstKeptEntryId: event.preparation.firstKeptEntryId,
-                        tokensBefore: event.preparation.tokensBefore,
-                    },
-                };
-            }
-        },
-    );
+        if (summary.trim().length > 0) {
+            return {
+                compaction: {
+                    summary,
+                    firstKeptEntryId: event.preparation.firstKeptEntryId,
+                    tokensBefore: event.preparation.tokensBefore,
+                },
+            };
+        }
+    });
 
     // ── 3. Commands ──
     pi.registerCommand("blackhole-prune", {
@@ -247,7 +225,7 @@ export default function (pi: ExtensionAPI): void {
     pi.registerCommand("blackhole-memory", {
         description: "Show blackhole observation/reflection counts",
         handler: async (_args, ctx) => {
-            const sessionId = ctx.sessionManager?.getSessionId?.() || "";
+            const sessionId = ctx.sessionManager.getSessionId();
             const state = readPendingState(sessionId);
             ctx.ui.notify(
                 `Observational Memory: ${state.observations.length} observations, ${state.reflections.length} reflections recorded.`,

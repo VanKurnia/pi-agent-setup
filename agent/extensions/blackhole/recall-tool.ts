@@ -1,5 +1,6 @@
 import {
     buildSessionProjection,
+    parseSessionEntries,
     type AgentToolResult,
     type ExtensionContext,
     type SessionEntry,
@@ -49,10 +50,9 @@ function readJsonFirstLine(filePath: string): Record<string, unknown> | undefine
     }
 }
 
-/** Parent-file projection for out-of-process recall: per-line tolerant parse (a
- * concurrently-growing parent may end mid-line — skip blanks and bad lines,
- * never a whole-file parse), header lines dropped, full linear history via an
- * undefined leaf. Undefined unless the projection yields at least one message. */
+/** Parent-file projection for out-of-process recall: the core parser skips a torn last
+ * line (a concurrently-growing parent may end mid-line), header lines are dropped, and an
+ * undefined leaf keeps the full linear history. Undefined unless it yields a message. */
 function readFileSessionMessages(
     filePath: string,
 ): Array<{ role?: string; content?: unknown }> | undefined {
@@ -62,29 +62,12 @@ function readFileSessionMessages(
     } catch {
         return undefined;
     }
-    const entries: SessionEntry[] = [];
-    for (const line of content.split("\n")) {
-        if (line.trim() === "") continue;
-        try {
-            const parsed: unknown = JSON.parse(line);
-            if (
-                typeof parsed === "object" &&
-                parsed !== null &&
-                (parsed as { type?: unknown }).type !== "session" &&
-                typeof (parsed as SessionEntry).id === "string"
-            ) {
-                entries.push(parsed as SessionEntry);
-            }
-        } catch {
-            continue;
-        }
-    }
+    const entries = parseSessionEntries(content).filter(
+        (entry): entry is SessionEntry => entry.type !== "session",
+    );
     if (entries.length === 0) return undefined;
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
-    const projection = buildSessionProjection(entries, undefined, byId).messages as Array<{
-        role?: string;
-        content?: unknown;
-    }>;
+    const projection = buildSessionProjection(entries, undefined, byId).messages;
     return projection.length > 0 ? projection : undefined;
 }
 
@@ -136,15 +119,6 @@ function windowPayload(
     return `${body.slice(start, end)}\n[chars ${start}-${end} of ${body.length}]${next}`;
 }
 
-/** Only the readers `recall` touches; the host and the parent link differ by design. */
-interface ReadableSessionManager {
-    getSessionId?(): string;
-    getEntries?(): unknown[];
-    buildSessionProjection?():
-        | { messages?: Array<{ role?: string; content?: unknown }> }
-        | undefined;
-}
-
 /** Body of the `recall` tool. Lazy-loaded: the tool is call-only, so its code stays off the boot path. */
 export async function runRecallTool(
     params: RecallParams,
@@ -155,8 +129,8 @@ export async function runRecallTool(
     // source:"parent". The child->parent link is registered by the
     // subagent dispatcher per run and cleared on dispose — parent reads
     // are always explicit and mutate neither session.
-    const childSessionId: string = ctx.sessionManager?.getSessionId?.() || "";
-    let targetManager: ReadableSessionManager | undefined = ctx.sessionManager;
+    const childSessionId = ctx.sessionManager.getSessionId();
+    let targetManager: ExtensionContext["sessionManager"] = ctx.sessionManager;
     let omSessionId = childSessionId;
     let readCwd: string = ctx.cwd;
     // Assigned by the file-based parent fallback when the link is absent,
@@ -177,7 +151,7 @@ export async function runRecallTool(
             // (messages, omSessionId, readCwd) from disk — both paths come
             // from pi-written headers, never user input, and every failure
             // falls through to the existing error return.
-            const ownFile: unknown = ctx.sessionManager?.getSessionFile?.();
+            const ownFile = ctx.sessionManager.getSessionFile();
             if (typeof ownFile === "string" && ownFile.length > 0) {
                 const parentFile = readJsonFirstLine(ownFile)?.parentSession;
                 if (typeof parentFile === "string" && parentFile.length > 0) {
@@ -217,15 +191,11 @@ export async function runRecallTool(
     if (messages === undefined) {
         messages = (
             params.scope === "all"
-                ? (
-                      (targetManager?.getEntries?.() || []) as Array<{
-                          type?: string;
-                          message?: unknown;
-                      }>
-                  )
-                      .filter((e) => e.type === "message" && "message" in e)
-                      .map((e) => (e as { message: unknown }).message)
-                : targetManager?.buildSessionProjection?.()?.messages || []
+                ? targetManager
+                      .getEntries()
+                      .filter((entry) => entry.type === "message")
+                      .map((entry) => entry.message)
+                : targetManager.buildSessionProjection().messages
         ) as Array<{
             role?: string;
             content?: unknown;
@@ -284,13 +254,8 @@ export async function runRecallTool(
             };
         }
         if (Array.isArray(msg.content)) {
-            const callArgs = (b: unknown): Record<string, unknown> | undefined => {
-                const block = b as {
-                    arguments?: Record<string, unknown>;
-                    args?: Record<string, unknown>;
-                };
-                return (block?.arguments || block?.args) as Record<string, unknown> | undefined;
-            };
+            const callArgs = (b: unknown): Record<string, unknown> | undefined =>
+                (b as { arguments?: Record<string, unknown> }).arguments;
             const tc = msg.content.find((b) => {
                 const args = callArgs(b);
                 if (!args) return false;
@@ -381,14 +346,9 @@ export async function runRecallTool(
                           type?: string;
                           text?: string;
                           arguments?: unknown;
-                          args?: unknown;
                       };
-                      if (
-                          includeToolArgs &&
-                          block?.type === "toolCall" &&
-                          (block.arguments || block.args)
-                      ) {
-                          return JSON.stringify(block.arguments ?? block.args);
+                      if (includeToolArgs && block?.type === "toolCall" && block.arguments) {
+                          return JSON.stringify(block.arguments);
                       }
                       return block?.text || "";
                   })

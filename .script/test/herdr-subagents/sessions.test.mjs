@@ -38,7 +38,7 @@ const parentMessages = [
         role: "assistant",
         content: [
             { type: "text", text: "reading" },
-            { type: "toolCall", args: { path: "src/auth.ts" } },
+            { type: "toolCall", arguments: { path: "src/auth.ts" } },
         ],
     },
 ];
